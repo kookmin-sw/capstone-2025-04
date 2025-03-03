@@ -1,0 +1,165 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+
+Description: SAM Template for Capstone 2025-04 Project
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - prod
+    Description: Environment (dev/prod)
+
+Globals:
+  Function:
+    Timeout: 30
+    MemorySize: 256
+    Environment:
+      Variables:
+        ENVIRONMENT: !Ref Environment
+        PROBLEMS_TABLE: !Ref ProblemsTable
+        SUBMISSIONS_TABLE: !Ref SubmissionsTable
+
+Resources:
+  # DynamoDB Tables
+  ProblemsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${Environment}-Problems"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: problemId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: problemId
+          KeyType: HASH
+
+  SubmissionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${Environment}-Submissions"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: submissionId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: submissionId
+          KeyType: HASH
+
+  # 문제 생성 Lambda 함수
+  ProblemGeneratorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: problem-generator.lambda_handler
+      Runtime: python3.9
+      CodeUri: ../backend/lambdas/problem-generator
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ProblemsTable
+      Environment:
+        Variables:
+          PROBLEMS_TABLE: !Ref ProblemsTable
+      Events:
+        GetProblem:
+          Type: Api
+          Properties:
+            Path: /problem
+            Method: get
+            RestApiId: !Ref ApiGateway
+
+  # 제출 처리 Lambda 함수
+  SubmissionHandlerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: submission-handler.lambda_handler
+      Runtime: python3.9
+      CodeUri: ../backend/lambdas/submission-handler
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref SubmissionsTable
+        - SNSPublishMessagePolicy:
+            TopicName: !GetAtt GradingTopic.TopicName
+      Environment:
+        Variables:
+          SUBMISSIONS_TABLE: !Ref SubmissionsTable
+          GRADING_TOPIC: !Ref GradingTopic
+      Events:
+        SubmitCode:
+          Type: Api
+          Properties:
+            Path: /submit
+            Method: post
+            RestApiId: !Ref ApiGateway
+
+  # 자동 채점 Lambda 함수
+  AutoGraderFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: auto-grader.lambda_handler
+      Runtime: python3.9
+      CodeUri: ../backend/lambdas/auto-grader
+      Timeout: 60
+      MemorySize: 512
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref SubmissionsTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref ProblemsTable
+      Environment:
+        Variables:
+          PROBLEMS_TABLE: !Ref ProblemsTable
+          SUBMISSIONS_TABLE: !Ref SubmissionsTable
+      Events:
+        GradingEvent:
+          Type: SNS
+          Properties:
+            Topic: !Ref GradingTopic
+        GradeAPI:
+          Type: Api
+          Properties:
+            Path: /grade
+            Method: post
+            RestApiId: !Ref ApiGateway
+
+  # SNS Topic for grading
+  GradingTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub "${Environment}-GradingTopic"
+
+  # API Gateway
+  ApiGateway:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: !Ref Environment
+      Cors:
+        AllowMethods: "'GET,POST,OPTIONS'"
+        AllowHeaders: "'Content-Type,Authorization'"
+        AllowOrigin: "'*'"
+
+Outputs:
+  ApiEndpoint:
+    Description: "API Gateway endpoint URL"
+    Value: !Sub "https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/${Environment}/"
+
+  ProblemGeneratorFunction:
+    Description: "Problem Generator Lambda Function ARN"
+    Value: !GetAtt ProblemGeneratorFunction.Arn
+
+  SubmissionHandlerFunction:
+    Description: "Submission Handler Lambda Function ARN"
+    Value: !GetAtt SubmissionHandlerFunction.Arn
+
+  AutoGraderFunction:
+    Description: "Auto Grader Lambda Function ARN"
+    Value: !GetAtt AutoGraderFunction.Arn
+
+  ProblemsTable:
+    Description: "Problems DynamoDB table name"
+    Value: !Ref ProblemsTable
+
+  SubmissionsTable:
+    Description: "Submissions DynamoDB table name"
+    Value: !Ref SubmissionsTable
