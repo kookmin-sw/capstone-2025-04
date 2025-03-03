@@ -1,28 +1,29 @@
-# Welcome to GitHub
+# 국민대학교 소프트웨어융합대학 2025년 캡스톤 4팀
 
 캡스톤 팀 생성을 축하합니다.
 
-## 팀소개 및 페이지를 꾸며주세요.
+## 팀소개 및 페이지를 꾸며주세요
 
 - 프로젝트 소개
+
   - 프로젝트 설치방법 및 데모, 사용방법, 프리뷰등을 readme.md에 작성.
   - Api나 사용방법등 내용이 많을경우 wiki에 꾸미고 링크 추가.
 
 - 팀페이지 꾸미기
+
   - 프로젝트 소개 및 팀원 소개
   - index.md 예시보고 수정.
 
-- GitHub Pages 리파지토리 Settings > Options > GitHub Pages 
+- GitHub Pages 리파지토리 Settings > Options > GitHub Pages
   - Source를 marster branch
   - Theme Chooser에서 태마선택
   - 수정후 팀페이지 확인하여 점검.
 
-**팀페이지 주소** -> https://kookmin-sw.github.io/ '{{자신의 리파지토리 아이디}}'
+**팀페이지 주소** -> <https://kookmin-sw.github.io/> '{{자신의 리파지토리 아이디}}'
 
-**예시)** 2023년 0조  https://kookmin-sw.github.io/capstone-2023-00/
+**예시)** 2023년 0조 <https://kookmin-sw.github.io/capstone-2023-00/>
 
-
-## 내용에 아래와 같은 내용들을 추가하세요.
+## 내용에 아래와 같은 내용들을 추가하세요
 
 ### 1. 프로잭트 소개
 
@@ -46,6 +47,21 @@
 
 추가적인 내용은 자유롭게 작성하세요.
 
+## 프로젝트 구조
+
+```
+/project-root
+  /infrastructure        # IaC 코드 (CDK, CloudFormation, Terraform)
+  /backend
+    /lambdas             # Lambda 함수 코드
+      /problem-generator
+      /submission-handler
+      /auto-grader
+  /frontend              # React/Vue 등의 프론트엔드 코드
+  /database              # 데이터베이스 스키마, 마이그레이션
+  /api                   # API 정의 (OpenAPI 스펙)
+  /scripts               # 배포 스크립트 등
+```
 
 ## Markdown을 사용하여 내용꾸미기
 
@@ -55,7 +71,9 @@ Markdown은 작문을 스타일링하기위한 가볍고 사용하기 쉬운 구
 Syntax highlighted code block
 
 # Header 1
+
 ## Header 2
+
 ### Header 3
 
 - Bulleted

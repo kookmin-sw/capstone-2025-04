@@ -1,0 +1,94 @@
+# General
+.DS_Store
+*.log
+*.tmp
+*.swp
+*~
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.vscode/
+.idea/
+*.sublime-*
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+dist/
+build/
+coverage/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Java
+*.class
+*.jar
+*.war
+*.ear
+target/
+.gradle/
+build/
+*.iml
+
+# AWS
+.aws-sam/
+samconfig.toml
+packaged.yaml
+.chalice/deployments/
+
+# CDK
+cdk.out/
+cdk-outputs.json
+
+# Database
+*.sqlite
+*.db
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.backup
+.terragrunt-cache/
+terraform.tfvars
+terraform.tfvars.json
+.terraform.lock.hcl
+
+# Keep .gitkeep files
+!.gitkeep
+
+# Frontend frameworks
+.next/
+.nuxt/
+.cache/
