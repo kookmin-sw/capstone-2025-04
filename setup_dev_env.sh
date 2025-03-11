@@ -1,5 +1,6 @@
 #!/bin/bash
 
+# TODO : 아직 완성되지 않음. 예시로 작성됨.
 # 개발 환경 설정 스크립트 for Mac
 # 사용법: 터미널에서 `chmod +x setup_dev_env.sh && ./setup_dev_env.sh` 실행
 

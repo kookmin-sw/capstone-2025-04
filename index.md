@@ -1,37 +1,95 @@
-## Welcome to GitHub Pages
+# **ALPACO : 클라우드 기반 LLM 알고리즘 문제 생성 및 자동 채점 서비스**
 
-You can use the [editor on GitHub](https://github.com/kookmin-sw/cap-template/edit/master/index.md) to maintain and preview the content for your website in Markdown files.
+## 국민대학교 소프트웨어융합대학 2025년 캡스톤 4팀 (우서용)
 
-Whenever you commit to this repository, GitHub Pages will run [Jekyll](https://jekyllrb.com/) to rebuild the pages in your site, from the content in your Markdown files.
+---
 
-### Markdown
+## 1. 상세 서비스 설명 (작성중)
 
-Markdown is a lightweight and easy-to-use syntax for styling your writing. It includes conventions for
+### a. 문제 생성 서비스
 
-```markdown
-Syntax highlighted code block
+- **LLM 기반 맞춤형 알고리즘 문제 생성**
+  - 사용자가 원하는 주제를 입력하면 LLM API를 활용해 고품질의 알고리즘 문제를 즉석에서 맞춤 생성합니다.
+  - 난이도, 주제(자료구조, 그래프, DP 등)를 세부적으로 설정 가능하며, 문제에 맞는 테스트케이스 역시 자동으로 함께 생성합니다.
+- **유사 문제 추천 기능**
+  - 사용자가 문제를 요청했을 때, 이미 유사한 유형의 문제를 다른 사용자가 만든 적이 있다면 이를 안내하고 추천합니다. 기존 문제를 선택하거나 새롭게 생성할지를 사용자에게 물어보고 선택지 부여합니다.
 
-# Header 1
-## Header 2
-### Header 3
+### b. 문제 풀이 및 제출 서비스
 
-- Bulleted
-- List
+- **웹 기반 코드 작성 환경**
+  - 사용자는 웹사이트 내에서 제공되는 에디터를 통해 편리하게 코드를 작성하고 즉석에서 문제를 풀 수 있습니다.
+- **클라우드 기반 자동 채점 시스템**
+  - AWS Lambda와 같은 서버리스 환경을 활용하여 사용자가 제출한 알고리즘 문제를 신속하고 효율적으로 채점합니다.
+  - 서버리스 아키텍처 특성상 확장성이 매우 뛰어나며 사용량에 따라 유연하게 과금되므로 비용 효율성 역시 뛰어납니다.
 
-1. Numbered
-2. List
+### c. 테스트 케이스 자동 대량 생성
 
-**Bold** and _Italic_ and `Code` text
+- **LLM을 이용한 대량 테스트 케이스 생성**
+  - 문제 난이도와 유형에 최적화된 테스트 케이스를 LLM 기술을 활용하여 자동으로 생성합니다.
+  - LLM이 문제에 맞는 테스트 케이스 generator를 생성하여 채점합니다.
 
-[Link](url) and ![Image](src)
+### d. 문제 관리 및 사용자 피드백
+
+- **좋아요 기반 추천 시스템**
+  - 유저가 문제를 잘 풀고 해당 문제에 '좋아요'를 누르면 데이터베이스에 문제를 자동 저장하고 추가적인 사용자에게 인기 문제로 추천합니다.
+- **문제 데이터베이스 관리**
+  - 기존 생성된 문제는 사용자들의 평가(좋아요 수)에 따라 품질 점수가 매겨지며, 인기 있는 문제일수록 사용자에게 더 많이 노출됩니다.
+
+### e. Lambda 활용의 적합성
+
+- 서버리스 아키텍처(Lambda)는 채점 작업처럼 트래픽의 변동이 큰 서비스에 매우 적합합니다.
+- 평소에는 거의 비용이 들지 않으며, 사용량 증가 시 자동으로 확장되므로 효율적이고 경제적입니다.
+- 따라서 본 서비스의 비즈니스 모델과 완벽히 부합합니다.
+
+### f. 서비스 핵심
+
+- 원하는 난이도와 주제로 개별화된 문제를 즉석에서 LLM으로 생성
+- 테스트 케이스 생성 자동화로 효율성 향상
+- 클라우드 서버리스 환경을 통해 고성능, 저비용 자동 채점 제공
+- 기존 문제 활용 및 문제 은행화로 사용자 참여 및 서비스 품질 지속 향상
+
+알고리즘 문제를 맞춤 생성하고, 효율성과 확장성을 고려한 자동 채점 시스템을 제공하여, 사용자 맞춤형 알고리즘 학습 환경을 만들어갑니다.
+
+---
+
+## 2. 소개 영상 (예정)
+
+---
+
+## 3. 팀 소개 (작성중)
+
+팀원정보 및 담당이나 사진 및 SNS를 이용하여 소개하세요.
+
+### 배용하 (팀장)
+
+### 박우혁
+
+### 백서현
+
+---
+
+## 4. 사용법 (작성중)
+
+소스코드제출시 설치법이나 사용법을 작성하세요.
+
+---
+
+## 5. 기타
+
+추가적인 내용은 자유롭게 작성하세요.
+
+### 프로젝트 구조
+
+```shell
+/project-root
+  /infrastructure        # IaC 코드 (CDK, CloudFormation, Terraform)
+  /backend
+    /lambdas             # Lambda 함수 코드 (예시)
+      /problem-generator
+      /submission-handler
+      /auto-grader
+  /frontend              # nextjs 등의 프론트엔드 코드
+  /database              # 데이터베이스 스키마, 마이그레이션
+  /api                   # API 정의 (OpenAPI 스펙)
+  /scripts               # 배포 스크립트 등
 ```
-
-For more details see [GitHub Flavored Markdown](https://guides.github.com/features/mastering-markdown/).
-
-### Jekyll Themes
-
-Your Pages site will use the layout and styles from the Jekyll theme you have selected in your [repository settings](https://github.com/kookmin-sw/cap-template/settings). The name of this theme is saved in the Jekyll `_config.yml` configuration file.
-
-### Support or Contact
-
-Having trouble with Pages? Check out our [documentation](https://help.github.com/categories/github-pages-basics/) or [contact support](https://github.com/contact) and we’ll help you sort it out.
