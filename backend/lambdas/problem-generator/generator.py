@@ -11,9 +11,9 @@ load_dotenv()
 
 # Configure the API key
 def setup_api(api_key=None):
-    if api_key is None:
+    if (api_key is None):
         api_key = os.getenv("GOOGLE_AI_API_KEY")
-        if not api_key:
+        if (not api_key):
             raise ValueError("No API key provided. Set GOOGLE_AI_API_KEY in .env file or pass it as an argument.")
     genai.configure(api_key=api_key)
 
@@ -72,17 +72,24 @@ def load_template(algorithm_type, difficulty):
     if not templates_dir.exists():
         raise FileNotFoundError(f"Templates directory not found: {templates_dir}")
     
+    # First look in the specific algorithm type directory
+    algorithm_dir = templates_dir / algorithm_type.lower()
+    
     # Find matching template files
     template_files = []
-    for file in templates_dir.glob(f"*{algorithm_type}*"):
-        if file.is_file():
-            template_files.append(file)
+    
+    # If specific algorithm directory exists, look there first
+    if algorithm_dir.exists():
+        template_files = list(algorithm_dir.glob("*.py")) + list(algorithm_dir.glob("*.cpp"))
+    
+    # If no templates found in specific directory or it doesn't exist, search all subdirectories
+    if not template_files:
+        for alg_subdir in templates_dir.iterdir():
+            if alg_subdir.is_dir():
+                template_files.extend(list(alg_subdir.glob("*.py")) + list(alg_subdir.glob("*.cpp")))
     
     if not template_files:
-        # Try to find any template if specific algorithm type is not available
-        template_files = list(templates_dir.glob("*.py")) + list(templates_dir.glob("*.cpp"))
-        if not template_files:
-            raise ValueError(f"No templates found for algorithm type: {algorithm_type}")
+        raise ValueError(f"No templates found for algorithm type: {algorithm_type}")
     
     # For difficult problems, we might want to combine templates
     if difficulty == "어려움" and random.random() < 0.7 and len(template_files) >= 2:
@@ -94,7 +101,7 @@ def load_template(algorithm_type, difficulty):
         for template_path in selected_templates:
             with open(template_path, "r", encoding="utf-8") as f:
                 template_codes.append(f.read())
-            template_paths.append(template_path.name)
+            template_paths.append(f"{template_path.parent.name}/{template_path.name}")
             
         combined_code = "\n\n# Template 1: " + template_paths[0] + "\n" + template_codes[0] + \
                         "\n\n# Template 2: " + template_paths[1] + "\n" + template_codes[1]
@@ -106,7 +113,7 @@ def load_template(algorithm_type, difficulty):
         with open(template_path, "r", encoding="utf-8") as f:
             template_code = f.read()
         
-        return template_code, template_path.name
+        return template_code, f"{template_path.parent.name}/{template_path.name}"
 
 def generate_problem(api_key, algorithm_type, difficulty):
     """
@@ -201,7 +208,7 @@ def generate_problem(api_key, algorithm_type, difficulty):
     """
     
     # Get a response from the model
-    model = genai.GenerativeModel('gemini-pro')
+    model = genai.GenerativeModel('gemini-2.0-flash-thinking-exp-01-21')
     response = model.generate_content(prompt)
     
     return {
