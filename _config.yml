@@ -1,1 +1,7 @@
-theme: jekyll-theme-slate
+remote_theme: just-the-docs/just-the-docs
+
+title: ALPACO
+description: 캡스톤 디자인 4조 프로젝트 페이지
+search_enabled: false
+
+footer_content: "Copyright &copy; 2025 Kookmin Univ. All rights reserved."
