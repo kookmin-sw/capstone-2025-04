@@ -4,6 +4,7 @@ import Header from "../../components/header";
 import Footer from "../../components/Footer";
 import Link from "next/link";
 import { useRouter } from "next/router";
+import styles from "../../styles/coding-test.module.css";
 
 const CodingTestResultPage: React.FC = () => {
   const router = useRouter();
@@ -39,7 +40,7 @@ const CodingTestResultPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-gray-50">
+    <div className={styles.container}>
       <Head>
         <title>코딩 테스트 결과 | ALPACO</title>
         <meta name="description" content="코딩 테스트 결과 페이지" />
@@ -47,92 +48,79 @@ const CodingTestResultPage: React.FC = () => {
 
       <Header />
 
-      <main className="flex-grow">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-          <div className="flex justify-between items-center mb-8">
-            <h1 className="text-3xl font-bold text-gray-800">채점 결과</h1>
+      <main className={styles.main}>
+        <div className={styles.contentWrapper}>
+          <div className={styles.pageHeader}>
+            <h1 className={styles.pageTitle}>채점 결과</h1>
             <Link
               href={`/coding-test/progress?id=${id}`}
-              className="px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-100 transition-colors"
+              className={styles.backButton}
             >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M19 12H5M12 19l-7-7 7-7" />
+              </svg>
               뒤로가기
             </Link>
           </div>
 
-          <div className="bg-white rounded-lg shadow-sm p-8 mb-8">
-            <div className="flex justify-between items-center mb-6 pb-6 border-b">
-              <h2 className="text-2xl font-semibold text-gray-800">
-                배열에서 가장 큰 수 찾기
-              </h2>
-              <div className="text-center">
-                <div className="text-3xl font-bold text-green-500">
-                  {testResult.score}/100
-                </div>
-                <div className="text-gray-500">점수</div>
+          <div className={styles.resultCard}>
+            <div className={styles.resultHeader}>
+              <h2 className={styles.resultTitle}>배열에서 가장 큰 수 찾기</h2>
+              <div className={styles.scoreDisplay}>
+                <div className={styles.scoreValue}>{testResult.score}/100</div>
+                <div className={styles.scoreLabel}>점수</div>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-              <div className="bg-gray-50 p-4 rounded-lg">
-                <div className="text-gray-500 mb-1">실행 시간</div>
-                <div className="text-xl font-semibold">
+            <div className={styles.statsGrid}>
+              <div className={styles.statCard}>
+                <div className={styles.statLabel}>실행 시간</div>
+                <div className={styles.statValue}>
                   {testResult.executionTime}
                 </div>
               </div>
-              <div className="bg-gray-50 p-4 rounded-lg">
-                <div className="text-gray-500 mb-1">메모리 사용량</div>
-                <div className="text-xl font-semibold">
-                  {testResult.memoryUsage}
-                </div>
+              <div className={styles.statCard}>
+                <div className={styles.statLabel}>메모리 사용량</div>
+                <div className={styles.statValue}>{testResult.memoryUsage}</div>
               </div>
             </div>
 
-            <h3 className="text-xl font-semibold text-gray-800 mb-4">
-              테스트 케이스 결과
-            </h3>
+            <h3 className={styles.cardTitle}>테스트 케이스 결과</h3>
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
+              <table className={styles.resultTable}>
+                <thead>
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      번호
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      입력
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      기대 출력
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      실제 출력
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      결과
-                    </th>
+                    <th>번호</th>
+                    <th>입력</th>
+                    <th>기대 출력</th>
+                    <th>실제 출력</th>
+                    <th>결과</th>
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
+                <tbody>
                   {testResult.testCases.map((testCase) => (
                     <tr key={testCase.id}>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {testCase.id}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {testCase.input}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {testCase.expected}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {testCase.actual}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                      <td>{testCase.id}</td>
+                      <td>{testCase.input}</td>
+                      <td>{testCase.expected}</td>
+                      <td>{testCase.actual}</td>
+                      <td>
                         <span
-                          className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                          className={
                             testCase.result === "성공"
-                              ? "bg-green-100 text-green-800"
-                              : "bg-red-100 text-red-800"
-                          }`}
+                              ? styles.resultSuccess
+                              : styles.resultFailure
+                          }
                         >
                           {testCase.result}
                         </span>
@@ -146,7 +134,7 @@ const CodingTestResultPage: React.FC = () => {
             <div className="mt-8 flex justify-end">
               <button
                 onClick={handleShareToCommunity}
-                className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+                className={styles.shareButton}
               >
                 커뮤니티에 올리기
               </button>
