@@ -29,7 +29,10 @@ export default function Home() {
               <Link href="/login" className="button button-primary">
                 시작하기
               </Link>
-              <Link href="/about" className="button button-outline">
+              <Link
+                href="https://kookmin-sw.github.io/capstone-2025-04/"
+                className="button button-outline"
+              >
                 더 알아보기
               </Link>
             </div>

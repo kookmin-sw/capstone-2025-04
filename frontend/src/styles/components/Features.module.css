@@ -1,23 +1,39 @@
 .featureSection {
-  padding: 2rem 0;
+  padding: 3rem 0;
+  background-color: var(--background-light);
 }
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
   gap: 2rem;
+  margin-top: 2rem;
+}
+
+.featureLink {
+  text-decoration: none;
+  color: inherit;
+  transition: transform 0.3s ease;
+  display: block;
+}
+
+.featureLink:hover {
+  transform: translateY(-5px);
 }
 
 .card {
   background-color: var(--white);
-  padding: 2rem;
-  border-radius: 0.5rem;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.08);
-  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  padding: 1.5rem;
   border: 1px solid var(--border-color);
-  display: flex;
-  flex-direction: column;
+  border-radius: 8px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
   height: 100%;
+  cursor: pointer;
+  transition: box-shadow 0.3s ease;
+}
+
+.featureLink:hover .card {
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
 }
 
 .card:hover {
@@ -36,7 +52,7 @@
   font-size: 1.5rem;
   font-weight: 600;
   margin-bottom: 1rem;
-  color: var(--text-primary);
+  color: var(--primary-color);
   position: relative;
 }
 

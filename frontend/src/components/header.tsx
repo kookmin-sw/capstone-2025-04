@@ -1,6 +1,7 @@
 // components/Header.tsx
 import Link from "next/link";
 import React from "react";
+import Image from "next/image";
 
 import styles from "../styles/components/Header.module.css";
 
@@ -9,7 +10,22 @@ const Header: React.FC = () => {
     <header className={styles.header}>
       <div className={`container ${styles.container}`}>
         <div className={styles.logo}>
-          <Link href="/">ALPACO</Link>
+          <Link href="/">
+            <Image
+              src="/alpaco-logo.svg"
+              alt="ALPACO"
+              width={50}
+              height={50}
+              priority
+            />
+            <Image
+              src="/alpaco-word-logo.svg"
+              alt="ALPACO"
+              width={150}
+              height={50}
+              priority
+            />
+          </Link>
         </div>
         <nav className={styles.nav}>
           <Link href="/community" className={styles.navLink}>

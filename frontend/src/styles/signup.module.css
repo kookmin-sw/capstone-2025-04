@@ -7,14 +7,22 @@
 
 .header {
   padding: 1rem;
-  border-bottom: 1px solid var(--border-color);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
   display: flex;
   justify-content: center;
   align-items: center;
 }
 
+.logo {
+  transition: transform 0.2s ease;
+}
 .logo img {
-  height: 40px;
+  margin-top: 0.5rem;
+  height: 40px; /* 로고 크기 조정 */
+}
+
+.logo:hover {
+  transform: scale(1.05);
 }
 
 .main {

@@ -1,10 +1,11 @@
 .header {
   background-color: var(--white);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+
   padding: 1rem 0;
   position: sticky;
   top: 0;
   z-index: 10;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
 .container {
@@ -16,14 +17,15 @@
 
 .logo {
   display: flex;
+
   align-items: center;
-  gap: 0.5rem;
-  font-size: 1.5rem;
-  font-weight: 700;
   color: var(--primary-color);
   transition: transform 0.2s ease;
 }
-
+.logo img {
+  margin-top: 0.5rem;
+  height: 40px; /* 로고 크기 조정 */
+}
 .logo:hover {
   transform: scale(1.05);
 }
