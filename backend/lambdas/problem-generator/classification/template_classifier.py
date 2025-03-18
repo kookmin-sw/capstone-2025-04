@@ -4,7 +4,6 @@ import shutil
 from pathlib import Path
 from dotenv import load_dotenv
 import logging
-import google.generativeai as genai
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
@@ -44,9 +43,6 @@ def setup_langchain():
     api_key = os.getenv("GOOGLE_AI_API_KEY")
     if not api_key:
         raise ValueError("GOOGLE_AI_API_KEY 환경 변수가 설정되지 않았습니다")
-    
-    # Google AI 설정
-    genai.configure(api_key=api_key)
     
     # 코드 분류를 위한 프롬프트 정의
     prompt_template = """
