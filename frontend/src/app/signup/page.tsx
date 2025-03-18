@@ -4,7 +4,7 @@ import Head from "next/head";
 import Link from "next/link";
 import { useRouter } from "next/navigation"; // Changed from next/router
 
-import styles from "../../styles/signup.module.css";
+import styles from "@/styles/signup.module.css";
 import Image from "next/image";
 
 const SignupPage: React.FC = () => {

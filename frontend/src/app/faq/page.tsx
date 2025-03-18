@@ -1,10 +1,10 @@
 "use client";
 import React, { useState } from "react";
 import Head from "next/head";
-import Header from "../../components/header";
-import Footer from "../../components/Footer";
+import Header from "@/components/Header";
+import Footer from "@/components/Footer";
 import Link from "next/link";
-import styles from "../../styles/faq.module.css";
+import styles from "@/styles/faq.module.css";
 
 // FAQ 항목 타입 정의
 type FAQItem = {

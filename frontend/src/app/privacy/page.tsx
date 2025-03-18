@@ -1,9 +1,9 @@
 import React from "react";
 import Head from "next/head";
-import Header from "../../components/header";
-import Footer from "../../components/Footer";
+import Header from "@/components/Header";
+import Footer from "@/components/Footer";
 import Link from "next/link";
-import styles from "../../styles/privacy.module.css";
+import styles from "@/styles/privacy.module.css";
 
 const PrivacyPage: React.FC = () => {
   return (

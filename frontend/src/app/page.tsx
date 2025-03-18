@@ -1,8 +1,9 @@
 import Head from "next/head";
-import Header from "../components/header";
-import Banner from "../components/banner";
+
 import Features from "../components/Features";
 import ProblemExample from "../components/ProblemExample";
+import Banner from "@/components/Banner";
+import Header from "@/components/Header";
 import Footer from "../components/Footer";
 import Link from "next/link";
 

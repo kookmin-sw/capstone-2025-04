@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import Head from "next/head";
 import Link from "next/link";
 import { useRouter } from "next/navigation"; // Changed from next/router
-import styles from "../../styles/login.module.css";
+import styles from "@/styles/login.module.css";
 import Image from "next/image";
 
 const LoginPage: React.FC = () => {

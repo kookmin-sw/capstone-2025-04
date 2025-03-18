@@ -1,11 +1,11 @@
 "use client";
 import React from "react";
 import Head from "next/head";
-import Header from "../../../components/header";
-import Footer from "../../../components/Footer";
+import Header from "@/components/Header";
+import Footer from "@/components/Footer";
 import Link from "next/link";
 import { useRouter } from "next/navigation"; // Changed from next/router
-import styles from "../../../styles/coding-test.module.css";
+import styles from "@/styles/coding-test.module.css";
 
 const CodingTestResultPage: React.FC = () => {
   const router = useRouter();

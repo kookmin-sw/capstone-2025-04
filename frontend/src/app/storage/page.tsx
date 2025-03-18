@@ -1,10 +1,10 @@
 "use client";
 import React, { useState } from "react";
 import Head from "next/head";
-import Header from "../../components/header";
-import Footer from "../../components/Footer";
+import Header from "@/components/Header";
+import Footer from "@/components/Footer";
 import Link from "next/link";
-import styles from "../../styles/storage.module.css";
+import styles from "@/styles/storage.module.css";
 
 // 가상의 저장된 코딩 테스트 데이터
 const savedTests = [

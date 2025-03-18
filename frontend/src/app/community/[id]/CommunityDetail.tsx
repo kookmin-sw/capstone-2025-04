@@ -1,7 +1,7 @@
 "use client";
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import styles from "../../../styles/community.module.css";
+import styles from "@/styles/community.module.css";
 
 // 더미 데이터를 반환하는 함수
 const getPost = (id: string | string[] | undefined) => ({

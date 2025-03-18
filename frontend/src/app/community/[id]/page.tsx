@@ -1,8 +1,8 @@
 import React from "react";
 import Head from "next/head";
-import Header from "../../../components/header";
-import Footer from "../../../components/Footer";
-// import styles from "../../../styles/community.module.css";
+import Header from "@/components/Header";
+import Footer from "@/components/Footer";
+// import styles from "@/styles/community.module.css";
 import CommunityDetail from "./CommunityDetail"; // 클라이언트 컴포넌트를 불러옴
 
 // 정적 경로 생성용 더미 데이터
