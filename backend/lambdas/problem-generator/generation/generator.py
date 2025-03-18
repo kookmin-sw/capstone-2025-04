@@ -3,19 +3,18 @@ import random
 import json
 import argparse
 from pathlib import Path
-import google.generativeai as genai
 from dotenv import load_dotenv
+
+# Remove unused LangChain imports that are causing errors
+# If you need to use these in the future, use the langchain_community package instead:
+# from langchain_community.llms import GooglePalm
+# from langchain_community.chat_models import ChatGoogleGenerativeAI
+
+# Add Google Generative AI import
+import google.generativeai as genai
 
 # Load environment variables from .env file
 load_dotenv()
-
-# Configure the API key
-def setup_api(api_key=None):
-    if (api_key is None):
-        api_key = os.getenv("GOOGLE_AI_API_KEY")
-        if (not api_key):
-            raise ValueError("No API key provided. Set GOOGLE_AI_API_KEY in .env file or pass it as an argument.")
-    genai.configure(api_key=api_key)
 
 # Available algorithm types and difficulty levels
 ALGORITHM_TYPES = [
@@ -61,11 +60,12 @@ STYLE_DESCRIPTIONS = {
     """
 }
 
+def setup_api(api_key):
+    """Setup the Google Generative AI API with the provided key"""
+    genai.configure(api_key=api_key)
+
 def load_template(algorithm_type, difficulty):
-    """
-    Load template code based on algorithm type and difficulty
-    For difficult problems, may load and combine multiple templates
-    """
+    """Load and return a template code file for the given algorithm type and difficulty"""
     # 상위 디렉토리의 templates 폴더 접근
     templates_dir = Path(__file__).parent.parent / "templates"
     
@@ -116,108 +116,119 @@ def load_template(algorithm_type, difficulty):
         
         return template_code, f"{template_path.parent.name}/{template_path.name}"
 
+class ProblemGenerator:
+    def __init__(self, api_key=None):
+        """Initialize the problem generator with API key"""
+        self.api_key = api_key or os.getenv("GOOGLE_AI_API_KEY")
+        if not self.api_key:
+            raise ValueError("No API key provided. Set GOOGLE_AI_API_KEY in .env file or pass it as an argument.")
+        setup_api(self.api_key)
+        
+    def generate_problem(self, algorithm_type, difficulty):
+        """Generate a problem using the specified algorithm type and difficulty"""
+        # Load template
+        try:
+            template_code, template_file = load_template(algorithm_type, difficulty)
+        except (ValueError, FileNotFoundError) as e:
+            return {"error": str(e)}
+        
+        # Get difficulty-specific description for the prompt
+        difficulty_desc = DIFFICULTY_DESCRIPTIONS.get(difficulty, "")
+        
+        # Determine style based on difficulty
+        style_desc = STYLE_DESCRIPTIONS["Atcoder"]
+        if difficulty in ["보통", "어려움"]:
+            style_desc = STYLE_DESCRIPTIONS["Baekjoon"]
+        
+        # Create the prompt for the LLM
+        prompt = f"""
+        당신은 알고리즘 문제 생성 전문가입니다. 다음 정보를 기반으로 고품질 알고리즘 문제를 생성해주세요:
+        
+        ## 문제 생성 프로세스
+        1. 주어진 템플릿 코드를 변형하여 새롭고 독창적인 문제를 만드세요.
+        2. 템플릿 코드의 일부를 변경하고, 변경된 부분에 주석으로 설명을 추가하세요.
+        3. 변형된 코드에 맞는 문제 지문을 생성하세요.
+        4. 테스트 케이스를 생성하는 코드를 작성하고, 이 코드로 예제 입력과 출력도 생성하세요.
+        
+        ## 입력 정보
+        - 알고리즘 유형: {algorithm_type}
+        - 난이도 수준: {difficulty}
+        
+        ## 난이도 요구사항
+        {difficulty_desc}
+        
+        ## 문제 포맷 스타일
+        {style_desc}
+        
+        ## 베이스 템플릿 코드
+        ```
+        {template_code}
+        ```
+        
+        ## 요구사항:
+        1. 반드시 템플릿 코드의 일부를 변형하고, 변경된 부분에 주석을 달아주세요.
+        2. 문제 설명과 입출력 형식을 명확하게 작성하세요.
+        3. 테스트 케이스 생성 코드는 문제의 입력과 예상 출력을 생성할 수 있어야 합니다.
+        4. 예제 입력과 출력은 테스트 케이스 생성 코드를 사용하여 만들어야 합니다.
+        
+        다음 정확한 형식으로 응답해주세요:
+        
+        ## 문제 설명
+        
+        [Problem description]
+        
+        ## 입력
+        
+        [Input format description]
+        
+        ## 출력
+        
+        [Output format description]
+        
+        ### 예제 입력
+        
+        [Example input]
+        
+        ### 예제 출력
+        
+        [Example output]
+        
+        {"### 사용되는 알고리즘" if difficulty == "튜토리얼" else ""}
+        
+        {"[알고리즘 유형에 대한 간략한 설명]" if difficulty == "튜토리얼" else ""}
+        
+        {"[이 문제가 해당 알고리즘에 어떻게 적용되는지 설명]" if difficulty == "튜토리얼" else ""}
+        
+        ### 정답 코드
+        
+        ```python
+        [변형된 템플릿 코드와 변경 사항에 대한 주석]
+        ```
+        
+        ### 테스트 케이스 생성 코드
+        
+        ```python
+        [예제 입력과 출력을 생성하는 코드]
+        ```
+        """
+        
+        # Get a response from the model
+        model = genai.GenerativeModel('gemini-2.0-flash-thinking-exp-01-21')
+        response = model.generate_content(prompt)
+        
+        return {
+            "algorithm_type": algorithm_type,
+            "difficulty": difficulty,
+            "template_used": template_file,
+            "generated_problem": response.text
+        }
+
 def generate_problem(api_key, algorithm_type, difficulty):
     """
     Generate a problem using the Google AI Studio API
     """
-    setup_api(api_key)
-    
-    # Load template
-    try:
-        template_code, template_file = load_template(algorithm_type, difficulty)
-    except (ValueError, FileNotFoundError) as e:
-        return {"error": str(e)}
-    
-    # Get difficulty-specific description for the prompt
-    difficulty_desc = DIFFICULTY_DESCRIPTIONS.get(difficulty, "")
-    
-    # Determine style based on difficulty
-    style_desc = STYLE_DESCRIPTIONS["Atcoder"]
-    if difficulty in ["보통", "어려움"]:
-        style_desc = STYLE_DESCRIPTIONS["Baekjoon"]
-    
-    # Create the prompt for the LLM
-    prompt = f"""
-    당신은 알고리즘 문제 생성 전문가입니다. 다음 정보를 기반으로 고품질 알고리즘 문제를 생성해주세요:
-    
-    ## 문제 생성 프로세스
-    1. 주어진 템플릿 코드를 변형하여 새롭고 독창적인 문제를 만드세요.
-    2. 템플릿 코드의 일부를 변경하고, 변경된 부분에 주석으로 설명을 추가하세요.
-    3. 변형된 코드에 맞는 문제 지문을 생성하세요.
-    4. 테스트 케이스를 생성하는 코드를 작성하고, 이 코드로 예제 입력과 출력도 생성하세요.
-    
-    ## 입력 정보
-    - 알고리즘 유형: {algorithm_type}
-    - 난이도 수준: {difficulty}
-    
-    ## 난이도 요구사항
-    {difficulty_desc}
-    
-    ## 문제 포맷 스타일
-    {style_desc}
-    
-    ## 베이스 템플릿 코드
-    ```
-    {template_code}
-    ```
-    
-    ## 요구사항:
-    1. 반드시 템플릿 코드의 일부를 변형하고, 변경된 부분에 주석을 달아주세요.
-    2. 문제 설명과 입출력 형식을 명확하게 작성하세요.
-    3. 테스트 케이스 생성 코드는 문제의 입력과 예상 출력을 생성할 수 있어야 합니다.
-    4. 예제 입력과 출력은 테스트 케이스 생성 코드를 사용하여 만들어야 합니다.
-    
-    다음 정확한 형식으로 응답해주세요:
-    
-    ## 문제 설명
-    
-    [Problem description]
-    
-    ## 입력
-    
-    [Input format description]
-    
-    ## 출력
-    
-    [Output format description]
-    
-    ### 예제 입력
-    
-    [Example input]
-    
-    ### 예제 출력
-    
-    [Example output]
-    
-    {"### 사용되는 알고리즘" if difficulty == "튜토리얼" else ""}
-    
-    {"[알고리즘 유형에 대한 간략한 설명]" if difficulty == "튜토리얼" else ""}
-    
-    {"[이 문제가 해당 알고리즘에 어떻게 적용되는지 설명]" if difficulty == "튜토리얼" else ""}
-    
-    ### 정답 코드
-    
-    ```python
-    [변형된 템플릿 코드와 변경 사항에 대한 주석]
-    ```
-    
-    ### 테스트 케이스 생성 코드
-    
-    ```python
-    [예제 입력과 출력을 생성하는 코드]
-    ```
-    """
-    
-    # Get a response from the model
-    model = genai.GenerativeModel('gemini-2.0-flash-thinking-exp-01-21')
-    response = model.generate_content(prompt)
-    
-    return {
-        "algorithm_type": algorithm_type,
-        "difficulty": difficulty,
-        "template_used": template_file,
-        "generated_problem": response.text
-    }
+    generator = ProblemGenerator(api_key)
+    return generator.generate_problem(algorithm_type, difficulty)
 
 def main():
     parser = argparse.ArgumentParser(description='Generate algorithmic problems using Google AI')
