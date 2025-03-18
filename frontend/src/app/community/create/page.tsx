@@ -1,15 +1,18 @@
+"use client";
 import React, { useState, useEffect } from "react";
 import Head from "next/head";
-import Header from "../../components/header";
-import Footer from "../../components/Footer";
+import Header from "../../../components/header";
+import Footer from "../../../components/Footer";
 import Link from "next/link";
-import { useRouter } from "next/router";
-import CodeEditor from "../../components/CodeEditor";
-import styles from "../../styles/community.module.css";
+import { useRouter, useSearchParams } from "next/navigation";
+import CodeEditor from "../../../components/CodeEditor";
+import styles from "../../../styles/community.module.css";
 
 const CommunityCreatePage: React.FC = () => {
   const router = useRouter();
-  const { fromTest, id } = router.query;
+  const searchParams = useSearchParams();
+  const fromTest = searchParams.get("fromTest");
+  const id = searchParams.get("id");
 
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");

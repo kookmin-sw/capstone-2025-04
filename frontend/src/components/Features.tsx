@@ -1,5 +1,5 @@
 // frontend/src/components/Features.tsx
-
+"use client";
 import React from "react";
 import styles from "../styles/components/Features.module.css";
 import Link from "next/link";

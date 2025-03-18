@@ -1,5 +1,5 @@
 // frontend/src/components/Footer.tsx
-
+"use client";
 import Link from "next/link";
 import React from "react";
 import styles from "../styles/components/Footer.module.css";

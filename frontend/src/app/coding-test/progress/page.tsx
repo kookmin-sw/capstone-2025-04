@@ -1,15 +1,17 @@
+"use client";
 import React, { useState, useEffect, useRef } from "react";
 import Head from "next/head";
-import Header from "../../components/header";
-import Footer from "../../components/Footer";
-import CodeEditor from "../../components/CodeEditor";
+import Header from "../../../components/header";
+import Footer from "../../../components/Footer";
+import CodeEditor from "../../../components/CodeEditor";
 import Link from "next/link";
-import { useRouter } from "next/router";
-import styles from "../../styles/coding-test.module.css";
+import { useRouter, useSearchParams } from "next/navigation";
+import styles from "../../../styles/coding-test.module.css";
 
 const CodingTestProgressPage: React.FC = () => {
   const router = useRouter();
-  const { id } = router.query;
+  const searchParams = useSearchParams();
+  const id = searchParams.get("id");
   const [code, setCode] = useState("");
   const [language, setLanguage] = useState<
     "python" | "javascript" | "java" | "cpp"

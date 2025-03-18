@@ -1,4 +1,5 @@
 // frontend/src/components/Banner.tsx
+"use client";
 
 import React from "react";
 import styles from "../styles/components/Banner.module.css";
