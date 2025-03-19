@@ -6,7 +6,7 @@ import React from "react";
 const Footer: React.FC = () => {
   return (
     <footer className="bg-white border-t border-gray-200 py-4 mt-auto">
-      <div className="container mx-auto px-4">
+      <div className="w-full px-4 mx-auto max-w-7xl">
         <div className="flex flex-col sm:flex-row items-center justify-center">
           <div className="text-lg font-bold text-primary mr-4">ALPACO</div>
           <nav className="flex justify-center flex-wrap">

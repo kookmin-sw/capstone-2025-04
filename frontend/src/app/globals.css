@@ -58,26 +58,3 @@ a {
     @apply text-2xl;
   }
 }
-
-/* 컴포넌트 클래스 - container는 실제 사용되고 있어 유지 */
-@layer components {
-  .container {
-    @apply w-full px-4 mx-auto;
-
-    @media (min-width: 640px) {
-      max-width: 640px;
-    }
-
-    @media (min-width: 768px) {
-      max-width: 768px;
-    }
-
-    @media (min-width: 1024px) {
-      max-width: 1024px;
-    }
-
-    @media (min-width: 1280px) {
-      max-width: 1280px;
-    }
-  }
-}

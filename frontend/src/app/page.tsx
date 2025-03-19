@@ -21,7 +21,7 @@ export default function Home() {
 
       <Header />
       <main className="flex-grow">
-        <div className="container mx-auto px-4">
+        <div className="w-full px-4 mx-auto max-w-7xl">
           <section className="py-20 text-center bg-white rounded-lg shadow-sm my-8">
             <Banner />
             <div className="flex gap-4 justify-center">
