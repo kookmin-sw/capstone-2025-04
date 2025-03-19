@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation"; // Changed from next/router
 
 import SimpleHeader from "@/components/SimpleHeader";
+import Footer from "@/components/Footer";
 
 const SignupPage: React.FC = () => {
   const router = useRouter();
@@ -150,40 +151,8 @@ const SignupPage: React.FC = () => {
         </div>
       </main>
 
-      {/* 하단 영역: 언어 선택, 약관, FAQ 등 */}
-      <footer className="p-4 border-t border-gray-200 text-center">
-        <div className="mb-2">
-          <button className="bg-transparent border-none text-gray-600 cursor-pointer hover:underline">
-            한국어
-          </button>{" "}
-          |
-          <button className="bg-transparent border-none text-gray-600 cursor-pointer hover:underline">
-            English
-          </button>
-        </div>
-        <div className="text-gray-600">
-          <Link
-            href="#"
-            className="text-gray-600 no-underline mx-2 hover:underline"
-          >
-            이용약관
-          </Link>{" "}
-          |{" "}
-          <Link
-            href="#"
-            className="text-gray-600 no-underline mx-2 hover:underline"
-          >
-            개인정보 처리방침
-          </Link>{" "}
-          |{" "}
-          <Link
-            href="#"
-            className="text-gray-600 no-underline mx-2 hover:underline"
-          >
-            FAQ/문의
-          </Link>
-        </div>
-      </footer>
+      {/* Footer 컴포넌트 사용 */}
+      <Footer />
     </div>
   );
 };

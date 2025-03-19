@@ -5,34 +5,36 @@ import React from "react";
 
 const Footer: React.FC = () => {
   return (
-    <footer className="bg-white border-t border-gray-300 py-8 mt-auto">
+    <footer className="bg-white border-t border-gray-200 py-4 mt-auto">
       <div className="container mx-auto px-4">
-        <div className="flex flex-col items-center justify-center">
-          <div className="text-2xl font-bold text-primary mb-4">ALPACO</div>
-          <nav className="flex justify-center flex-wrap mb-6">
+        <div className="flex flex-col sm:flex-row items-center justify-center">
+          <div className="text-lg font-bold text-primary mr-4">ALPACO</div>
+          <nav className="flex justify-center flex-wrap">
             <Link
               href="/terms"
-              className="text-gray-600 mx-4 transition-colors duration-200 hover:text-primary"
+              className="text-gray-600 mx-2 text-sm transition-colors duration-200 hover:text-primary"
             >
               이용약관
             </Link>
+            <span className="text-gray-300 mx-1">|</span>
             <Link
               href="/privacy"
-              className="text-gray-600 mx-4 transition-colors duration-200 hover:text-primary"
+              className="text-gray-600 mx-2 text-sm transition-colors duration-200 hover:text-primary"
             >
               개인정보 처리방침
             </Link>
+            <span className="text-gray-300 mx-1">|</span>
             <Link
               href="/faq"
-              className="text-gray-600 mx-4 transition-colors duration-200 hover:text-primary"
+              className="text-gray-600 mx-2 text-sm transition-colors duration-200 hover:text-primary"
             >
               FAQ/문의
             </Link>
+            <span className="text-gray-300 mx-1">|</span>
+            <span className="text-gray-600 text-sm ml-2">
+              &copy; {new Date().getFullYear()} ALPACO
+            </span>
           </nav>
-          <div className="h-px bg-gray-300 w-4/5 max-w-[600px] my-4"></div>
-          <p className="text-gray-600 text-sm text-center">
-            &copy; {new Date().getFullYear()} ALPACO. All rights reserved.
-          </p>
         </div>
       </div>
     </footer>

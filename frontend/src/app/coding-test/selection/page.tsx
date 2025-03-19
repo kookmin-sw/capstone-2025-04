@@ -68,7 +68,7 @@ const CodingTestSelectionPage: React.FC = () => {
             {testOptions.map((test) => (
               <div
                 key={test.id}
-                className="bg-white rounded-lg shadow-sm overflow-hidden p-6"
+                className="bg-white rounded-lg shadow-sm overflow-hidden p-6 flex flex-col h-full"
               >
                 <div className="flex justify-between items-start mb-4">
                   <h2 className="text-xl font-semibold text-gray-900">
@@ -89,7 +89,7 @@ const CodingTestSelectionPage: React.FC = () => {
                 <p className="text-gray-600 mb-6 text-sm">{test.description}</p>
                 <Link
                   href={`/coding-test/progress?id=${test.id}`}
-                  className="inline-block w-full text-center px-4 py-2 bg-primary text-white font-medium rounded-md hover:bg-primary-hover transition"
+                  className="inline-block w-full text-center px-4 py-2 bg-primary text-white font-medium rounded-md hover:bg-primary-hover transition mt-auto"
                 >
                   시작하기
                 </Link>

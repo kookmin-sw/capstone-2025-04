@@ -55,10 +55,8 @@ const CodingTestProgressPage: React.FC = () => {
       if (newWidth >= 20 && newWidth <= 80) {
         setProblemPanelWidth(newWidth);
 
-        // Update handle position
-        if (handleRef.current) {
-          handleRef.current.style.left = `${newWidth}%`;
-        }
+        // Remove direct DOM manipulation from here
+        // This is now handled by the CSS variables
       }
     };
 
@@ -87,6 +85,18 @@ const CodingTestProgressPage: React.FC = () => {
       document.body.style.userSelect = "";
     }
   }, [isResizing]);
+
+  // Update CSS variables when panel width changes
+  useEffect(() => {
+    document.documentElement.style.setProperty(
+      "--problem-panel-width",
+      `${problemPanelWidth}%`
+    );
+    document.documentElement.style.setProperty(
+      "--editor-panel-width",
+      `${100 - problemPanelWidth}%`
+    );
+  }, [problemPanelWidth]);
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
@@ -129,10 +139,7 @@ const CodingTestProgressPage: React.FC = () => {
             className="flex flex-1 relative h-[calc(100vh-12rem)]"
             ref={resizableContainerRef}
           >
-            <div
-              className="overflow-y-auto p-6 bg-white border-r border-gray-200"
-              style={{ flex: `0 0 ${problemPanelWidth}%` }}
-            >
+            <div className="overflow-y-auto p-6 bg-white border-r border-gray-200 w-[var(--problem-panel-width)]">
               <h2 className="text-xl font-semibold text-gray-900 mb-4">
                 배열에서 가장 큰 수 찾기
               </h2>
@@ -179,14 +186,18 @@ const CodingTestProgressPage: React.FC = () => {
 
             <div
               ref={handleRef}
-              className={`absolute top-0 h-full w-1 bg-gray-300 hover:bg-primary cursor-col-resize z-10 ${
-                isResizing ? "bg-primary" : ""
-              }`}
+              className={`absolute top-0 h-full w-3 left-[var(--problem-panel-width)] -translate-x-1/2 z-10 cursor-col-resize flex items-center justify-center ${
+                isResizing ? "opacity-80" : "opacity-40 hover:opacity-60"
+              } bg-[var(--secondary-color)] transition-opacity`}
               onMouseDown={startResize}
-              style={{ left: `${problemPanelWidth}%` }}
-            />
+            >
+              <div className="h-24 flex flex-col justify-center items-center space-y-2 bg-[var(--secondary-color)] rounded-full p-1">
+                <div className="w-[2px] h-8 bg-[var(--white)]"></div>
+                <div className="w-[2px] h-8 bg-[var(--white)]"></div>
+              </div>
+            </div>
 
-            <div className="flex-1 flex flex-col">
+            <div className="flex-1 flex flex-col w-[var(--editor-panel-width)]">
               <div className="flex-1 h-full">
                 <CodeEditor language={language} onChange={handleCodeChange} />
               </div>
