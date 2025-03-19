@@ -4,7 +4,6 @@ import Head from "next/head";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import Link from "next/link";
-import styles from "@/styles/storage.module.css";
 
 // 가상의 저장된 코딩 테스트 데이터
 const savedTests = [
@@ -44,7 +43,7 @@ const StoragePage: React.FC = () => {
   );
 
   return (
-    <div className={styles.container}>
+    <div className="min-h-screen flex flex-col bg-gray-50">
       <Head>
         <title>내 저장소 | ALPACO</title>
         <meta name="description" content="ALPACO 내 저장소" />
@@ -52,16 +51,17 @@ const StoragePage: React.FC = () => {
 
       <Header />
 
-      <main className={styles.main}>
+      <main className="flex-grow">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-          <div className={styles.pageHeader}>
-            <h1 className={styles.title}>
-              <span className={styles.titleIcon}>
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8">
+            <h1 className="text-3xl font-bold text-gray-900 flex items-center mb-4 md:mb-0">
+              <span className="mr-2 text-primary">
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
+                  className="h-8 w-8"
                 >
                   <path
                     strokeLinecap="round"
@@ -73,17 +73,21 @@ const StoragePage: React.FC = () => {
               </span>
               내 저장소
             </h1>
-            <div className={styles.headerActions}>
-              <div className={styles.searchContainer}>
+            <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4 w-full md:w-auto">
+              <div className="relative">
                 <input
                   type="text"
                   placeholder="문제 검색..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className={styles.searchInput}
+                  className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary w-full"
                 />
-                <div className={styles.searchIcon}>
-                  <svg viewBox="0 0 20 20" fill="currentColor">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
+                  <svg
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                    className="h-5 w-5"
+                  >
                     <path
                       fillRule="evenodd"
                       d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z"
@@ -92,12 +96,16 @@ const StoragePage: React.FC = () => {
                   </svg>
                 </div>
               </div>
-              <Link href="/" className={styles.backButton}>
+              <Link
+                href="/"
+                className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-lg bg-white hover:bg-gray-50 transition"
+              >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
+                  className="h-5 w-5 mr-2"
                 >
                   <path
                     strokeLinecap="round"
@@ -111,15 +119,16 @@ const StoragePage: React.FC = () => {
             </div>
           </div>
 
-          <div className={styles.card}>
-            <div className={styles.cardHeader}>
-              <h2 className={styles.cardTitle}>
-                <span className={styles.cardIcon}>
+          <div className="bg-white shadow-sm rounded-lg overflow-hidden">
+            <div className="px-6 py-5 border-b border-gray-200">
+              <h2 className="text-xl font-semibold text-gray-900 flex items-center">
+                <span className="mr-2 text-primary">
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     fill="none"
                     viewBox="0 0 24 24"
                     stroke="currentColor"
+                    className="h-6 w-6"
                   >
                     <path
                       strokeLinecap="round"
@@ -131,7 +140,7 @@ const StoragePage: React.FC = () => {
                 </span>
                 저장된 코딩 테스트
               </h2>
-              <p className={styles.cardDescription}>
+              <p className="mt-1 text-sm text-gray-500">
                 저장한 문제들을 언제든지 다시 풀어볼 수 있습니다. 총{" "}
                 {filteredTests.length}개의 문제가 있습니다.
               </p>
@@ -139,40 +148,58 @@ const StoragePage: React.FC = () => {
 
             {filteredTests.length > 0 ? (
               <div className="overflow-x-auto">
-                <table className={styles.table}>
-                  <thead className={styles.tableHeader}>
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
                     <tr>
-                      <th className={styles.tableHeaderCell}>제목</th>
-                      <th className={styles.tableHeaderCell}>유형</th>
-                      <th className={styles.tableHeaderCell}>저장 날짜</th>
-                      <th className={styles.tableHeaderCell}>상태</th>
-                      <th className={styles.tableHeaderCell}>점수</th>
-                      <th className={styles.tableHeaderCell}>작업</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        제목
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        유형
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        저장 날짜
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        상태
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        점수
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        작업
+                      </th>
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody className="bg-white divide-y divide-gray-200">
                     {filteredTests.map((test) => (
-                      <tr key={test.id} className={styles.tableRow}>
-                        <td className={styles.tableCell}>
-                          <div className={styles.testTitle}>{test.title}</div>
+                      <tr key={test.id} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm font-medium text-gray-900">
+                            {test.title}
+                          </div>
                         </td>
-                        <td className={styles.tableCell}>
-                          <div className={styles.testType}>{test.type}</div>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm text-gray-500">
+                            {test.type}
+                          </div>
                         </td>
-                        <td className={styles.tableCell}>
-                          <div className={styles.date}>{test.date}</div>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm text-gray-500">
+                            {test.date}
+                          </div>
                         </td>
-                        <td className={styles.tableCell}>
+                        <td className="px-6 py-4 whitespace-nowrap">
                           <span
-                            className={`${styles.statusBadge} ${
+                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
                               test.status === "완료"
-                                ? styles.statusCompleted
-                                : styles.statusInProgress
+                                ? "bg-green-100 text-green-800"
+                                : "bg-yellow-100 text-yellow-800"
                             }`}
                           >
                             {test.status === "완료" ? (
                               <svg
-                                className={styles.statusIcon}
+                                className="h-3 w-3 mr-1"
                                 viewBox="0 0 20 20"
                                 fill="currentColor"
                               >
@@ -184,7 +211,7 @@ const StoragePage: React.FC = () => {
                               </svg>
                             ) : (
                               <svg
-                                className={styles.statusIcon}
+                                className="h-3 w-3 mr-1"
                                 viewBox="0 0 20 20"
                                 fill="currentColor"
                               >
@@ -198,16 +225,16 @@ const StoragePage: React.FC = () => {
                             {test.status}
                           </span>
                         </td>
-                        <td className={styles.tableCell}>
+                        <td className="px-6 py-4 whitespace-nowrap">
                           {test.score !== null ? (
-                            <div className={styles.progressBar}>
-                              <div className={styles.progressTrack}>
+                            <div className="flex items-center">
+                              <div className="w-32 bg-gray-200 rounded-full h-2.5 mr-2">
                                 <div
-                                  className={styles.progressFill}
+                                  className="bg-primary h-2.5 rounded-full"
                                   style={{ width: `${test.score}%` }}
                                 ></div>
                               </div>
-                              <span className={styles.scoreText}>
+                              <span className="text-sm text-gray-600">
                                 {test.score}/100
                               </span>
                             </div>
@@ -215,14 +242,18 @@ const StoragePage: React.FC = () => {
                             <span className="text-gray-400">-</span>
                           )}
                         </td>
-                        <td className={styles.tableCell}>
+                        <td className="px-6 py-4 whitespace-nowrap">
                           <Link
                             href={`/coding-test/progress?id=${test.id}&fromStorage=true`}
-                            className={styles.actionButton}
+                            className="inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-md text-primary-hover bg-primary/10 hover:bg-primary/20 transition"
                           >
                             {test.status === "완료" ? (
                               <>
-                                <svg viewBox="0 0 20 20" fill="currentColor">
+                                <svg
+                                  viewBox="0 0 20 20"
+                                  fill="currentColor"
+                                  className="h-4 w-4 mr-1"
+                                >
                                   <path
                                     fillRule="evenodd"
                                     d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z"
@@ -233,7 +264,11 @@ const StoragePage: React.FC = () => {
                               </>
                             ) : (
                               <>
-                                <svg viewBox="0 0 20 20" fill="currentColor">
+                                <svg
+                                  viewBox="0 0 20 20"
+                                  fill="currentColor"
+                                  className="h-4 w-4 mr-1"
+                                >
                                   <path
                                     fillRule="evenodd"
                                     d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-8.707l-3-3a1 1 0 00-1.414 0l-3 3a1 1 0 001.414 1.414L9 9.414V13a1 1 0 102 0V9.414l1.293 1.293a1 1 0 001.414-1.414z"
@@ -251,24 +286,8 @@ const StoragePage: React.FC = () => {
                 </table>
               </div>
             ) : (
-              <div className={styles.emptyState}>
-                <svg
-                  className={styles.emptyStateIcon}
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={1}
-                    d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                </svg>
-                <h3 className={styles.emptyStateTitle}>검색 결과가 없습니다</h3>
-                <p className={styles.emptyStateText}>
-                  다른 검색어로 시도해보세요
-                </p>
+              <div className="py-10 px-6 text-center">
+                <p className="text-gray-500">검색 결과가 없습니다.</p>
               </div>
             )}
           </div>

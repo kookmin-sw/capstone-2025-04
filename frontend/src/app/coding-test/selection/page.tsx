@@ -3,7 +3,6 @@ import Head from "next/head";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import Link from "next/link";
-import styles from "@/styles/coding-test.module.css";
 
 // 가상의 테스트 데이터
 const testOptions = [
@@ -29,7 +28,7 @@ const testOptions = [
 
 const CodingTestSelectionPage: React.FC = () => {
   return (
-    <div className={styles.container}>
+    <div className="min-h-screen flex flex-col bg-gray-50">
       <Head>
         <title>코딩 테스트 선택 | ALPACO</title>
         <meta name="description" content="코딩 테스트 선택 페이지" />
@@ -37,11 +36,16 @@ const CodingTestSelectionPage: React.FC = () => {
 
       <Header />
 
-      <main className={styles.main}>
-        <div className={styles.contentWrapper}>
-          <div className={styles.pageHeader}>
-            <h1 className={styles.pageTitle}>코딩 테스트 선택</h1>
-            <Link href="/coding-test" className={styles.backButton}>
+      <main className="flex-grow">
+        <div className="max-w-5xl mx-auto p-8">
+          <div className="flex justify-between items-center mb-8">
+            <h1 className="text-3xl font-bold text-gray-900">
+              코딩 테스트 선택
+            </h1>
+            <Link
+              href="/coding-test"
+              className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md bg-white hover:bg-gray-50 transition"
+            >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 width="16"
@@ -52,6 +56,7 @@ const CodingTestSelectionPage: React.FC = () => {
                 strokeWidth="2"
                 strokeLinecap="round"
                 strokeLinejoin="round"
+                className="mr-2"
               >
                 <path d="M19 12H5M12 19l-7-7 7-7" />
               </svg>
@@ -59,19 +64,32 @@ const CodingTestSelectionPage: React.FC = () => {
             </Link>
           </div>
 
-          <div className={styles.selectionGrid}>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {testOptions.map((test) => (
-              <div key={test.id} className={styles.testCard}>
-                <div className={styles.testCardHeader}>
-                  <h2 className={styles.testTitle}>{test.title}</h2>
-                  <span className={styles.difficultyBadge}>
+              <div
+                key={test.id}
+                className="bg-white rounded-lg shadow-sm overflow-hidden p-6"
+              >
+                <div className="flex justify-between items-start mb-4">
+                  <h2 className="text-xl font-semibold text-gray-900">
+                    {test.title}
+                  </h2>
+                  <span
+                    className={`px-2 py-1 text-xs font-medium rounded-full ${
+                      test.difficulty === "초급"
+                        ? "bg-green-100 text-green-800"
+                        : test.difficulty === "중급"
+                        ? "bg-primary/10 text-primary-hover"
+                        : "bg-red-100 text-red-800"
+                    }`}
+                  >
                     {test.difficulty}
                   </span>
                 </div>
-                <p className={styles.testDescription}>{test.description}</p>
+                <p className="text-gray-600 mb-6 text-sm">{test.description}</p>
                 <Link
                   href={`/coding-test/progress?id=${test.id}`}
-                  className={styles.startButton}
+                  className="inline-block w-full text-center px-4 py-2 bg-primary text-white font-medium rounded-md hover:bg-primary-hover transition"
                 >
                   시작하기
                 </Link>

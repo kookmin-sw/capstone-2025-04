@@ -6,7 +6,6 @@ import Footer from "@/components/Footer";
 import CodeEditor from "@/components/CodeEditor";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import styles from "@/styles/coding-test.module.css";
 
 const CodingTestProgressPage: React.FC = () => {
   const router = useRouter();
@@ -90,7 +89,7 @@ const CodingTestProgressPage: React.FC = () => {
   }, [isResizing]);
 
   return (
-    <div className={styles.container}>
+    <div className="min-h-screen flex flex-col bg-gray-50">
       <Head>
         <title>코딩 테스트 진행 중 | ALPACO</title>
         <meta name="description" content="코딩 테스트 진행 페이지" />
@@ -98,12 +97,15 @@ const CodingTestProgressPage: React.FC = () => {
 
       <Header />
 
-      <main className={styles.fullscreenMain}>
-        <div className={styles.fullscreenWrapper}>
-          <div className={styles.fullscreenHeader}>
+      <main className="flex-grow flex flex-col">
+        <div className="flex flex-col h-full">
+          <div className="px-6 py-4 border-b border-gray-200 bg-white">
             <div className="flex justify-between items-center">
-              <h1 className={styles.pageTitle}>문제 풀이</h1>
-              <Link href="/coding-test/selection" className={styles.backButton}>
+              <h1 className="text-2xl font-bold text-gray-900">문제 풀이</h1>
+              <Link
+                href="/coding-test/selection"
+                className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md bg-white hover:bg-gray-50 transition"
+              >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
                   width="16"
@@ -114,6 +116,7 @@ const CodingTestProgressPage: React.FC = () => {
                   strokeWidth="2"
                   strokeLinecap="round"
                   strokeLinejoin="round"
+                  className="mr-2"
                 >
                   <path d="M19 12H5M12 19l-7-7 7-7" />
                 </svg>
@@ -123,31 +126,48 @@ const CodingTestProgressPage: React.FC = () => {
           </div>
 
           <div
-            className={styles.fullscreenResizableContainer}
+            className="flex flex-1 relative h-[calc(100vh-12rem)]"
             ref={resizableContainerRef}
           >
             <div
-              className={styles.fullscreenProblemPanel}
+              className="overflow-y-auto p-6 bg-white border-r border-gray-200"
               style={{ flex: `0 0 ${problemPanelWidth}%` }}
             >
-              <h2 className={styles.cardTitle}>배열에서 가장 큰 수 찾기</h2>
-              <p className={styles.problemStatement}>
+              <h2 className="text-xl font-semibold text-gray-900 mb-4">
+                배열에서 가장 큰 수 찾기
+              </h2>
+              <p className="text-gray-600 mb-6">
                 정수 배열이 주어졌을 때, 그 배열에서 가장 큰 수를 찾아 반환하는
                 함수를 작성하세요.
               </p>
-              <div className={styles.exampleContainer}>
-                <h3 className={styles.exampleTitle}>입력 예시:</h3>
-                <pre className={styles.exampleCode}>5 1 3 5 2 4</pre>
-                <h3 className={styles.exampleTitle}>출력 예시:</h3>
-                <pre className={styles.exampleCode}>5</pre>
+              <div className="mb-6">
+                <h3 className="text-md font-medium text-gray-700 mb-2">
+                  입력 예시:
+                </h3>
+                <pre className="bg-gray-50 p-3 rounded-md text-gray-700 font-mono text-sm">
+                  5 1 3 5 2 4
+                </pre>
+                <h3 className="text-md font-medium text-gray-700 mt-4 mb-2">
+                  출력 예시:
+                </h3>
+                <pre className="bg-gray-50 p-3 rounded-md text-gray-700 font-mono text-sm">
+                  5
+                </pre>
               </div>
 
               <div>
-                <label className={styles.exampleTitle}>언어 선택:</label>
+                <label
+                  htmlFor="language-select"
+                  className="block text-md font-medium text-gray-700 mb-2"
+                >
+                  언어 선택:
+                </label>
                 <select
+                  id="language-select"
                   value={language}
                   onChange={handleLanguageChange}
-                  className={styles.languageSelector}
+                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                  aria-label="프로그래밍 언어 선택"
                 >
                   <option value="python">Python</option>
                   <option value="javascript">JavaScript</option>
@@ -159,19 +179,22 @@ const CodingTestProgressPage: React.FC = () => {
 
             <div
               ref={handleRef}
-              className={`${styles.resizeHandle} ${
-                isResizing ? styles.resizeHandleActive : ""
+              className={`absolute top-0 h-full w-1 bg-gray-300 hover:bg-primary cursor-col-resize z-10 ${
+                isResizing ? "bg-primary" : ""
               }`}
               onMouseDown={startResize}
               style={{ left: `${problemPanelWidth}%` }}
             />
 
-            <div className={styles.fullscreenEditorPanel}>
-              <div className={styles.fullscreenEditorContainer}>
+            <div className="flex-1 flex flex-col">
+              <div className="flex-1 h-full">
                 <CodeEditor language={language} onChange={handleCodeChange} />
               </div>
-              <div className={styles.fullscreenFooter}>
-                <button onClick={handleSubmit} className={styles.submitButton}>
+              <div className="p-4 border-t border-gray-200 bg-white">
+                <button
+                  onClick={handleSubmit}
+                  className="px-6 py-3 bg-primary text-white font-medium rounded-md hover:bg-primary-hover transition ml-auto block"
+                >
                   채점하기
                 </button>
               </div>

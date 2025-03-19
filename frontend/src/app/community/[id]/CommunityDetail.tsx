@@ -1,7 +1,6 @@
 "use client";
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import styles from "@/styles/community.module.css";
 
 // 더미 데이터를 반환하는 함수
 const getPost = (id: string | string[] | undefined) => ({
@@ -73,74 +72,93 @@ const CommunityDetail: React.FC<CommunityDetailProps> = ({ id }) => {
   };
 
   return (
-    <div className={styles.communityContainer}>
-      <div className={styles.pageHeader}>
-        <h1 className={styles.pageTitle}>게시글</h1>
-        <Link href="/community" className={styles.backButton}>
+    <div className="max-w-5xl mx-auto p-8">
+      <div className="flex justify-between items-center mb-8">
+        <h1 className="text-3xl font-bold text-gray-900">게시글</h1>
+        <Link
+          href="/community"
+          className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 bg-white hover:bg-gray-50 transition"
+        >
           뒤로가기
         </Link>
       </div>
 
-      <article className={styles.postDetailContainer}>
-        <h2 className={styles.postDetailTitle}>{post.title}</h2>
+      <article className="bg-white rounded-lg shadow-sm overflow-hidden">
+        <div className="p-6">
+          <h2 className="text-2xl font-bold text-gray-900 mb-4">
+            {post.title}
+          </h2>
 
-        <div className={styles.postDetailMeta}>
-          <span>{post.author}</span>
-          <span className={styles.postMetaDot}>•</span>
-          <span>{post.createdAt}</span>
-          <span className={styles.postMetaDot}>•</span>
-          <span className={styles.statItem}>
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="h-5 w-5 mr-1"
-              viewBox="0 0 20 20"
-              fill="currentColor"
-            >
-              <path
-                fillRule="evenodd"
-                d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z"
-                clipRule="evenodd"
-              />
-            </svg>
-            <span>{post.likes}</span>
-          </span>
-        </div>
+          <div className="flex items-center text-sm text-gray-500 mb-6">
+            <span>{post.author}</span>
+            <span className="mx-2 text-gray-300">•</span>
+            <span>{post.createdAt}</span>
+            <span className="mx-2 text-gray-300">•</span>
+            <span className="flex items-center">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-5 w-5 mr-1 text-red-400"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z"
+                  clipRule="evenodd"
+                />
+              </svg>
+              <span>{post.likes}</span>
+            </span>
+          </div>
 
-        <div className={styles.postContent}>
-          <p>{post.content}</p>
-        </div>
+          <div className="text-gray-600 mb-8">
+            <p>{post.content}</p>
+          </div>
 
-        <div className={styles.commentSection}>
-          <h3 className={styles.commentHeader}>
-            댓글 ({post.comments.length})
-          </h3>
+          <div className="border-t border-gray-200 pt-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">
+              댓글 ({post.comments.length})
+            </h3>
 
-          {post.comments.map((comment) => (
-            <div key={comment.id} className={styles.commentItem}>
-              <div className={styles.commentMeta}>
-                <span className={styles.commentAuthor}>{comment.author}</span>
-                <span className={styles.commentDate}>{comment.createdAt}</span>
+            {post.comments.map((comment) => (
+              <div
+                key={comment.id}
+                className="border-b border-gray-100 pb-4 mb-4 last:border-0"
+              >
+                <div className="flex justify-between items-center mb-2">
+                  <span className="font-medium text-gray-900">
+                    {comment.author}
+                  </span>
+                  <span className="text-sm text-gray-500">
+                    {comment.createdAt}
+                  </span>
+                </div>
+                <p className="text-gray-600">{comment.content}</p>
               </div>
-              <p className={styles.commentContent}>{comment.content}</p>
-            </div>
-          ))}
+            ))}
 
-          <form onSubmit={handleCommentSubmit} className={styles.commentForm}>
-            <h4 className={styles.commentFormTitle}>댓글 작성</h4>
-            <textarea
-              className={styles.formTextarea}
-              rows={3}
-              placeholder="댓글을 입력하세요"
-              value={newComment}
-              onChange={handleCommentChange}
-              required
-            ></textarea>
-            <div className="flex justify-end mt-2">
-              <button type="submit" className={styles.submitButton}>
-                등록하기
-              </button>
-            </div>
-          </form>
+            <form onSubmit={handleCommentSubmit} className="mt-6">
+              <h4 className="text-md font-medium text-gray-900 mb-2">
+                댓글 작성
+              </h4>
+              <textarea
+                className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                rows={3}
+                placeholder="댓글을 입력하세요"
+                value={newComment}
+                onChange={handleCommentChange}
+                required
+              ></textarea>
+              <div className="flex justify-end mt-3">
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-primary text-white font-medium rounded-md hover:bg-primary-hover transition"
+                >
+                  등록하기
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       </article>
     </div>

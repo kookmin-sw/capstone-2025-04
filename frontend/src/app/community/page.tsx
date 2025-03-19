@@ -3,7 +3,6 @@ import Head from "next/head";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import Link from "next/link";
-import styles from "@/styles/community.module.css";
 
 // 가상의 커뮤니티 포스트 데이터
 const posts = [
@@ -44,37 +43,50 @@ const CommunityPage: React.FC = () => {
       <Header />
 
       <main className="flex-grow">
-        <div className={styles.communityContainer}>
-          <div className={styles.pageHeader}>
-            <h1 className={styles.pageTitle}>커뮤니티</h1>
-            <div className={styles.buttonContainer}>
-              <Link href="/" className={styles.backButton}>
+        <div className="max-w-5xl mx-auto p-8">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8">
+            <h1 className="text-3xl font-bold text-gray-900 mb-4 sm:mb-0">
+              커뮤니티
+            </h1>
+            <div className="flex space-x-4">
+              <Link
+                href="/"
+                className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 bg-white hover:bg-gray-50 transition"
+              >
                 뒤로가기
               </Link>
-              <Link href="/community/create" className={styles.createButton}>
+              <Link
+                href="/community/create"
+                className="px-4 py-2 bg-primary text-white rounded-md hover:bg-primary-hover transition"
+              >
                 글 작성하기
               </Link>
             </div>
           </div>
 
-          <div className={styles.postList}>
+          <div className="space-y-4">
             {posts.map((post) => (
-              <div key={post.id} className={styles.postItem}>
+              <div
+                key={post.id}
+                className="bg-white rounded-lg shadow-sm overflow-hidden"
+              >
                 <Link
                   href={`/community/${post.id}`}
                   className="block hover:bg-gray-50 -m-6 p-6 transition-colors"
                 >
-                  <h2 className={styles.postTitle}>{post.title}</h2>
-                  <div className={styles.postMeta}>
+                  <h2 className="text-xl font-medium text-gray-900 mb-2">
+                    {post.title}
+                  </h2>
+                  <div className="flex items-center text-sm text-gray-500 mb-3">
                     <span>{post.author}</span>
-                    <span className={styles.postMetaDot}>•</span>
+                    <span className="mx-2 text-gray-300">•</span>
                     <span>{post.createdAt}</span>
                   </div>
-                  <div className={styles.postStats}>
-                    <div className={styles.statItem}>
+                  <div className="flex items-center space-x-4 text-sm text-gray-500">
+                    <div className="flex items-center">
                       <svg
                         xmlns="http://www.w3.org/2000/svg"
-                        className="h-5 w-5 mr-1"
+                        className="h-5 w-5 mr-1 text-red-400"
                         viewBox="0 0 20 20"
                         fill="currentColor"
                       >
@@ -86,10 +98,10 @@ const CommunityPage: React.FC = () => {
                       </svg>
                       <span>{post.likes}</span>
                     </div>
-                    <div className={styles.statItem}>
+                    <div className="flex items-center">
                       <svg
                         xmlns="http://www.w3.org/2000/svg"
-                        className="h-5 w-5 mr-1"
+                        className="h-5 w-5 mr-1 text-blue-400"
                         viewBox="0 0 20 20"
                         fill="currentColor"
                       >

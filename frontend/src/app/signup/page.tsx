@@ -4,8 +4,7 @@ import Head from "next/head";
 import Link from "next/link";
 import { useRouter } from "next/navigation"; // Changed from next/router
 
-import styles from "@/styles/signup.module.css";
-import Image from "next/image";
+import SimpleHeader from "@/components/SimpleHeader";
 
 const SignupPage: React.FC = () => {
   const router = useRouter();
@@ -40,44 +39,31 @@ const SignupPage: React.FC = () => {
   };
 
   return (
-    <div className={styles.container}>
+    <div className="flex flex-col min-h-screen bg-white">
       <Head>
         <title>회원가입 | ALPACO</title>
         <meta name="description" content="ALPACO 회원가입 페이지" />
       </Head>
 
       {/* 상단 로고 영역 */}
-      <header className={styles.header}>
-        <Link href="/">
-          <div className={styles.logo}>
-            <Image
-              src="/alpaco-logo.svg"
-              alt="ALPACO"
-              width={50}
-              height={50}
-              priority
-            />
-            <Image
-              src="/alpaco-word-logo.svg"
-              alt="ALPACO"
-              width={150}
-              height={50}
-              priority
-            />
-          </div>
-        </Link>
-      </header>
+      <SimpleHeader />
 
       {/* 중앙 메인 회원가입 박스 */}
-      <main className={styles.main}>
-        <div className={styles.formContainer}>
-          <h1 className={styles.title}>ALPACO</h1>
-          <h2 className={styles.subtitle}>회원가입</h2>
-          {error && <div className={styles.errorMessage}>{error}</div>}
+      <main className="flex-1 flex justify-center items-center">
+        <div className="max-w-md w-full p-8 border border-gray-200 rounded-lg bg-white text-center shadow-md">
+          <h1 className="text-2xl font-bold mb-1">ALPACO</h1>
+          <h2 className="text-base mb-8 text-gray-600">회원가입</h2>
+          {error && (
+            <div className="bg-red-50 border border-red-300 text-red-600 p-3 rounded-md mb-4 text-left">
+              {error}
+            </div>
+          )}
 
-          <form onSubmit={handleSubmit} className={styles.form}>
-            <div className={styles.formGroup}>
-              <label htmlFor="name">이름</label>
+          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+            <div className="text-left">
+              <label htmlFor="name" className="block mb-2 font-medium">
+                이름
+              </label>
               <input
                 id="name"
                 name="name"
@@ -86,11 +72,14 @@ const SignupPage: React.FC = () => {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="이름을 입력하세요"
+                className="w-full p-3 border border-gray-300 rounded-md text-base focus:outline-none focus:border-[var(--primary-color)] focus:ring-2 focus:ring-[var(--primary-color)]"
               />
             </div>
 
-            <div className={styles.formGroup}>
-              <label htmlFor="email">이메일</label>
+            <div className="text-left">
+              <label htmlFor="email" className="block mb-2 font-medium">
+                이메일
+              </label>
               <input
                 id="email"
                 name="email"
@@ -100,11 +89,14 @@ const SignupPage: React.FC = () => {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="이메일을 입력하세요"
+                className="w-full p-3 border border-gray-300 rounded-md text-base focus:outline-none focus:border-[var(--primary-color)] focus:ring-2 focus:ring-[var(--primary-color)]"
               />
             </div>
 
-            <div className={styles.formGroup}>
-              <label htmlFor="password">비밀번호</label>
+            <div className="text-left">
+              <label htmlFor="password" className="block mb-2 font-medium">
+                비밀번호
+              </label>
               <input
                 id="password"
                 name="password"
@@ -113,11 +105,17 @@ const SignupPage: React.FC = () => {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="비밀번호를 입력하세요"
+                className="w-full p-3 border border-gray-300 rounded-md text-base focus:outline-none focus:border-[var(--primary-color)] focus:ring-2 focus:ring-[var(--primary-color)]"
               />
             </div>
 
-            <div className={styles.formGroup}>
-              <label htmlFor="confirmPassword">비밀번호 확인</label>
+            <div className="text-left">
+              <label
+                htmlFor="confirmPassword"
+                className="block mb-2 font-medium"
+              >
+                비밀번호 확인
+              </label>
               <input
                 id="confirmPassword"
                 name="confirmPassword"
@@ -126,17 +124,24 @@ const SignupPage: React.FC = () => {
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 placeholder="비밀번호를 다시 입력하세요"
+                className="w-full p-3 border border-gray-300 rounded-md text-base focus:outline-none focus:border-[var(--primary-color)] focus:ring-2 focus:ring-[var(--primary-color)]"
               />
             </div>
 
-            <button type="submit" className={styles.signupButton}>
+            <button
+              type="submit"
+              className="mt-4 py-3 bg-[var(--primary-color)] text-white border-none rounded-md cursor-pointer font-medium hover:bg-[var(--primary-hover)]"
+            >
               회원가입
             </button>
 
-            <div className={styles.loginPrompt}>
+            <div className="mt-4 text-gray-600">
               <p>
                 이미 계정이 있으신가요?{" "}
-                <Link href="/login" className={styles.loginLink}>
+                <Link
+                  href="/login"
+                  className="text-[var(--primary-color)] no-underline hover:underline"
+                >
                   로그인
                 </Link>
               </p>
@@ -146,14 +151,37 @@ const SignupPage: React.FC = () => {
       </main>
 
       {/* 하단 영역: 언어 선택, 약관, FAQ 등 */}
-      <footer className={styles.footer}>
-        <div className={styles.languageSwitch}>
-          <button>한국어</button> | <button>English</button>
+      <footer className="p-4 border-t border-gray-200 text-center">
+        <div className="mb-2">
+          <button className="bg-transparent border-none text-gray-600 cursor-pointer hover:underline">
+            한국어
+          </button>{" "}
+          |
+          <button className="bg-transparent border-none text-gray-600 cursor-pointer hover:underline">
+            English
+          </button>
         </div>
-        <div className={styles.footerLinks}>
-          <Link href="#">이용약관</Link> |{" "}
-          <Link href="#">개인정보 처리방침</Link> |{" "}
-          <Link href="#">FAQ/문의</Link>
+        <div className="text-gray-600">
+          <Link
+            href="#"
+            className="text-gray-600 no-underline mx-2 hover:underline"
+          >
+            이용약관
+          </Link>{" "}
+          |{" "}
+          <Link
+            href="#"
+            className="text-gray-600 no-underline mx-2 hover:underline"
+          >
+            개인정보 처리방침
+          </Link>{" "}
+          |{" "}
+          <Link
+            href="#"
+            className="text-gray-600 no-underline mx-2 hover:underline"
+          >
+            FAQ/문의
+          </Link>
         </div>
       </footer>
     </div>

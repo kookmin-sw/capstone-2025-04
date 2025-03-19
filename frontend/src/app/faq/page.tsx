@@ -4,7 +4,6 @@ import Head from "next/head";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import Link from "next/link";
-import styles from "@/styles/faq.module.css";
 
 // FAQ 항목 타입 정의
 type FAQItem = {
@@ -57,27 +56,35 @@ const FAQPage: React.FC = () => {
       <Header />
 
       <main className="flex-grow">
-        <div className={styles.faqContainer}>
-          <div className={styles.faqHeader}>
-            <h1 className={styles.faqTitle}>자주 묻는 질문 (FAQ)</h1>
-            <Link href="/" className={styles.homeLink}>
+        <div className="max-w-5xl mx-auto p-8">
+          <div className="flex justify-between items-center mb-8">
+            <h1 className="text-3xl font-bold text-gray-900">
+              자주 묻는 질문 (FAQ)
+            </h1>
+            <Link
+              href="/"
+              className="px-4 py-2 border border-gray-300 rounded-md transition hover:bg-gray-100"
+            >
               홈으로
             </Link>
           </div>
 
-          <div className={styles.faqList}>
+          <div className="space-y-4">
             {faqItems.map((item, index) => (
-              <div key={index} className={styles.faqItem}>
+              <div
+                key={index}
+                className="bg-white rounded-lg shadow-sm overflow-hidden"
+              >
                 <button
                   onClick={() => toggleFAQ(index)}
-                  className={styles.faqQuestion}
+                  className="w-full px-6 py-4 text-left flex justify-between items-center hover:bg-gray-50 transition"
                 >
-                  <span className={styles.faqQuestionText}>
+                  <span className="font-medium text-gray-900">
                     {item.question}
                   </span>
                   <svg
-                    className={`${styles.faqIcon} ${
-                      activeIndex === index ? styles.faqIconRotated : ""
+                    className={`w-5 h-5 text-gray-500 transition-transform ${
+                      activeIndex === index ? "rotate-180" : ""
                     }`}
                     fill="none"
                     stroke="currentColor"
@@ -93,7 +100,7 @@ const FAQPage: React.FC = () => {
                   </svg>
                 </button>
                 {activeIndex === index && (
-                  <div className={styles.faqAnswer}>
+                  <div className="px-6 py-4 bg-gray-50 text-gray-600">
                     <p>{item.answer}</p>
                   </div>
                 )}
@@ -101,38 +108,52 @@ const FAQPage: React.FC = () => {
             ))}
           </div>
 
-          <div className={styles.contactSection}>
-            <h2 className={styles.contactTitle}>문의하기</h2>
+          <div className="mt-12 bg-white rounded-lg shadow-sm p-8">
+            <h2 className="text-2xl font-semibold mb-6 text-gray-900">
+              문의하기
+            </h2>
             <form>
-              <div className={styles.formControl}>
-                <label htmlFor="name" className={styles.formLabel}>
+              <div className="mb-4">
+                <label
+                  htmlFor="name"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
                   이름
                 </label>
                 <input
                   type="text"
                   id="name"
-                  className={styles.formInput}
+                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
                   placeholder="이름을 입력하세요"
                   required
                 />
               </div>
-              <div className={styles.formControl}>
-                <label htmlFor="email" className={styles.formLabel}>
+              <div className="mb-4">
+                <label
+                  htmlFor="email"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
                   이메일
                 </label>
                 <input
                   type="email"
                   id="email"
-                  className={styles.formInput}
+                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
                   placeholder="이메일을 입력하세요"
                   required
                 />
               </div>
-              <div className={styles.formControl}>
-                <label htmlFor="subject" className={styles.formLabel}>
+              <div className="mb-4">
+                <label
+                  htmlFor="subject"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
                   문의 주제
                 </label>
-                <select id="subject" className={styles.formInput}>
+                <select
+                  id="subject"
+                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                >
                   <option value="">주제를 선택하세요</option>
                   <option value="service">서비스 이용 문의</option>
                   <option value="technical">기술적 문제</option>
@@ -140,20 +161,26 @@ const FAQPage: React.FC = () => {
                   <option value="other">기타</option>
                 </select>
               </div>
-              <div className={styles.formControl}>
-                <label htmlFor="message" className={styles.formLabel}>
+              <div className="mb-4">
+                <label
+                  htmlFor="message"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
                   문의 내용
                 </label>
                 <textarea
                   id="message"
                   rows={6}
-                  className={styles.formInput}
+                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
                   placeholder="문의 내용을 상세히 적어주세요"
                   required
                 ></textarea>
               </div>
               <div>
-                <button type="submit" className={styles.submitButton}>
+                <button
+                  type="submit"
+                  className="px-6 py-3 bg-primary text-white font-medium rounded-md hover:bg-primary-hover transition"
+                >
                   문의 제출하기
                 </button>
               </div>
