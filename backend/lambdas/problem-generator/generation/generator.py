@@ -123,9 +123,10 @@ class ProblemGenerator:
         if not self.api_key:
             raise ValueError("No API key provided. Set GOOGLE_AI_API_KEY in .env file or pass it as an argument.")
         setup_api(self.api_key)
+        self.model = genai.GenerativeModel('gemini-2.0-flash-thinking-exp-01-21')
         
     def generate_problem(self, algorithm_type, difficulty):
-        """Generate a problem using the specified algorithm type and difficulty"""
+        """Generate a problem using multiple prompts in sequence (Chain-of-thoughts)"""
         # Load template
         try:
             template_code, template_file = load_template(algorithm_type, difficulty)
@@ -140,58 +141,172 @@ class ProblemGenerator:
         if difficulty in ["보통", "어려움"]:
             style_desc = STYLE_DESCRIPTIONS["Baekjoon"]
         
-        # Create the prompt for the LLM
-        prompt = f"""
-        당신은 알고리즘 문제 생성 전문가입니다. 다음 정보를 기반으로 고품질 알고리즘 문제를 생성해주세요:
+        # Step 1: Template analysis
+        template_analysis = self._analyze_template(template_code, algorithm_type, difficulty)
         
-        ## 문제 생성 프로세스
-        1. 주어진 템플릿 코드를 변형하여 새롭고 독창적인 문제를 만드세요.
-        2. 템플릿 코드의 일부를 변경하고, 변경된 부분에 주석으로 설명을 추가하세요.
-        3. 변형된 코드에 맞는 문제 지문을 생성하세요.
-        4. 테스트 케이스를 생성하는 코드를 작성하고, 이 코드로 예제 입력과 출력도 생성하세요.
+        # Step 2: Code transformation
+        transformed_code = self._transform_code(template_code, template_analysis)
+        
+        # Step 3: Problem description generation
+        problem_description = self._generate_description(
+            algorithm_type, difficulty, transformed_code, 
+            style_desc, difficulty_desc
+        )
+        
+        # Step 4: Test case generation
+        test_cases = self._generate_test_cases(transformed_code, problem_description)
+        
+        # Step 5: Final integration
+        final_problem = self._integrate_results(
+            problem_description, test_cases, transformed_code,
+            algorithm_type, difficulty
+        )
+        
+        return {
+            "algorithm_type": algorithm_type,
+            "difficulty": difficulty,
+            "template_used": template_file,
+            "generated_problem": final_problem
+        }
+    
+    def _analyze_template(self, template_code, algorithm_type, difficulty):
+        """Step 1: Analyze the template and plan modifications"""
+        prompt = f"""
+        당신은 알고리즘 문제 생성 전문가입니다. 다음 템플릿 코드를 분석하고 어떻게 변형할지 계획을 세워주세요:
         
         ## 입력 정보
         - 알고리즘 유형: {algorithm_type}
         - 난이도 수준: {difficulty}
         
-        ## 난이도 요구사항
-        {difficulty_desc}
-        
-        ## 문제 포맷 스타일
-        {style_desc}
-        
-        ## 베이스 템플릿 코드
+        ## 템플릿 코드
         ```
         {template_code}
         ```
         
-        ## 요구사항:
-        1. 반드시 템플릿 코드의 일부를 변형하고, 변경된 부분에 주석을 달아주세요.
-        2. 문제 설명과 입출력 형식을 명확하게 작성하세요.
-        3. 테스트 케이스 생성 코드는 문제의 입력과 예상 출력을 생성할 수 있어야 합니다.
-        4. 예제 입력과 출력은 테스트 케이스 생성 코드를 사용하여 만들어야 합니다.
+        다음 항목들을 분석해주세요:
+        1. 이 코드가 구현하는 알고리즘의 핵심 아이디어는 무엇인가요?
+        2. 어떤 부분을 변형하면 더 독창적인 문제가 될 수 있을까요?
+        3. 난이도에 맞게 어떤 부분을 복잡하게 또는 단순하게 만들 수 있을까요?
+        4. 이 코드를 기반으로 어떤 유형의 문제를 만들 수 있을까요?
         
-        다음 정확한 형식으로 응답해주세요:
+        응답은 명확하고 구체적으로 작성해주세요.
+        """
+        response = self.model.generate_content(prompt)
+        return response.text
+    
+    def _transform_code(self, template_code, template_analysis):
+        """Step 2: Transform the template code based on the analysis"""
+        prompt = f"""
+        당신은 알고리즘 문제 생성 전문가입니다. 아래 템플릿 코드를 이전 분석을 바탕으로 변형해주세요:
+        
+        ## 템플릿 분석 결과
+        {template_analysis}
+        
+        ## 원본 템플릿 코드
+        ```
+        {template_code}
+        ```
+        
+        다음 요구사항에 맞게 코드를 변형해주세요:
+        1. 템플릿의 알고리즘 구조는 유지하되, 구체적인 구현을 새롭게 변경
+        2. 변경한 부분에는 명확한 주석 추가
+        3. 변경된 코드가 올바르게 동작하는지 확인
+        4. 테스트 케이스를 쉽게 만들 수 있는 형태로 구성
+        
+        변형된 코드만 python 코드 블록으로 반환해주세요.
+        """
+        response = self.model.generate_content(prompt)
+        return response.text
+    
+    def _generate_description(self, algorithm_type, difficulty, transformed_code, style_desc, difficulty_desc):
+        """Step 3: Generate problem description based on the transformed code"""
+        prompt = f"""
+        당신은 알고리즘 문제 생성 전문가입니다. 변형된 코드를 바탕으로 문제 설명을 작성해주세요:
+        
+        ## 입력 정보
+        - 알고리즘 유형: {algorithm_type}
+        - 난이도 수준: {difficulty}
+        
+        ## 문제 포맷 스타일
+        {style_desc}
+        
+        ## 난이도 요구사항
+        {difficulty_desc}
+        
+        ## 변형된 코드
+        {transformed_code}
+        
+        다음 내용을 포함한 문제 설명을 작성해주세요:
+        1. 문제 배경 및 설명
+        2. 입력 형식 설명
+        3. 출력 형식 설명
+        
+        문제 설명은 명확하고 논리적이어야 하며, 지정된 스타일과 난이도 요구사항을 준수해야 합니다.
+        예제 입력/출력은 아직 포함하지 마세요.
+        """
+        response = self.model.generate_content(prompt)
+        return response.text
+    
+    def _generate_test_cases(self, transformed_code, problem_description):
+        """Step 4: Generate test cases for the problem"""
+        prompt = f"""
+        당신은 알고리즘 문제 생성 전문가입니다. 아래 문제 설명과 코드를 바탕으로 테스트 케이스를 생성해주세요:
+        
+        ## 문제 설명
+        {problem_description}
+        
+        ## 변형된 코드
+        {transformed_code}
+        
+        다음 항목들을 생성해주세요:
+        1. 테스트 케이스를 생성하는 Python 코드 (무작위 입력 생성 또는 특정 케이스 생성)
+        2. 위 코드로 생성한 3~5개의 예제 입력과 해당하는 출력
+        3. 문제 난이도에 적합한 다양한 테스트 케이스 (기본 케이스, 경계 케이스, 예외 케이스 등)
+        
+        모든 테스트 케이스는 변형된 코드로 해결할 수 있어야 합니다.
+        """
+        response = self.model.generate_content(prompt)
+        return response.text
+    
+    def _integrate_results(self, problem_description, test_cases, transformed_code, algorithm_type, difficulty):
+        """Step 5: Integrate all previous steps into a complete problem"""
+        prompt = f"""
+        당신은 알고리즘 문제 생성 전문가입니다. 지금까지 생성된 내용을 통합하여 최종 문제를 완성해주세요:
+        
+        ## 문제 설명, 입력, 출력 형식
+        {problem_description}
+        
+        ## 테스트 케이스 및 예제
+        {test_cases}
+        
+        ## 변형된 코드
+        {transformed_code}
+        
+        ## 입력 정보
+        - 알고리즘 유형: {algorithm_type}
+        - 난이도 수준: {difficulty}
+        
+        다음 정확한 형식으로 최종 문제를 구성해주세요:
         
         ## 문제 설명
         
-        [Problem description]
+        [통합된 문제 설명]
         
         ## 입력
         
-        [Input format description]
+        [입력 형식 설명]
         
         ## 출력
         
-        [Output format description]
+        [출력 형식 설명]
         
         ### 예제 입력
         
-        [Example input]
+        [테스트 케이스에서 선택한 예제 입력]
         
         ### 예제 출력
         
-        [Example output]
+        [테스트 케이스에서 선택한 예제 출력]
         
         {"### 사용되는 알고리즘" if difficulty == "튜토리얼" else ""}
         
@@ -202,26 +317,19 @@ class ProblemGenerator:
         ### 정답 코드
         
         ```python
-        [변형된 템플릿 코드와 변경 사항에 대한 주석]
+        [변형된 코드]
         ```
         
         ### 테스트 케이스 생성 코드
         
         ```python
-        [예제 입력과 출력을 생성하는 코드]
+        [테스트 케이스 생성 코드]
         ```
+        
+        각 부분을 유기적으로 연결하여 완성도 높은 최종 문제를 만들어주세요.
         """
-        
-        # Get a response from the model
-        model = genai.GenerativeModel('gemini-2.0-flash-thinking-exp-01-21')
-        response = model.generate_content(prompt)
-        
-        return {
-            "algorithm_type": algorithm_type,
-            "difficulty": difficulty,
-            "template_used": template_file,
-            "generated_problem": response.text
-        }
+        response = self.model.generate_content(prompt)
+        return response.text
 
 def generate_problem(api_key, algorithm_type, difficulty):
     """
