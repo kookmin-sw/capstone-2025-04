@@ -4,9 +4,19 @@ import shutil
 from pathlib import Path
 from dotenv import load_dotenv
 import logging
+import sys
+import time
 
-# Replace direct LangChain imports with our model manager
-from ..utils.model_manager import get_llm, create_chain
+# Fix import error when running directly 
+if __name__ == "__main__":
+    # Add parent directory to sys.path
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    parent_dir = os.path.dirname(script_dir)
+    sys.path.insert(0, parent_dir)
+    from utils.model_manager import get_llm, create_chain
+else:
+    # When imported as a module, use relative import
+    from ..utils.model_manager import get_llm, create_chain
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -37,8 +47,21 @@ ALGORITHM_CATEGORIES = {
     "binary_search": "이진 탐색 및 관련 알고리즘"
 }
 
+def show_progress(message, spinner=True):
+    """간단한 진행 상태 표시"""
+    if spinner:
+        spinner_chars = "|/-\\"
+        for i in range(10):  # 잠시 스피너를 보여줌
+            sys.stdout.write(f"\r{spinner_chars[i % len(spinner_chars)]} {message}")
+            sys.stdout.flush()
+            time.sleep(0.1)
+    sys.stdout.write(f"\r✓ {message}\n")
+    sys.stdout.flush()
+
 def setup_langchain():
     """LangChain 컴포넌트 초기화 및 설정"""
+    show_progress("LangChain 컴포넌트 초기화 중...", spinner=False)
+    
     # API 키 확인
     api_key = os.getenv("GOOGLE_AI_API_KEY")
     if not api_key:
@@ -79,6 +102,7 @@ def setup_langchain():
     llm = get_llm()
     classification_chain = create_chain(prompt_template)
     
+    show_progress("LangChain 초기화 완료", spinner=False)
     return classification_chain, categories_str
 
 def extract_classification(response_text):
@@ -114,6 +138,7 @@ def find_closest_match(category_name):
 def classify_template(file_path):
     """LangChain을 사용하여 템플릿 파일 분류"""
     # 코드 파일 읽기
+    show_progress(f"파일 읽는 중: {file_path}", spinner=False)
     with open(file_path, 'r', encoding='utf-8') as f:
         code_content = f.read()
     
@@ -122,18 +147,21 @@ def classify_template(file_path):
     
     # 분류 실행
     logger.info(f"코드 파일 분석 중: {file_path}")
+    show_progress("코드 분석 및 분류 중...", spinner=True)
     response = classification_chain.invoke({"categories": categories_str, "code": code_content})
     
     # 응답에서 분류 추출
     primary_category, confidence = extract_classification(response)
     
-    logger.info(f"분류: {primary_category} (확신도: {confidence})")
+    show_progress(f"분류 완료: {primary_category} (확신도: {confidence})", spinner=False)
     logger.debug(f"전체 응답: {response}")
     
     return primary_category, response
 
 def save_template(file_path, category, templates_dir="templates", base_dir=None):
     """템플릿 파일을 적절한 카테고리 디렉토리에 저장"""
+    show_progress(f"템플릿 저장 중: 카테고리 '{category}'", spinner=False)
+    
     # 기본 템플릿 디렉토리 경로 설정
     if base_dir is None:
         # classification 폴더에서 상위 디렉토리로 이동하여 templates 폴더 접근
@@ -153,7 +181,7 @@ def save_template(file_path, category, templates_dir="templates", base_dir=None)
     
     # 파일 복사
     shutil.copy2(file_path, dest_path)
-    logger.info(f"템플릿 저장 완료: {dest_path}")
+    show_progress(f"템플릿 저장 완료: {dest_path}", spinner=False)
     
     return dest_path
 

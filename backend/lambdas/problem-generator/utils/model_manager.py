@@ -7,6 +7,8 @@ from langchain_core.language_models import BaseLLM
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_google_genai import ChatGoogleGenerativeAI
+import google.generativeai as genai
+import re
 
 # 향후 AWS Bedrock 지원을 위한 준비 
 # from langchain_aws import BedrockChat
@@ -18,76 +20,64 @@ load_dotenv()
 PROVIDER_GOOGLE = "google"
 PROVIDER_BEDROCK = "bedrock"
 
-def get_llm(
-    provider: str = None, 
-    model_name: str = None, 
-    temperature: float = 0, 
-    api_key: str = None
-) -> BaseLLM:
-    """
-    지정된 제공자에 기반한 LLM을 초기화하고 반환합니다.
-    
-    Args:
-        provider: 모델 제공자 (예: "google", "bedrock")
-        model_name: 사용할 특정 모델
-        temperature: 샘플링 온도
-        api_key: 제공자에 대한 API 키
-        
-    Returns:
-        초기화된 Langchain LLM
-    """
-    # 기본값은 환경 변수 설정을 사용
-    provider = provider or os.getenv("LLM_PROVIDER", PROVIDER_GOOGLE)
-    api_key = api_key or os.getenv("GOOGLE_AI_API_KEY")
-    
-    if provider == PROVIDER_GOOGLE:
-        model_name = model_name or os.getenv("GOOGLE_MODEL", "gemini-2.0-flash")
-        return ChatGoogleGenerativeAI(
-            model=model_name,
-            temperature=temperature,
-            google_api_key=api_key
-        )
-    
-    elif provider == PROVIDER_BEDROCK:
-        # AWS Bedrock 지원이 추가될 때를 위한 플레이스홀더
-        model_name = model_name or os.getenv("BEDROCK_MODEL", "anthropic.claude-3-sonnet-20240229-v1:0")
-        
-        # Bedrock 구현 시 주석 해제
-        # region = os.getenv("AWS_REGION", "us-east-1")
-        # return BedrockChat(
-        #     model_id=model_name,
-        #     region_name=region,
-        #     temperature=temperature
-        # )
-        
-        raise NotImplementedError("AWS Bedrock 지원이 아직 구현되지 않았습니다")
-    
-    else:
-        raise ValueError(f"지원되지 않는 모델 제공자: {provider}")
+def setup_api(api_key=None):
+    """Configure Google AI API key"""
+    if api_key is None:
+        api_key = os.getenv("GOOGLE_AI_API_KEY")
+        if not api_key:
+            raise ValueError("No API key provided. Set GOOGLE_AI_API_KEY in .env file or pass it as an argument.")
+    genai.configure(api_key=api_key)
+    return api_key
 
-def create_chain(prompt_template: str, llm: Optional[BaseLLM] = None):
-    """
-    주어진 프롬프트 템플릿과 LLM으로 Langchain 처리 체인을 생성합니다.
-    
-    Args:
-        prompt_template: 프롬프트 템플릿 문자열
-        llm: 초기화된 LLM (None인 경우 기본 설정 사용)
-        
-    Returns:
-        템플릿에 따라 입력을 처리하는 호출 가능한 체인
-    """
-    prompt = ChatPromptTemplate.from_template(prompt_template)
-    llm = llm or get_llm()
-    
-    return prompt | llm | StrOutputParser()
-
-def get_thinking_model(api_key=None):
-    """Gemini의 'thinking' 변형을 특별히 반환합니다"""
-    return get_llm(
-        provider=PROVIDER_GOOGLE,
-        model_name="gemini-2.0-flash-thinking-exp-01-21",
-        api_key=api_key
+def get_llm(api_key=None, model_name="gemini-1.5-pro", temperature=0.7):
+    """Get a standard LLM for general use"""
+    api_key = setup_api(api_key)
+    return ChatGoogleGenerativeAI(
+        model=model_name,
+        google_api_key=api_key,
+        temperature=temperature,
+        convert_system_message_to_human=True
     )
+
+def get_thinking_model(api_key=None, temperature=0.2):
+    """Get an LLM specifically configured for reasoning tasks"""
+    api_key = setup_api(api_key)
+    return ChatGoogleGenerativeAI(
+        model="gemini-1.5-pro",
+        google_api_key=api_key,
+        temperature=temperature,
+        convert_system_message_to_human=True,
+        max_output_tokens=4096
+    )
+
+def create_chain(prompt_template, model=None):
+    """Create a simple LangChain for text generation
+    
+    Args:
+        prompt_template (str): The prompt template with {variables}
+        model (ChatGoogleGenerativeAI, optional): LLM model to use
+        
+    Returns:
+        A simple chain that takes input variables and returns text output
+    """
+    if model is None:
+        model = get_thinking_model()
+    
+    # 가장 안전한 방법: 중괄호 이스케이프를 위해 모든 중괄호를 두 배로 처리
+    safe_template = re.sub(r'{', r'{{', prompt_template)
+    safe_template = re.sub(r'}', r'}}', safe_template)
+    
+    # Create a chat prompt template without variables
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", "You are an expert AI assistant that helps with algorithm analysis and problem generation."),
+        ("human", safe_template)
+    ])
+    
+    # Create and return the chain
+    output_parser = StrOutputParser()
+    chain = prompt | model | output_parser
+    
+    return chain
 
 # 디렉토리를 적절한 패키지로 만들기 위해 __init__.py 파일 추가
 if not os.path.exists(os.path.dirname(os.path.abspath(__file__)) + "/__init__.py"):

@@ -4,9 +4,19 @@ import json
 import argparse
 from pathlib import Path
 from dotenv import load_dotenv
+import sys
+import time
 
-# Import the model manager instead of directly using Google's API
-from ..utils.model_manager import get_llm, get_thinking_model, create_chain
+# Fix import error when running directly
+if __name__ == "__main__":
+    # Add parent directory to sys.path
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    parent_dir = os.path.dirname(script_dir)
+    sys.path.insert(0, parent_dir)
+    from utils.model_manager import get_llm, get_thinking_model, create_chain
+else:
+    # When imported as a module, use relative import
+    from ..utils.model_manager import get_llm, get_thinking_model, create_chain
 
 # Load environment variables from .env file
 load_dotenv()
@@ -108,7 +118,7 @@ def load_template(algorithm_type, difficulty):
         return template_code, f"{template_path.parent.name}/{template_path.name}"
 
 class ProblemGenerator:
-    def __init__(self, api_key=None):
+    def __init__(self, api_key=None, verbose=True):
         """Initialize the problem generator with API key"""
         self.api_key = api_key or os.getenv("GOOGLE_AI_API_KEY")
         if not self.api_key:
@@ -116,11 +126,35 @@ class ProblemGenerator:
         
         # Use our model manager instead of direct Google API
         self.model = get_thinking_model(self.api_key)
+        self.verbose = verbose
+        
+    def show_progress(self, step, total_steps=5, message=""):
+        """Display progress information for the current step"""
+        if not self.verbose:
+            return
+            
+        progress_bar_length = 30
+        filled_length = int(progress_bar_length * step / total_steps)
+        
+        bar = '█' * filled_length + '░' * (progress_bar_length - filled_length)
+        percent = int(100 * step / total_steps)
+        
+        sys.stdout.write(f'\r[{bar}] {percent}% | 단계 {step}/{total_steps} | {message}')
+        sys.stdout.flush()
+        
+        if step == total_steps:
+            sys.stdout.write('\n')
         
     def generate_problem(self, algorithm_type, difficulty):
         """Generate a problem using multiple prompts in sequence (Chain-of-thoughts)"""
+        if self.verbose:
+            print(f"\n{algorithm_type} 유형의 {difficulty} 난이도 문제 생성을 시작합니다...\n")
+            
+        start_time = time.time()
+        
         # Load template
         try:
+            self.show_progress(0, 6, "템플릿 파일 불러오는 중...")
             template_code, template_file = load_template(algorithm_type, difficulty)
         except (ValueError, FileNotFoundError) as e:
             return {"error": str(e)}
@@ -134,31 +168,43 @@ class ProblemGenerator:
             style_desc = STYLE_DESCRIPTIONS["Baekjoon"]
         
         # Step 1: Template analysis
+        self.show_progress(1, 6, "템플릿 코드 분석 중...")
         template_analysis = self._analyze_template(template_code, algorithm_type, difficulty)
         
         # Step 2: Code transformation
+        self.show_progress(2, 6, "코드 변형 중...")
         transformed_code = self._transform_code(template_code, template_analysis)
         
         # Step 3: Problem description generation
+        self.show_progress(3, 6, "문제 설명 생성 중...")
         problem_description = self._generate_description(
             algorithm_type, difficulty, transformed_code, 
             style_desc, difficulty_desc
         )
         
         # Step 4: Test case generation
+        self.show_progress(4, 6, "테스트 케이스 생성 중...")
         test_cases = self._generate_test_cases(transformed_code, problem_description)
         
         # Step 5: Final integration
+        self.show_progress(5, 6, "최종 문제 통합 중...")
         final_problem = self._integrate_results(
             problem_description, test_cases, transformed_code,
             algorithm_type, difficulty
         )
         
+        end_time = time.time()
+        elapsed_time = end_time - start_time
+        
+        # Final completion message
+        self.show_progress(6, 6, f"완료! (소요 시간: {elapsed_time:.1f}초)")
+        
         return {
             "algorithm_type": algorithm_type,
             "difficulty": difficulty,
             "template_used": template_file,
-            "generated_problem": final_problem
+            "generated_problem": final_problem,
+            "generation_time": elapsed_time
         }
     
     def _analyze_template(self, template_code, algorithm_type, difficulty):
@@ -329,11 +375,11 @@ class ProblemGenerator:
         response = chain.invoke({})
         return response
 
-def generate_problem(api_key, algorithm_type, difficulty):
+def generate_problem(api_key, algorithm_type, difficulty, verbose=True):
     """
     Generate a problem using Langchain abstraction
     """
-    generator = ProblemGenerator(api_key)
+    generator = ProblemGenerator(api_key, verbose=verbose)
     return generator.generate_problem(algorithm_type, difficulty)
 
 def main():
@@ -342,6 +388,7 @@ def main():
     parser.add_argument('--algorithm_type', choices=ALGORITHM_TYPES, help='Type of algorithm')
     parser.add_argument('--difficulty', choices=DIFFICULTY_LEVELS, help='Difficulty level')
     parser.add_argument('--output', help='Output file path (optional)')
+    parser.add_argument('--quiet', action='store_true', help='Disable progress display')
     
     args = parser.parse_args()
     
@@ -370,7 +417,7 @@ def main():
     
     # Generate the problem
     print(f"Generating {difficulty} level problem for {algorithm_type}...")
-    result = generate_problem(api_key, algorithm_type, difficulty)
+    result = generate_problem(api_key, algorithm_type, difficulty, verbose=(not args.quiet))
     
     if "error" in result:
         print(f"Error: {result['error']}")
