@@ -5,13 +5,8 @@ import argparse
 from pathlib import Path
 from dotenv import load_dotenv
 
-# Remove unused LangChain imports that are causing errors
-# If you need to use these in the future, use the langchain_community package instead:
-# from langchain_community.llms import GooglePalm
-# from langchain_community.chat_models import ChatGoogleGenerativeAI
-
-# Add Google Generative AI import
-import google.generativeai as genai
+# Import the model manager instead of directly using Google's API
+from ..utils.model_manager import get_llm, get_thinking_model, create_chain
 
 # Load environment variables from .env file
 load_dotenv()
@@ -59,10 +54,6 @@ STYLE_DESCRIPTIONS = {
         입력, 출력, 예제, 그리고 추가적인 설명이 포함되어 문제 이해를 돕습니다.
     """
 }
-
-def setup_api(api_key):
-    """Setup the Google Generative AI API with the provided key"""
-    genai.configure(api_key=api_key)
 
 def load_template(algorithm_type, difficulty):
     """Load and return a template code file for the given algorithm type and difficulty"""
@@ -122,8 +113,9 @@ class ProblemGenerator:
         self.api_key = api_key or os.getenv("GOOGLE_AI_API_KEY")
         if not self.api_key:
             raise ValueError("No API key provided. Set GOOGLE_AI_API_KEY in .env file or pass it as an argument.")
-        setup_api(self.api_key)
-        self.model = genai.GenerativeModel('gemini-2.0-flash-thinking-exp-01-21')
+        
+        # Use our model manager instead of direct Google API
+        self.model = get_thinking_model(self.api_key)
         
     def generate_problem(self, algorithm_type, difficulty):
         """Generate a problem using multiple prompts in sequence (Chain-of-thoughts)"""
@@ -191,8 +183,10 @@ class ProblemGenerator:
         
         응답은 명확하고 구체적으로 작성해주세요.
         """
-        response = self.model.generate_content(prompt)
-        return response.text
+        # Create a chain for this specific prompt
+        chain = create_chain(prompt, self.model)
+        response = chain.invoke({})
+        return response
     
     def _transform_code(self, template_code, template_analysis):
         """Step 2: Transform the template code based on the analysis"""
@@ -215,8 +209,9 @@ class ProblemGenerator:
         
         변형된 코드만 python 코드 블록으로 반환해주세요.
         """
-        response = self.model.generate_content(prompt)
-        return response.text
+        chain = create_chain(prompt, self.model)
+        response = chain.invoke({})
+        return response
     
     def _generate_description(self, algorithm_type, difficulty, transformed_code, style_desc, difficulty_desc):
         """Step 3: Generate problem description based on the transformed code"""
@@ -244,8 +239,9 @@ class ProblemGenerator:
         문제 설명은 명확하고 논리적이어야 하며, 지정된 스타일과 난이도 요구사항을 준수해야 합니다.
         예제 입력/출력은 아직 포함하지 마세요.
         """
-        response = self.model.generate_content(prompt)
-        return response.text
+        chain = create_chain(prompt, self.model)
+        response = chain.invoke({})
+        return response
     
     def _generate_test_cases(self, transformed_code, problem_description):
         """Step 4: Generate test cases for the problem"""
@@ -265,8 +261,9 @@ class ProblemGenerator:
         
         모든 테스트 케이스는 변형된 코드로 해결할 수 있어야 합니다.
         """
-        response = self.model.generate_content(prompt)
-        return response.text
+        chain = create_chain(prompt, self.model)
+        response = chain.invoke({})
+        return response
     
     def _integrate_results(self, problem_description, test_cases, transformed_code, algorithm_type, difficulty):
         """Step 5: Integrate all previous steps into a complete problem"""
@@ -328,12 +325,13 @@ class ProblemGenerator:
         
         각 부분을 유기적으로 연결하여 완성도 높은 최종 문제를 만들어주세요.
         """
-        response = self.model.generate_content(prompt)
-        return response.text
+        chain = create_chain(prompt, self.model)
+        response = chain.invoke({})
+        return response
 
 def generate_problem(api_key, algorithm_type, difficulty):
     """
-    Generate a problem using the Google AI Studio API
+    Generate a problem using Langchain abstraction
     """
     generator = ProblemGenerator(api_key)
     return generator.generate_problem(algorithm_type, difficulty)

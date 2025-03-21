@@ -4,9 +4,9 @@ import shutil
 from pathlib import Path
 from dotenv import load_dotenv
 import logging
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_core.output_parsers import StrOutputParser
-from langchain_core.prompts import ChatPromptTemplate
+
+# Replace direct LangChain imports with our model manager
+from ..utils.model_manager import get_llm, create_chain
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -75,14 +75,9 @@ def setup_langchain():
     # 프롬프트용 카테고리 문자열 포맷팅
     categories_str = "\n".join([f"- {name}: {desc}" for name, desc in ALGORITHM_CATEGORIES.items()])
     
-    # 프롬프트 템플릿 생성
-    prompt = ChatPromptTemplate.from_template(prompt_template)
-    
-    # LLM 설정
-    llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash", temperature=0, google_api_key=api_key)
-    
-    # 분류 체인 생성
-    classification_chain = prompt | llm | StrOutputParser()
+    # LLM 설정 및 체인 생성
+    llm = get_llm()
+    classification_chain = create_chain(prompt_template)
     
     return classification_chain, categories_str
 
