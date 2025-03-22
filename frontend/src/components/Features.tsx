@@ -1,7 +1,6 @@
 // frontend/src/components/Features.tsx
-
+"use client";
 import React from "react";
-import styles from "../styles/components/Features.module.css";
 import Link from "next/link";
 
 interface Feature {
@@ -31,24 +30,24 @@ const features: Feature[] = [
 
 const Features: React.FC = () => {
   return (
-    <section className={styles.featureSection}>
-      <div className="container">
-        <div className={styles.grid}>
-          {features.map((feature, index) => (
-            <Link
-              key={index}
-              href={feature.link}
-              className={styles.featureLink}
-            >
-              <div className={styles.card}>
-                <h3 className={styles.title}>{feature.title}</h3>
-                <p className={styles.description}>{feature.description}</p>
-              </div>
-            </Link>
-          ))}
-        </div>
-      </div>
-    </section>
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mx-auto max-w-6xl px-4 mt-8">
+      {features.map((feature, index) => (
+        <Link
+          key={index}
+          href={feature.link}
+          className="no-underline text-inherit transition-transform duration-300 ease-in-out block hover:translate-y-[-5px]"
+        >
+          <div className="bg-white p-8 border border-gray-300 rounded-lg shadow-md h-full w-full cursor-pointer transition-all duration-300 hover:shadow-lg hover:border-primary hover:translate-y-[-6px]">
+            <h3 className="text-2xl font-semibold mb-4 text-primary relative after:content-[''] after:absolute after:bottom-[-0.5rem] after:left-0 after:w-10 after:h-0.5 after:bg-primary after:rounded-sm">
+              {feature.title}
+            </h3>
+            <p className="text-gray-600 leading-relaxed flex-grow">
+              {feature.description}
+            </p>
+          </div>
+        </Link>
+      ))}
+    </div>
   );
 };
 

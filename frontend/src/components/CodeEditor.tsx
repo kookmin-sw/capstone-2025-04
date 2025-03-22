@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react";
 import Editor from "@monaco-editor/react";
-import styles from "../styles/components/CodeEditor.module.css";
 
 const CODE_TEMPLATES = {
   python: `def solution(input_data):
@@ -138,17 +137,17 @@ export default function CodeEditor({
   };
 
   return (
-    <div className={styles.editorContainer}>
-      <div className={styles.header}>
-        <span className={styles.title}>
+    <div className="flex flex-col rounded-lg overflow-hidden shadow-md">
+      <div className="flex justify-between items-center px-4 p-3 bg-[#1e1e1e] border-b border-white/10">
+        <span className="text-white text-sm font-medium">
           Code Editor - {language.toUpperCase()}
         </span>
-        <div className={styles.controlsGroup}>
+        <div className="flex gap-2">
           {/* Optional language selector can go here */}
         </div>
       </div>
 
-      <div className={styles.editorWrapper}>
+      <div className="h-[50vh] border border-gray-300">
         <Editor
           height="100%"
           language={language === "cpp" ? "cpp" : language}
@@ -165,8 +164,10 @@ export default function CodeEditor({
         />
       </div>
 
-      <div className={styles.footer}>
-        <button className={styles.runButton}>실행</button>
+      <div className="flex justify-end px-4 p-3 bg-gray-50 border-t border-gray-300">
+        <button className="bg-primary text-white border-none rounded px-4 py-2 text-sm font-medium cursor-pointer flex items-center gap-2 transition-colors duration-200 hover:bg-primary-hover">
+          실행
+        </button>
       </div>
     </div>
   );
