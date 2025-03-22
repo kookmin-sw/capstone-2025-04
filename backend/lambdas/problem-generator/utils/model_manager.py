@@ -27,7 +27,7 @@ def get_api_key(api_key=None):
             raise ValueError("No API key provided. Set GOOGLE_AI_API_KEY in .env file or pass it as an argument.")
     return api_key
 
-def get_llm(api_key=None, model_name="gemini-1.5-pro", temperature=0.7):
+def get_llm(api_key=None, model_name="gemini-2.0-flash-thinking-exp-01-21", temperature=0.7):
     """Get a standard LLM for general use"""
     api_key = get_api_key(api_key)
     return ChatGoogleGenerativeAI(
@@ -41,7 +41,7 @@ def get_thinking_model(api_key=None, temperature=0.2):
     """Get an LLM specifically configured for reasoning tasks"""
     api_key = get_api_key(api_key)
     return ChatGoogleGenerativeAI(
-        model="gemini-1.5-pro",
+        model="gemini-2.0-flash-thinking-exp-01-21",
         google_api_key=api_key,
         temperature=temperature,
         convert_system_message_to_human=True,
