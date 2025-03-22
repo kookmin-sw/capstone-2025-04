@@ -92,3 +92,5 @@ terraform.tfvars.json
 .next/
 .nuxt/
 .cache/
+
+.cursor
