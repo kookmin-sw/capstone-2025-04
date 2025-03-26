@@ -84,6 +84,10 @@ cdk-outputs.json
 terraform.tfvars
 terraform.tfvars.json
 .terraform.lock.hcl
+!infrastructure/
+!infrastructure/backend-setup/
+!infrastructure/backend-setup/terraform.tfstate 
+# Keep the terraform state file for backend setup
 
 # Keep .gitkeep files
 !.gitkeep
