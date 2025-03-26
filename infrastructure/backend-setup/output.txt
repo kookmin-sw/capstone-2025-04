@@ -1,0 +1,6 @@
+Apply complete! Resources: 5 added, 0 changed, 0 destroyed.
+
+Outputs:
+
+tfstate_bucket_name = "alpaco-tfstate-bucket-kmu"
+tfstate_lock_table_name = "alpaco-tfstate-lock-table"
