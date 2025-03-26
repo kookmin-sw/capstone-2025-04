@@ -175,7 +175,7 @@ resource "aws_iam_role" "github_actions_deploy_role" {
           #   # 예: "repo:${var.github_repository}:ref:refs/heads/main"
           # }
           "StringEquals": {
-            "${var.github_oidc_provider_url}:sub": "repo:${var.github_repository}:ref:refs/heads/main"
+            "${var.github_oidc_provider_url}:sub": "repo:${var.github_repository}:ref:refs/heads/master"
           }
         }
       }

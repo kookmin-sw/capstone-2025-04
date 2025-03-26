@@ -5,12 +5,6 @@ on:
   push:
     branches:
       - master # main 브랜치에 푸시될 때 실행
-    tags:
-      - "v*.*.*" # vX.Y.Z 형식의 태그가 푸시될 때 실행 (예: v1.0.0)
-      # 또는 더 간단하게:
-      # - 'v*.*'   # vX.Y 형식의 태그가 푸시될 때 실행 (예: v1.0)
-      # 또는 더 일반적이게:
-      # - 'v*'     # 'v'로 시작하는 모든 태그
 
 permissions:
   id-token: write # AWS OIDC 인증에 필요
