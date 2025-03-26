@@ -13,7 +13,7 @@ variable "project_name" {
 variable "environment" {
   description = "Deployment environment (e.g., dev, prod, staging)"
   type        = string
-  default     = "dev" # 또는 release 등 브랜치명과 연관지을 수 있음
+  default     = "production" # 또는 release 등 브랜치명과 연관지을 수 있음
 }
 
 variable "bucket_name_suffix" {
