@@ -4,7 +4,7 @@ on:
   workflow_dispatch: # 수동으로 실행 가능
   push:
     branches:
-      - main # main 브랜치에 푸시될 때 실행
+      - master # main 브랜치에 푸시될 때 실행
     tags:
       - "v*.*.*" # vX.Y.Z 형식의 태그가 푸시될 때 실행 (예: v1.0.0)
       # 또는 더 간단하게:
