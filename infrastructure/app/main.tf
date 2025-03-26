@@ -24,7 +24,7 @@ provider "aws" {
 # S3 버킷 생성 (정적 웹사이트 호스팅용이지만, CloudFront OAC를 통해 비공개 유지)
 resource "aws_s3_bucket" "website_bucket" {
   # Bucket 이름은 전역적으로 고유해야 함
-  bucket = "${var.project_name}-frontend-${var.environment}${var.bucket_name_suffix}"
+  bucket = "${var.project_name}-frontend-${var.environment}-${var.bucket_name_suffix}"
 
   tags = {
     Name        = "${var.project_name}-frontend-${var.environment}"
