@@ -1,0 +1,9 @@
+Apply complete! Resources: 0 added, 0 changed, 0 destroyed.
+
+Outputs:
+
+cloudfront_distribution_domain_name = "d2rgzjzynamwq2.cloudfront.net"
+cloudfront_distribution_id = "E3Q5IEHTZGF1U5"
+github_actions_deploy_role_arn = "arn:aws:iam::897722694537:role/alpaco-github-actions-deploy-role-dev"
+s3_bucket_id = "alpaco-frontend-devalpaco-frontend-bucket"
+s3_bucket_regional_domain_name = "alpaco-frontend-devalpaco-frontend-bucket.s3.ap-northeast-2.amazonaws.com"

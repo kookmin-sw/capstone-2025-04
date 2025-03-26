@@ -48,6 +48,13 @@ Next.js 정적 빌드 결과물을 S3에 배포하고, CloudFront를 통해 전 
      -backend-config="region=<백엔드_리소스가_있는_리전>" \
      -backend-config="dynamodb_table=<backend-setup에서_출력된_DynamoDB_테이블_이름>" \
      -backend-config="encrypt=true"
+
+     terraform init \
+     -backend-config="bucket=alpaco-tfstate-bucket-kmu" \
+     -backend-config="key=app/terraform.tfstate" \
+     -backend-config="region=ap-northeast-2" \
+     -backend-config="dynamodb_table=alpaco-tfstate-lock-table" \
+     -backend-config="encrypt=true"
    ```
 
    - `key`: S3 버킷 내에서 이 애플리케이션의 상태 파일을 저장할 경로입니다. 자유롭게 지정하되 일관성 있게 사용하세요. (예: `alpaco/frontend/terraform.tfstate`)

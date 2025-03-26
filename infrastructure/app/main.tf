@@ -33,11 +33,6 @@ resource "aws_s3_bucket" "website_bucket" {
   }
 }
 
-# S3 버킷 ACL 비활성화 (IAM 정책 사용 권장)
-resource "aws_s3_bucket_acl" "website_bucket_acl" {
-  bucket = aws_s3_bucket.website_bucket.id
-  acl    = "private"
-}
 
 # 모든 퍼블릭 액세스 차단 (CloudFront OAC 통해 접근)
 resource "aws_s3_bucket_public_access_block" "website_bucket_pab" {
@@ -71,7 +66,8 @@ resource "aws_cloudfront_distribution" "s3_distribution" {
   default_root_object = "index.html"
 
   # S3 버킷 정책에서 CloudFront 접근 허용 필요
-  depends_on = [aws_s3_bucket_policy.cloudfront_access]
+  # depends_on = [aws_s3_bucket_policy.cloudfront_access]
+  # │ Error: Cycle: data.aws_iam_policy_document.cloudfront_access, aws_s3_bucket_policy.cloudfront_access, aws_cloudfront_distribution.s3_distribution
 
   default_cache_behavior {
     allowed_methods  = ["GET", "HEAD", "OPTIONS"]
