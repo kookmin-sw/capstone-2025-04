@@ -168,11 +168,14 @@ resource "aws_iam_role" "github_actions_deploy_role" {
         }
         Action = "sts:AssumeRoleWithWebIdentity"
         Condition = {
-          StringLike = {
-            # 변경: 'v*' 태그 형식의 푸시에서만 AssumeRole 허용
-            "${var.github_oidc_provider_url}:sub" = "repo:${var.github_repository}:ref:refs/tags/v*"
-            # 만약 main 브랜치에서도 허용하려면 조건을 추가하거나 별도 Statement 추가
-            # 예: "repo:${var.github_repository}:ref:refs/heads/main"
+          # StringLike = {
+          #   # 변경: 'v*' 태그 형식의 푸시에서만 AssumeRole 허용
+          #   "${var.github_oidc_provider_url}:sub" = "repo:${var.github_repository}:ref:refs/tags/v*"
+          #   # 만약 main 브랜치에서도 허용하려면 조건을 추가하거나 별도 Statement 추가
+          #   # 예: "repo:${var.github_repository}:ref:refs/heads/main"
+          # }
+          "StringEquals": {
+            "${var.github_oidc_provider_url}:sub": "repo:${var.github_repository}:ref:refs/heads/main"
           }
         }
       }

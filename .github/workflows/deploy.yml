@@ -1,6 +1,10 @@
 name: Deploy Frontend to S3/CloudFront
 
 on:
+  workflow_dispatch: # 수동으로 실행 가능
+  push:
+    branches:
+      - main # main 브랜치에 푸시될 때 실행
   push:
     tags:
       - "v*.*.*" # vX.Y.Z 형식의 태그가 푸시될 때 실행 (예: v1.0.0)
