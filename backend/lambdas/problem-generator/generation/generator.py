@@ -13,10 +13,10 @@ if __name__ == "__main__":
     script_dir = os.path.dirname(os.path.abspath(__file__))
     parent_dir = os.path.dirname(script_dir)
     sys.path.insert(0, parent_dir)
-    from utils.model_manager import get_llm, get_thinking_model, create_chain
+    from utils.model_manager import get_llm, create_chain
 else:
     # When imported as a module, use relative import
-    from ..utils.model_manager import get_llm, get_thinking_model, create_chain
+    from ..utils.model_manager import get_llm, create_chain
 
 # Load environment variables from .env file
 load_dotenv()
@@ -125,7 +125,7 @@ class ProblemGenerator:
             raise ValueError("No API key provided. Set GOOGLE_AI_API_KEY in .env file or pass it as an argument.")
         
         # Use our model manager instead of direct Google API
-        self.model = get_thinking_model(self.api_key)
+        self.model = get_llm(api_key=self.api_key, model_type="thinking")
         self.verbose = verbose
         
     def show_progress(self, step, total_steps=5, message=""):

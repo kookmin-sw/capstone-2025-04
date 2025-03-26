@@ -20,6 +20,16 @@ load_dotenv()
 PROVIDER_GOOGLE = "google"
 PROVIDER_BEDROCK = "bedrock"
 
+# 모델 이름 매핑 딕셔너리
+MODEL_NAME_MAPPING = {
+    # 짧은 이름: 전체 이름 매핑
+    "gemini-flash": "gemini-2.0-flash-thinking-exp-01-21",
+    "gemini-pro": "gemini-2.5-pro-exp-03-25",
+    # 원래 이름도 그대로 사용할 수 있도록 유지
+    "gemini-2.0-flash-thinking-exp-01-21": "gemini-2.0-flash-thinking-exp-01-21",
+    "gemini-2.5-pro-exp-03-25": "gemini-2.5-pro-exp-03-25",
+}
+
 def get_api_key(api_key=None):
     """API 키를 가져오고 검증"""
     if api_key is None:
@@ -28,18 +38,8 @@ def get_api_key(api_key=None):
             raise ValueError("API 키가 제공되지 않았습니다. .env 파일에 GOOGLE_AI_API_KEY를 설정하거나 인자로 전달하세요.")
     return api_key
 
-def get_llm(api_key=None, model_name="gemini-2.0-flash-thinking-exp-01-21", temperature=0.7):
-    """일반 용도의 표준 LLM 모델을 가져옴"""
-    api_key = get_api_key(api_key)
-    return ChatGoogleGenerativeAI(
-        model=model_name,
-        google_api_key=api_key,
-        temperature=temperature,
-        convert_system_message_to_human=True
-    )
-
-def get_thinking_model(api_key=None, temperature=0.2):
-    """추론 작업에 특화된 LLM 모델을 가져옴"""
+def _get_thinking_model(api_key=None, temperature=0.2):
+    """[내부 함수] 추론 작업에 특화된 LLM 모델을 가져옴"""
     api_key = get_api_key(api_key)
     return ChatGoogleGenerativeAI(
         model="gemini-2.0-flash-thinking-exp-01-21",
@@ -47,6 +47,36 @@ def get_thinking_model(api_key=None, temperature=0.2):
         temperature=temperature,
         convert_system_message_to_human=True,
         max_output_tokens=4096
+    )
+
+def get_llm(api_key=None, model_name="gemini-flash", temperature=0.7, model_type=None):
+    """일반 용도의 표준 LLM 모델이나 특화된 모델을 가져옴
+    
+    Args:
+        api_key (str, optional): Google AI API 키
+        model_name (str, optional): 사용할 모델 이름 (짧은 이름 또는 전체 이름)
+        temperature (float, optional): 생성 온도 (낮을수록 결정적, 높을수록 창의적)
+        model_type (str, optional): "thinking"일 경우 추론 특화 모델 반환
+        
+    Returns:
+        ChatGoogleGenerativeAI: 설정된 LLM 모델 인스턴스
+    """
+    # 추론 특화 모델 요청 시 전용 함수 호출
+    if model_type == "thinking":
+        return _get_thinking_model(api_key=api_key, temperature=temperature)
+    
+    # 모델 이름 매핑 적용
+    full_model_name = MODEL_NAME_MAPPING.get(model_name, model_name)
+    
+    # API 키 가져오기
+    api_key = get_api_key(api_key)
+    
+    # 일반 표준 모델 설정
+    return ChatGoogleGenerativeAI(
+        model=full_model_name,
+        google_api_key=api_key,
+        temperature=temperature,
+        convert_system_message_to_human=True
     )
 
 def create_chain(prompt_template, model=None):
@@ -66,7 +96,7 @@ def create_chain(prompt_template, model=None):
         ```
     """
     if model is None:
-        model = get_thinking_model()
+        model = get_llm(model_type="thinking")
     
     # 가장 안전한 방법: 중괄호 이스케이프를 위해 모든 중괄호를 두 배로 처리
     safe_template = re.sub(r'{', r'{{', prompt_template)
@@ -110,7 +140,7 @@ def create_advanced_chain(
         ```
     """
     if model is None:
-        model = get_thinking_model()
+        model = get_llm(model_type="thinking")
         
     if output_parser is None:
         output_parser = StrOutputParser()
@@ -178,7 +208,7 @@ def create_json_chain(prompt_template, response_schema, model=None):
         ```
     """
     if model is None:
-        model = get_thinking_model()
+        model = get_llm(model_type="thinking")
     
     # JSON 출력을 위한 지시사항이 포함된 프롬프트 생성
     json_instruction = f"다음 스키마에 맞는 JSON 객체 형식으로 응답하세요: {response_schema}"
