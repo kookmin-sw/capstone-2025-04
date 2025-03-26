@@ -15,7 +15,15 @@ export async function generateStaticParams() {
   }));
 }
 
-const CommunityDetailPage = ({ params }: { params: { id: string } }) => {
+// Define proper type for page props
+interface PageProps {
+  params: { id: string };
+  searchParams?: { [key: string]: string | string[] | undefined };
+}
+
+// Update component signature to use the proper interface
+const CommunityDetailPage = async ({ params }: PageProps) => {
+  const { id } = await params;
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
       <Head>
@@ -24,7 +32,7 @@ const CommunityDetailPage = ({ params }: { params: { id: string } }) => {
       <Header />
       <main className="flex-grow">
         {/* 클라이언트 컴포넌트에 id 전달 */}
-        <CommunityDetail id={params.id} />
+        <CommunityDetail id={id} />
       </main>
       <Footer />
     </div>
