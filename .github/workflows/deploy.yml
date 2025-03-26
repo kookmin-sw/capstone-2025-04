@@ -1,0 +1,59 @@
+name: Deploy Frontend to S3/CloudFront
+
+on:
+  push:
+    tags:
+      - "v*.*.*" # vX.Y.Z 형식의 태그가 푸시될 때 실행 (예: v1.0.0)
+      # 또는 더 간단하게:
+      # - 'v*.*'   # vX.Y 형식의 태그가 푸시될 때 실행 (예: v1.0)
+      # 또는 더 일반적이게:
+      # - 'v*'     # 'v'로 시작하는 모든 태그
+
+permissions:
+  id-token: write # AWS OIDC 인증에 필요
+  contents: read # 코드 체크아웃에 필요
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production # GitHub Environment 설정과 연동 가능 (Secrets 등)
+
+    steps:
+      - name: Checkout code
+        # 태그가 가리키는 커밋을 체크아웃합니다.
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }} # 푸시된 태그를 체크아웃
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_IAM_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Install dependencies
+        working-directory: ./frontend
+        run: npm install
+
+      - name: Build Next.js static site
+        working-directory: ./frontend
+        run: npm run build
+
+      - name: Sync files to S3
+        run: |
+          aws s3 sync ./frontend/out s3://${{ secrets.AWS_S3_BUCKET_NAME }} --delete
+        env:
+          AWS_S3_BUCKET_NAME: ${{ secrets.AWS_S3_BUCKET_NAME }}
+
+      - name: Invalidate CloudFront cache
+        run: |
+          aws cloudfront create-invalidation --distribution-id ${{ secrets.AWS_CLOUDFRONT_DISTRIBUTION_ID }} --paths "/*"
+        env:
+          AWS_CLOUDFRONT_DISTRIBUTION_ID: ${{ secrets.AWS_CLOUDFRONT_DISTRIBUTION_ID }}
