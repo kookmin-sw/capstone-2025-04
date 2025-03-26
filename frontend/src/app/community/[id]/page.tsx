@@ -15,15 +15,10 @@ export async function generateStaticParams() {
   }));
 }
 
-// Define proper type for page props
-interface PageProps {
-  params: { id: string };
-  searchParams?: { [key: string]: string | string[] | undefined };
-}
+type PageParams = Promise<{ id: string }>;
 
-// Update component signature to use the proper interface
-const CommunityDetailPage = async ({ params }: PageProps) => {
-  const { id } = await params;
+const CommunityDetailPage = async ({ params }: { params: PageParams }) => {
+  const { id } = await params; // params.id는 string 타입
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
       <Head>
