@@ -106,3 +106,34 @@ Next.js 정적 빌드 결과물을 S3에 배포하고, CloudFront를 통해 전 
 2. GitHub Actions 워크플로우 (`.github/workflows/deploy.yml`)가 올바르게 설정되었는지 확인합니다.
 3. 설정된 트리거(예: `v*` 태그 푸시)에 따라 GitHub Actions가 실행되어 코드를 빌드하고 S3에 배포하며 CloudFront 캐시를 무효화하는지 확인합니다.
 4. `cloudfront_distribution_domain_name` 주소로 접속하여 배포된 애플리케이션을 확인합니다.
+
+**이제 다음 단계를 진행할 수 있습니다:**
+
+1. **GitHub Secrets 설정:**
+   방금 출력된 값들을 사용하여 GitHub Repository의 Secrets를 설정하세요.
+
+   - `AWS_IAM_ROLE_ARN`: `arn:aws:iam::897722694537:role/alpaco-github-actions-deploy-role-dev`
+   - `AWS_REGION`: `ap-northeast-2` (또는 사용한 리전)
+   - `AWS_S3_BUCKET_NAME`: `alpaco-frontend-devalpaco-frontend-bucket`
+   - `AWS_CLOUDFRONT_DISTRIBUTION_ID`: `E3Q5IEHTZGF1U5`
+
+2. **GitHub Actions 워크플로우 확인:**
+
+   - `.github/workflows/deploy.yml` 파일이 올바르게 설정되어 있는지 다시 한번 확인합니다 (특히 트리거 부분 `on: push: tags: - 'v*'` 등).
+
+3. **배포 트리거 실행:**
+
+   - 이제 실제 배포를 위해 Git 브랜치 전략에 따라 `main` 브랜치에 병합하고, `vX.Y.Z` 형식의 태그를 생성하여 푸시합니다.
+   - 예:
+
+     ```bash
+     # (main 브랜치에서)
+     git tag -a v0.1.0 -m "Release version 0.1.0"
+     git push origin main --tags
+     ```
+
+4. **배포 확인:**
+   - GitHub Repository의 Actions 탭에서 워크플로우가 실행되는 것을 확인합니다.
+   - 워크플로우가 성공적으로 완료되면, 출력된 CloudFront 도메인 (`d2rgzjzynamwq2.cloudfront.net`)으로 접속하여 프론트엔드 애플리케이션이 올바르게 배포되었는지 확인합니다. (캐시 때문에 즉시 반영되지 않을 수 있으니 잠시 기다리거나 브라우저 캐시 삭제 후 확인하세요.)
+
+축하합니다! 이제 Terraform으로 관리되는 AWS 인프라와 GitHub Actions를 이용한 자동 배포 파이프라인의 준비가 거의 완료되었습니다. 😊
