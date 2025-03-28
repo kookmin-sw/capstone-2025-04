@@ -1,0 +1,20 @@
+services:
+  localstack:
+    container_name: problem-generator-localstack
+    image: localstack/localstack:latest
+    ports:
+      - "4566:4566" # LocalStack 기본 포트
+      - "4571:4571" # LocalStack 웹 UI 포트
+    environment:
+      - SERVICES=s3,sqs,lambda
+      - DEBUG=1
+      - DATA_DIR=/tmp/localstack_data
+      - DOCKER_HOST=unix:///var/run/docker.sock
+      - AWS_DEFAULT_REGION=us-east-1
+      - LAMBDA_EXECUTOR=docker
+      - LAMBDA_REMOTE_DOCKER=false
+      - TMPDIR=/tmp/localstack_tmp
+    volumes:
+      - "${TMPDIR:-/tmp}/localstack_data:/tmp/localstack_data"
+      - "${TMPDIR:-/tmp}/localstack_tmp:/tmp/localstack_tmp"
+      - "/var/run/docker.sock:/var/run/docker.sock"
