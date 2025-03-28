@@ -1,0 +1,79 @@
+name: Deploy Frontend to S3/CloudFront
+
+on:
+  workflow_dispatch: # 수동으로 실행 가능
+  push:
+    branches:
+      - master # main 브랜치에 푸시될 때 실행
+
+permissions:
+  id-token: write # AWS OIDC 인증에 필요
+  contents: read # 코드 체크아웃에 필요
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production # GitHub Environment 설정과 연동 가능 (Secrets 등)
+
+    steps:
+      - name: Checkout code
+        # 태그가 가리키는 커밋을 체크아웃합니다.
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }} # 푸시된 태그를 체크아웃
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Debug OIDC Token
+        run: |
+          echo "Attempting to decode OIDC token..."
+          # 아래 명령은 bash, jq, base64 필요 (ubuntu-latest 러너에는 기본 포함)
+          oidc_token=$(curl -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL" | jq -r '.value')
+          if [ -z "$oidc_token" ]; then
+            echo "Failed to retrieve OIDC token"
+            exit 1
+          fi
+          echo "OIDC Token retrieved, decoding payload..."
+          payload=$(echo "$oidc_token" | cut -d. -f2 | base64 --decode)
+          if [ $? -ne 0 ]; then
+            echo "Failed to decode token payload"
+            exit 1
+          fi
+          echo "Decoded Payload:"
+          echo "$payload" | jq .
+          # 특히 'sub' 필드 값을 확인하세요!
+          echo "Subject Claim (sub): $(echo "$payload" | jq -r '.sub')"
+        env:
+          ACTIONS_ID_TOKEN_REQUEST_TOKEN: ${{ secrets.ACTIONS_ID_TOKEN_REQUEST_TOKEN }} # OIDC 토큰 요청용 임시 토큰
+          ACTIONS_ID_TOKEN_REQUEST_URL: ${{ runner.environment.ACTIONS_ID_TOKEN_REQUEST_URL }} # OIDC 토큰 요청 URL
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_IAM_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Install dependencies
+        working-directory: ./frontend
+        run: npm install
+
+      - name: Build Next.js static site
+        working-directory: ./frontend
+        run: npm run build
+
+      - name: Sync files to S3
+        run: |
+          aws s3 sync ./frontend/out s3://${{ secrets.AWS_S3_BUCKET_NAME }} --delete
+        env:
+          AWS_S3_BUCKET_NAME: ${{ secrets.AWS_S3_BUCKET_NAME }}
+
+      - name: Invalidate CloudFront cache
+        run: |
+          aws cloudfront create-invalidation --distribution-id ${{ secrets.AWS_CLOUDFRONT_DISTRIBUTION_ID }} --paths "/*"
+        env:
+          AWS_CLOUDFRONT_DISTRIBUTION_ID: ${{ secrets.AWS_CLOUDFRONT_DISTRIBUTION_ID }}

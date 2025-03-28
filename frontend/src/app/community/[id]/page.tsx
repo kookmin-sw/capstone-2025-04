@@ -15,7 +15,10 @@ export async function generateStaticParams() {
   }));
 }
 
-const CommunityDetailPage = ({ params }: { params: { id: string } }) => {
+type PageParams = Promise<{ id: string }>;
+
+const CommunityDetailPage = async ({ params }: { params: PageParams }) => {
+  const { id } = await params; // params.id는 string 타입
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
       <Head>
@@ -24,7 +27,7 @@ const CommunityDetailPage = ({ params }: { params: { id: string } }) => {
       <Header />
       <main className="flex-grow">
         {/* 클라이언트 컴포넌트에 id 전달 */}
-        <CommunityDetail id={params.id} />
+        <CommunityDetail id={id} />
       </main>
       <Footer />
     </div>

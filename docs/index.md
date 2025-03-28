@@ -1,3 +1,11 @@
+---
+layout: default
+title: "메인"
+nav_order: 1
+description: "캡스톤디자인 2025"
+permalink: /
+---
+
 # 🦙**ALPACO : 클라우드 기반 LLM 알고리즘 문제 생성 및 자동 채점 서비스**
 
 ## 국민대학교 소프트웨어융합대학 2025년 캡스톤 4팀 (우서용 Be Smile !)
