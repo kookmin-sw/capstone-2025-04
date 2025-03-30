@@ -22,6 +22,8 @@ terraform plan으로 변경 사항 확인
 
 terraform apply로 리소스 생성
 
+terraform output으로 결과 다시 보기
+
 다음 단계:
 
 terraform apply 후 출력된 값들(cognito_user_pool_id, cognito_user_pool_client_id, cognito_user_pool_provider_url, cognito_user_pool_domain 등)을 프론트엔드 애플리케이션(예: Amplify 구성 또는 직접 SDK 사용 시) 설정에 사용합니다.

@@ -1,7 +1,3 @@
-# Configure the AWS Provider (main.tf 또는 별도 파일에 있을 수 있음)
-provider "aws" {
-  region = var.aws_region
-}
 
 # 1. Cognito User Pool 생성
 resource "aws_cognito_user_pool" "main" {
@@ -34,8 +30,8 @@ resource "aws_cognito_identity_provider" "google" {
 
   provider_details = {
     client_id        = var.google_client_id
-    client_secret    = data.aws_secretsmanager_secret_version.google_client_secret.secret_string # Secrets Manager에서 가져온 값 사용
-    authorize_scopes = "profile email openid"                                                    # 표준 Google 스코프
+    client_secret    = var.google_client_secret # 변수 사용
+    authorize_scopes = "profile email openid"   # 표준 Google 스코프
   }
 
   # Google 속성을 Cognito 표준 속성에 매핑
@@ -74,8 +70,17 @@ resource "aws_cognito_user_pool_client" "app_client" {
   allowed_oauth_flows                  = ["code"]                       # PKCE 사용 권장
   allowed_oauth_scopes                 = ["openid", "email", "profile"] # 요청할 사용자 정보 범위
 
-  callback_urls = var.app_callback_urls # Google 로그인 후 리디렉션될 앱 URL
-  logout_urls   = var.app_logout_urls   # 로그아웃 후 리디렉션될 앱 URL
+  # Google 로그인 후 리디렉션될 앱 URL
+  callback_urls = [
+    "${var.app_base_url}/auth/callback",
+    "${var.localhost_base_url}/auth/callback",
+  ]
+
+  # 로그아웃 후 리디렉션될 앱 URL
+  logout_urls = [
+    "${var.app_base_url}/auth/login",       # 로그아웃 후 리디렉션될 경로로 수정하세요
+    "${var.localhost_base_url}/auth/login", # 로컬용
+  ]
 
   # 토큰 유효 기간 설정 (예시, 필요에 따라 조정)
   access_token_validity  = 1  # 시간 (hours)

@@ -21,8 +21,3 @@ terraform {
     # encrypt        = true                        # 상태 파일 암호화 (권장)
   }
 }
-
-# Provider 설정도 여기에 같이 두거나 별도 provider.tf 파일로 분리 가능
-provider "aws" {
-  region = var.aws_region # variables.tf에 정의된 리전 변수 사용
-}
