@@ -1,11 +1,11 @@
 // src/app/callback/page.tsx
 "use client";
 
-import React, { useEffect } from "react";
+import React, { useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation"; // useSearchParams 추가
 import { useAuthenticator } from "@aws-amplify/ui-react";
 
-const CallbackPage = () => {
+const CallbackContent = () => {
   const { route } = useAuthenticator((context) => [context.route]);
   const router = useRouter();
   const searchParams = useSearchParams(); // URL 파라미터 읽기
@@ -20,7 +20,7 @@ const CallbackPage = () => {
       // 에러 메시지를 표시하거나 로그인 페이지로 다시 보낼 수 있습니다.
       // alert(`인증 오류: ${errorDescription || error}`); // 사용자에게 간단히 알림
       router.push(
-        "/login?error=" + encodeURIComponent(errorDescription || error),
+        "/login?error=" + encodeURIComponent(errorDescription || error)
       ); // 에러 정보를 가지고 로그인 페이지로
       return; // 리디렉션 후에는 더 이상 진행하지 않음
     }
@@ -36,7 +36,7 @@ const CallbackPage = () => {
       // 여기에 특별한 처리가 필요 없을 수도 있습니다. Amplify가 상태를 변경할 때까지 기다립니다.
       console.log(
         "Waiting for authentication status change. Current route:",
-        route,
+        route
       );
     }
 
@@ -58,6 +58,25 @@ const CallbackPage = () => {
 
   // 에러가 있거나 이미 인증된 경우 (리디렉션이 발생하기 전 잠깐 동안) null 반환
   return null;
+};
+
+// Loading component for Suspense fallback
+const LoadingSpinner = () => (
+  <div className="flex justify-center items-center min-h-screen">
+    <div className="text-center">
+      <p className="text-lg font-semibold">로딩중...</p>
+      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mt-4"></div>
+    </div>
+  </div>
+);
+
+// Main component wrapped in Suspense
+const CallbackPage = () => {
+  return (
+    <Suspense fallback={<LoadingSpinner />}>
+      <CallbackContent />
+    </Suspense>
+  );
 };
 
 export default CallbackPage;
