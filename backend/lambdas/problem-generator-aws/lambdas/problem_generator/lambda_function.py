@@ -13,29 +13,8 @@ from utils.aws_utils import (
     receive_message_from_sqs, delete_message_from_sqs, upload_to_s3
 )
 
-# 원래 problem generator 코드를 임포트하기 위한 경로 추가
-# 상대경로 임포트 문제 해결 - 절대 경로로 변경
-generator_path = str(Path(parent_dir).parent / 'problem-generator')
-if generator_path not in sys.path:
-    sys.path.insert(0, generator_path)
-
-# 원래 problem generator의 코드 임포트
-try:
-    # 임포트 시도
-    sys.path.append(generator_path)
-    from generation.generator import generate_problem
-    from utils.model_manager import get_llm, create_chain
-    print("Successfully imported problem generator modules")
-except Exception as e:
-    print(f"Error importing problem generator modules: {e}")
-    # 임포트 실패 시 간단한 더미 함수로 대체
-    def generate_problem(api_key, algorithm_type, difficulty, verbose=False):
-        return {
-            "algorithm_type": algorithm_type,
-            "difficulty": difficulty,
-            "generated_problem": f"Dummy problem for {algorithm_type} with {difficulty} difficulty",
-            "generation_time": 1.0
-        }
+# 브릿지 모듈을 통해 problem-generator의 기능 가져오기
+from utils.model_manager_bridge import generate_problem, get_api_key
 
 def process_job(job_data):
     """작업을 처리하고 결과를 생성하는 함수"""
@@ -53,7 +32,9 @@ def process_job(job_data):
     
     # 문제 생성 실행
     try:
-        result = generate_problem(api_key, algorithm_type, difficulty, verbose=False)
+        # 브릿지 모듈을 통해 problem-generator의 generate_problem 함수 호출
+        print(f"Calling problem-generator with algorithm_type={algorithm_type}, difficulty={difficulty}")
+        result = generate_problem(api_key, algorithm_type, difficulty, verbose=True)
         end_time = time.time()
         
         # 처리 결과에 메타데이터 추가
