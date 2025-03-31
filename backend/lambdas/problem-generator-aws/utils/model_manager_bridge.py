@@ -1,20 +1,23 @@
 """
 problem-generator와 problem-generator-aws 간의 브릿지 역할을 하는 모듈입니다.
-이 모듈은 problem-generator의 핵심 기능을 직접 구현하거나 안정적으로 연결합니다.
+이 모듈은 problem-generator의 핵심 기능을 직접 호출하여 연결합니다.
 """
-
 import os
 import sys
 import time
 import json
-import random
+import importlib
+import traceback
 from pathlib import Path
 from dotenv import load_dotenv
-import importlib.util
 
-# 경로 설정
-GENERATOR_PATH = Path(__file__).parent.parent.parent / 'problem-generator'
+# 경로 설정 - 올바른 경로로 수정
+GENERATOR_PATH = Path(__file__).parent.parent.parent.parent / 'lambdas' / 'problem-generator'
 TEMPLATES_PATH = GENERATOR_PATH / 'templates'
+
+# problem-generator 모듈을 패키지로 인식할 수 있도록 경로 설정
+if str(GENERATOR_PATH.parent) not in sys.path:
+    sys.path.insert(0, str(GENERATOR_PATH.parent))
 
 # problem-generator의 .env 파일 로드 (있는 경우만)
 generator_env_path = GENERATOR_PATH / '.env'
@@ -24,7 +27,7 @@ if generator_env_path.exists():
 else:
     print(f"Warning: .env file not found in {GENERATOR_PATH}")
 
-# 상수 정의
+# 상수 정의 (problem-generator의 상수와 동일하게 유지)
 ALGORITHM_TYPES = [
     "구현", "그래프", "다이나믹 프로그래밍", "그리디", "이분 탐색", 
     "너비 우선 탐색", "깊이 우선 탐색", "최단 경로", "정렬", "자료구조"
@@ -64,65 +67,11 @@ def check_problem_generator():
             
     return True
 
-# LLM 호출을 직접 구현 (간략화된 버전)
-def call_llm_api(api_key, prompt, temperature=0.7):
-    """
-    Google AI Gemini API를 직접 호출합니다.
-    이 함수는 실제 API 호출이 필요한 경우에만 실행됩니다.
-    """
-    try:
-        # 여기서 실제로 Google AI API 호출이 필요하다면 구현
-        # 현재는 간단한 더미 응답만 반환
-        print(f"API 키를 사용하여 LLM API 호출: {'*' * 4 + api_key[-4:] if api_key else 'None'}")
-        time.sleep(1)  # API 호출 시간 시뮬레이션
-        return "API 응답 내용 (더미)"
-    except Exception as e:
-        print(f"LLM API 호출 중 오류 발생: {str(e)}")
-        return None
-
-# 템플릿 로드 함수 (problem-generator의 기능 일부 복제)
-def load_template(algorithm_type, difficulty):
-    """알고리즘 유형과 난이도에 맞는 템플릿 코드를 로드합니다."""
-    try:
-        if not check_problem_generator():
-            raise ValueError("Problem generator module not accessible")
-        
-        # 알고리즘 타입에 맞는 디렉토리 경로 설정
-        algorithm_dir = TEMPLATES_PATH / algorithm_type.lower()
-        
-        # 템플릿 파일 검색
-        template_files = []
-        
-        # 특정 알고리즘 디렉토리가 존재하면 먼저 거기서 검색
-        if algorithm_dir.exists():
-            template_files = list(algorithm_dir.glob("*.py")) + list(algorithm_dir.glob("*.cpp"))
-        
-        # 템플릿이 없거나 디렉토리가 없다면, 모든 서브디렉토리에서 검색
-        if not template_files:
-            for alg_subdir in TEMPLATES_PATH.iterdir():
-                if alg_subdir.is_dir():
-                    template_files.extend(list(alg_subdir.glob("*.py")) + list(alg_subdir.glob("*.cpp")))
-        
-        if not template_files:
-            raise ValueError(f"No templates found for algorithm type: {algorithm_type}")
-        
-        # 템플릿 선택
-        template_path = random.choice(template_files)
-        
-        # 파일 내용 읽기
-        with open(template_path, "r", encoding="utf-8") as f:
-            template_code = f.read()
-        
-        return template_code, f"{template_path.parent.name}/{template_path.name}"
-    except Exception as e:
-        print(f"템플릿 로드 중 오류 발생: {str(e)}")
-        return f"// 템플릿 코드 로드 실패: {algorithm_type}, {difficulty}", "dummy/template.py"
-
-# 문제 생성 함수
+# generator.py의 generate_problem 함수를 import하고 호출
 def generate_problem(api_key, algorithm_type, difficulty, verbose=False):
     """
-    지정된 알고리즘 유형과 난이도에 맞는 문제를 생성합니다.
-    이 함수는 원래의 problem-generator 모듈의 generate_problem 함수를 대체합니다.
+    problem-generator의 generate_problem 함수를 호출하여 문제를 생성합니다.
+    이 함수는 단순한 브릿지 역할을 하며, problem-generator의 기능을 그대로 활용합니다.
     
     Args:
         api_key (str): Google AI API 키
@@ -131,7 +80,7 @@ def generate_problem(api_key, algorithm_type, difficulty, verbose=False):
         verbose (bool): 상세 출력 여부
     
     Returns:
-        dict: 생성된 문제 정보를 담은 사전
+        dict: 생성된 문제 정보를 담은 사전 (문제 설명, 정답 코드, 테스트 케이스 포함)
     """
     start_time = time.time()
     
@@ -146,66 +95,78 @@ def generate_problem(api_key, algorithm_type, difficulty, verbose=False):
     if difficulty not in DIFFICULTY_LEVELS:
         print(f"Warning: Unknown difficulty level '{difficulty}'. Using anyway.")
     
-    # 원래 problem-generator 모듈이 있는지 확인하고 가능하면 사용
-    if check_problem_generator():
-        print(f"Problem generator module found at {GENERATOR_PATH}")
-        # 여기서 원래 모듈을 직접 호출하거나 활용할 수 있음
-        # 하지만 이 예제에서는 간단한 구현을 제공합니다
+    # problem-generator 모듈 접근 가능 여부 확인
+    if not check_problem_generator():
+        raise ImportError("Cannot access problem-generator module")
     
-    if verbose:
-        print(f"\n{algorithm_type} 유형의 {difficulty} 난이도 문제 생성을 시작합니다...\n")
-        print("템플릿 파일을 로드하는 중...")
+    try:
+        # 커스텀 imports 방식으로 직접 필요한 모듈들을 import
+        # 기존의 상대 경로 문제를 해결하기 위한 방식
+        
+        # 1. generator.py 파일 경로 설정
+        generator_path = GENERATOR_PATH / 'generation' / 'generator.py'
+        utils_path = GENERATOR_PATH / 'utils'
+        
+        # 2. model_manager.py 직접 import 준비
+        sys.path.insert(0, str(utils_path))
+        
+        # 3. 먼저 model_manager 모듈 import
+        try:
+            from model_manager import get_llm, create_chain
+            print("Successfully imported model_manager")
+        except ImportError as e:
+            print(f"Failed to import model_manager: {e}")
+            raise
+        
+        # 4. generator.py 모듈 로드
+        with open(generator_path, 'r') as f:
+            generator_code = f.read()
+            
+        # 5. 상대 임포트 구문을 절대 임포트로 수정
+        generator_code = generator_code.replace("from ..utils.model_manager", "from model_manager")
+        
+        # 6. 수정된 코드를 실행하기 위한 임시 모듈 생성
+        module_name = "problem_generator_module"
+        spec = importlib.util.spec_from_loader(module_name, loader=None)
+        generator_module = importlib.util.module_from_spec(spec)
+        
+        # 7. 전역 변수 설정 (필요한 경우)
+        generator_module.__file__ = str(generator_path)
+        
+        # 8. 코드 실행
+        exec(generator_code, generator_module.__dict__)
+        
+        # 9. problem-generator의 generate_problem 함수 호출
+        if verbose:
+            print(f"\n{algorithm_type} 유형의 {difficulty} 난이도 문제 생성을 시작합니다...\n")
+        
+        # 10. generate_problem 함수 직접 호출
+        result = generator_module.generate_problem(
+            api_key=api_key,
+            algorithm_type=algorithm_type,
+            difficulty=difficulty,
+            verbose=verbose
+        )
+        
+        end_time = time.time()
+        elapsed_time = end_time - start_time
+        
+        # 메타데이터 추가
+        result["generation_time"] = elapsed_time
+        
+        if verbose:
+            print(f"완료! (소요 시간: {elapsed_time:.1f}초)")
+        
+        return result
     
-    # 템플릿 로드
-    template_code, template_file = load_template(algorithm_type, difficulty)
-    
-    # 실제로는 여기서 LLM API 호출하여 문제 생성
-    if verbose:
-        print("문제를 생성하는 중...")
-    
-    # 간략한 문제 생성 시뮬레이션
-    generated_problem = f"""
-    ## 문제 설명
-    
-    {algorithm_type} 알고리즘을 활용하여 해결하는 {difficulty} 난이도의 문제입니다.
-    이 문제는 {template_file}를 기반으로 생성되었습니다.
-    
-    ## 입력
-    
-    첫 줄에 입력 크기 N이 주어집니다. (1 ≤ N ≤ 100,000)
-    두 번째 줄에 N개의 정수가 공백으로 구분되어 주어집니다.
-    
-    ## 출력
-    
-    문제의 답을 출력합니다.
-    
-    ### 예제 입력
-    
-    5
-    1 2 3 4 5
-    
-    ### 예제 출력
-    
-    15
-    
-    ### 정답 코드
-    
-    ```python
-    {template_code}
-    ```
-    """
-    
-    end_time = time.time()
-    elapsed_time = end_time - start_time
-    
-    # 결과 반환
-    if verbose:
-        print(f"완료! (소요 시간: {elapsed_time:.1f}초)")
-    
-    return {
-        "algorithm_type": algorithm_type,
-        "difficulty": difficulty,
-        "template_used": template_file,
-        "generated_problem": generated_problem,
-        "generation_time": elapsed_time
-    }
+    except Exception as e:
+        print(f"problem-generator 모듈 호출 중 오류 발생: {str(e)}")
+        traceback.print_exc()
+        
+        # 오류가 발생하면 최소한의 정보를 담은 결과 반환
+        return {
+            "algorithm_type": algorithm_type,
+            "difficulty": difficulty,
+            "error": str(e),
+            "generated_problem": f"문제 생성 중 오류 발생: {str(e)}"
+        }
