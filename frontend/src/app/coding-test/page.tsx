@@ -48,12 +48,20 @@ const CodingTestPage: React.FC = () => {
               다양한 난이도와 주제별 코딩 테스트에 도전하고 실력을 향상시켜
               보세요. 알고리즘 실력을 키우고 면접 준비에 도움이 됩니다.
             </p>
-            <Link
-              href="/coding-test/selection"
-              className="inline-block px-6 py-3 bg-primary text-white font-medium rounded-md hover:bg-primary-hover transition"
-            >
-              테스트 선택하기
-            </Link>
+            <div className="flex flex-col sm:flex-row justify-center gap-4">
+              <Link
+                href="/coding-test/selection"
+                className="inline-block px-6 py-3 bg-primary text-white font-medium rounded-md hover:bg-primary-hover transition"
+              >
+                테스트 선택하기
+              </Link>
+              <Link
+                href="/generate-problem"
+                className="inline-block px-6 py-3 bg-gray-600 text-white font-medium rounded-md hover:bg-gray-700 transition" // Changed background color for better visibility
+              >
+                AI로 문제 생성하기 🤖
+              </Link>
+            </div>
           </div>
         </div>
       </main>
