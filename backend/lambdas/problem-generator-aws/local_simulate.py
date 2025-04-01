@@ -30,11 +30,18 @@ if 'IS_LOCAL' not in os.environ:
 # AWS 관련 설정 가져오기
 from config import (
     get_endpoint_url, SQS_QUEUE_NAME, S3_BUCKET_NAME, 
-    REGION, IS_LOCAL, LOCALSTACK_HOSTNAME, LOCALSTACK_PORT
+    REGION, IS_LOCAL, LOCALSTACK_HOSTNAME, LOCALSTACK_PORT,
+    initialize_dynamodb_table, DYNAMODB_TABLE_NAME
 )
 
 # 브릿지 모듈을 통해 problem-generator 기능 가져오기
 from utils.model_manager_bridge import generate_problem, get_api_key
+from utils.aws_utils import (
+    get_aws_client, send_message_to_sqs, receive_message_from_sqs, 
+    delete_message_from_sqs, upload_to_s3, generate_s3_url,
+    add_job_status, update_job_status, get_job_status,
+    wait_for_localstack, get_dynamodb_resource
+)
 
 def wait_for_localstack(max_retries=10, retry_delay=2):
     """LocalStack이 준비될 때까지 기다리는 함수"""
@@ -68,48 +75,6 @@ def wait_for_localstack(max_retries=10, retry_delay=2):
     
     print("Failed to connect to LocalStack after maximum retries")
     return False
-
-def get_aws_client(service_name, max_retries=3):
-    """AWS 클라이언트를 생성하고 반환하는 함수 (Localstack 또는 실제 AWS)"""
-    import boto3
-    
-    endpoint_url = get_endpoint_url() if IS_LOCAL else None
-    
-    retry_count = 0
-    while retry_count < max_retries:
-        try:
-            client = boto3.client(
-                service_name,
-                endpoint_url=endpoint_url,
-                region_name=REGION,
-                # Localstack용 더미 자격 증명 (실제 AWS에서는 무시됨)
-                aws_access_key_id='test' if IS_LOCAL else None,
-                aws_secret_access_key='test' if IS_LOCAL else None
-            )
-            
-            # 간단한 작업으로 연결 테스트
-            if service_name == 'sqs':
-                try:
-                    client.list_queues(MaxResults=1)
-                except Exception as e:
-                    if 'AccessDenied' not in str(e):  # 접근 권한 오류는 연결은 된 것으로 간주
-                        raise
-            elif service_name == 's3':
-                try:
-                    client.list_buckets()
-                except Exception as e:
-                    if 'AccessDenied' not in str(e):
-                        raise
-            
-            return client
-        except Exception as e:
-            retry_count += 1
-            if retry_count >= max_retries:
-                print(f"Failed to create AWS client for {service_name} after {max_retries} retries")
-                raise
-            else:
-                print(f"Retrying AWS client creation for {service_name}: {str(e)}")
-                time.sleep(2)
 
 def get_queue_url(sqs_client):
     """SQS 큐 URL을 가져오는 함수"""
@@ -256,8 +221,8 @@ def start_localstack():
         print(f"Error output: {e.stderr}")
         return False
 
-def setup_aws_resources():
-    """Localstack에 필요한 AWS 리소스 설정"""
+def setup_resources():
+    """LocalStack에 필요한 AWS 리소스(SQS, S3, DynamoDB)를 설정합니다."""
     print("Setting up AWS resources in Localstack...")
     
     # Docker 및 LocalStack 실행 확인
@@ -286,6 +251,12 @@ def setup_aws_resources():
         s3_client = get_aws_client('s3')
         initialize_s3_bucket(s3_client)
         print(f"S3 Bucket initialized")
+
+        # DynamoDB 테이블 생성/확인
+        dynamodb_resource = get_dynamodb_resource()
+        initialize_dynamodb_table(dynamodb_resource)
+        print(f"DynamoDB table '{DYNAMODB_TABLE_NAME}' initialized.")
+
         return True
     except Exception as e:
         print(f"Error setting up AWS resources: {str(e)}")
@@ -307,128 +278,127 @@ def send_message_to_sqs(message_body):
     )
     return response['MessageId']
 
-def submit_job(algorithm_type, difficulty, api_key=None):
-    """문제 생성 요청 제출"""
+def submit_job(algorithm_type, difficulty):
+    """문제 생성 작업을 SQS에 제출하고 DynamoDB 상태를 초기화합니다."""
     print(f"Submitting job for {algorithm_type} with {difficulty} difficulty")
-    
-    # API 키가 제공되었거나 환경 변수에 있는 경우만 추가
-    if not api_key:
-        api_key = os.environ.get('GOOGLE_AI_API_KEY')
-    
-    # 요청 직접 처리
     job_id = str(uuid.uuid4())
-    timestamp = int(time.time())
+    result_object_key = f"results/{job_id}.json"
+    result_url = generate_s3_url(result_object_key)
     
-    job_info = {
+    message_body = {
         'job_id': job_id,
-        'status': 'QUEUED',
         'algorithm_type': algorithm_type,
         'difficulty': difficulty,
-        'api_key': api_key,
-        'created_at': timestamp,
-        'result_file': f"results/{job_id}.json"
+        'result_object_key': result_object_key
     }
     
-    # SQS에 메시지 전송
-    try:
-        message_id = send_message_to_sqs(job_info)
-        print(f"Message sent to SQS with ID: {message_id}")
-        
-        return job_id
-    except Exception as e:
-        print(f"Error sending message to SQS: {str(e)}")
-        return None
+    message_id = send_message_to_sqs(message_body)
+    print(f"Message sent to SQS with ID: {message_id}")
+    
+    # DynamoDB 상태 초기화
+    add_job_status(job_id, algorithm_type, difficulty)
+    
+    return job_id, result_url
 
-def process_job():
-    """대기 중인 작업 처리"""
+def process_queue_locally(api_key):
+    """SQS 큐에서 메시지를 가져와 로컬에서 문제 생성을 시뮬레이션합니다."""
     print("Processing job from queue...")
+    message_info = receive_message_from_sqs()
     
-    # SQS에서 메시지 수신
-    message = receive_message_from_sqs()
-    if not message:
-        print("No messages in queue")
-        return None
+    if not message_info:
+        print("No messages in the queue.")
+        return
+        
+    body = message_info['body']
+    receipt_handle = message_info['receipt_handle']
+    
+    job_id = body.get('job_id')
+    algorithm_type = body.get('algorithm_type')
+    difficulty = body.get('difficulty')
+    result_object_key = body.get('result_object_key')
+
+    if not all([job_id, algorithm_type, difficulty, result_object_key]):
+        print(f"Invalid message format: {body}. Skipping.")
+        # 잘못된 메시지는 큐에서 삭제할 수 있음 (선택 사항)
+        # delete_message_from_sqs(receipt_handle)
+        return
+
+    print(f"Processing job: {job_id}")
     
     try:
-        job_data = message['body']
-        print(f"Processing job: {job_data['job_id']}")
+        # DynamoDB 상태를 PROCESSING으로 업데이트
+        update_job_status(job_id, 'PROCESSING')
+        print(f"[{job_id}] DynamoDB status updated to PROCESSING.")
         
-        # API 키 설정 - 브릿지 모듈의 get_api_key 함수 사용
-        api_key = get_api_key(job_data.get('api_key'))
-        algorithm_type = job_data['algorithm_type']
-        difficulty = job_data['difficulty']
-        
-        # 문제 생성 직접 실행 - 브릿지 모듈의 generate_problem 함수 사용
+        # 문제 생성 호출
+        print(f"[{job_id}] Calling generate_problem with algorithm_type={algorithm_type}, difficulty={difficulty}")
         start_time = time.time()
-        try:
-            print(f"Calling generate_problem with algorithm_type={algorithm_type}, difficulty={difficulty}")
-            result = generate_problem(api_key, algorithm_type, difficulty, verbose=True)
-            end_time = time.time()
-            
-            # 처리 결과에 메타데이터 추가
-            result.update({
-                'job_id': job_data['job_id'],
-                'status': 'COMPLETED',
-                'processing_time': end_time - start_time,
-                'completed_at': int(time.time())
-            })
-        except Exception as e:
-            print(f"Error generating problem: {str(e)}")
-            result = {
-                'job_id': job_data['job_id'],
-                'status': 'FAILED',
-                'error': str(e),
-                'algorithm_type': algorithm_type,
-                'difficulty': difficulty,
-                'completed_at': int(time.time())
-            }
+        problem_result = generate_problem(api_key, algorithm_type, difficulty, verbose=True)
+        end_time = time.time()
+        print(f"[{job_id}] generate_problem finished in {end_time - start_time:.2f} seconds.")
         
-        # 결과 처리
-        result_key = job_data.get('result_file', f"results/{job_data['job_id']}.json")
-        url = upload_to_s3(result, result_key)
+        # 결과 S3에 업로드
+        result_url = upload_to_s3(problem_result, object_key=result_object_key)
+        print(f"[{job_id}] Result uploaded to S3: {result_url}")
+
+        # DynamoDB 상태를 COMPLETED로 업데이트
+        update_job_status(job_id, 'COMPLETED', result_url=result_url)
+        print(f"[{job_id}] DynamoDB status updated to COMPLETED.")
         
-        # 처리 완료된 메시지 삭제
-        delete_message_from_sqs(message['receipt_handle'])
+        # 메시지 삭제
+        delete_message_from_sqs(receipt_handle)
+        print(f"[{job_id}] Message deleted from SQS.")
         
-        return url
     except Exception as e:
-        print(f"Error processing job: {str(e)}")
-        return None
+        print(f"[{job_id}] Error processing job: {str(e)}")
+        # DynamoDB 상태를 FAILED로 업데이트
+        update_job_status(job_id, 'FAILED', error_message=str(e))
+        print(f"[{job_id}] DynamoDB status updated to FAILED.")
+        # 실패한 메시지는 큐에 남겨둠 (또는 데드 레터 큐로)
 
 def main():
-    parser = argparse.ArgumentParser(description="Simulate problem generator AWS workflow locally")
-    parser.add_argument('--algorithm', '-a', default='구현', help='Algorithm type')
-    parser.add_argument('--difficulty', '-d', default='쉬움', choices=['튜토리얼', '쉬움', '보통', '어려움'], help='Difficulty level')
-    parser.add_argument('--api_key', '-k', help='Google AI API key')
-    parser.add_argument('--setup', '-s', action='store_true', help='Only setup AWS resources')
+    parser = argparse.ArgumentParser(description="Simulate Problem Generator AWS locally using LocalStack")
+    parser.add_argument("--setup", action="store_true", help="Initialize AWS resources in LocalStack and exit")
+    parser.add_argument("-a", "--algorithm", default="구현", help="Algorithm type for the problem")
+    parser.add_argument("-d", "--difficulty", default="쉬움", help="Difficulty level for the problem")
+    parser.add_argument("-k", "--api_key", help="Google AI API Key (overrides environment variable)")
     
     args = parser.parse_args()
     
-    # AWS 리소스 설정
-    if not setup_aws_resources():
-        print("Failed to set up AWS resources. Exiting.")
-        return
+    # API 키 로드
+    api_key = get_api_key(args.api_key)
     
+    # 리소스 설정 모드
     if args.setup:
+        print("--setup flag provided. Initializing resources only.")
+        setup_resources()
         return
+        
+    # 일반 실행 모드
+    print("Running in simulation mode.")
+    setup_resources() # 매번 실행 시 리소스 확인/생성
     
     # 작업 제출
-    job_id = submit_job(args.algorithm, args.difficulty, args.api_key)
+    job_id, result_url = submit_job(args.algorithm, args.difficulty)
+    print(f"==> Job Submitted: ID={job_id}, Algorithm='{args.algorithm}', Difficulty='{args.difficulty}'")
     
-    if job_id:
-        print(f"Job submitted with ID: {job_id}")
-        
-        # 작업 처리 (실제로는 다른 프로세스나 스케줄러가 처리)
-        print("Waiting 2 seconds before processing...")
-        time.sleep(2)
-        
-        result_url = process_job()
-        if result_url:
-            print(f"Job processed. Result available at: {result_url}")
-        else:
-            print("Failed to process job.")
-    else:
-        print("Failed to submit job.")
+    # DynamoDB에서 초기 상태 확인
+    print(f"Checking initial status for job {job_id}...")
+    time.sleep(1) # DynamoDB 반영 시간 약간 대기
+    initial_status = get_job_status(job_id)
+    print(f"==> Initial DynamoDB Status: {initial_status}")
+    
+    # 큐 처리 시뮬레이션
+    print(f"\nSimulating queue processing for job {job_id}...")
+    time.sleep(2) # 처리 시작 전 약간 대기
+    process_queue_locally(api_key)
+    
+    # DynamoDB에서 최종 상태 확인
+    print(f"\nChecking final status for job {job_id}...")
+    time.sleep(1) 
+    final_status = get_job_status(job_id)
+    print(f"==> Final DynamoDB Status: {final_status}")
+    print("\nSimulation finished.")
 
 if __name__ == "__main__":
     main()

@@ -10,7 +10,7 @@ parent_dir = str(Path(__file__).parent.parent.parent)
 if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
-from utils.aws_utils import send_message_to_sqs, generate_s3_url
+from utils.aws_utils import send_message_to_sqs, generate_s3_url, add_job_status
 
 def validate_input(event):
     """요청 내용을 검증하는 함수"""
@@ -78,24 +78,28 @@ def handler(event, context):
     try:
         message_id = send_message_to_sqs(job_info)
         print(f"Message sent to SQS with ID: {message_id}")
+        
+        # DynamoDB에 작업 상태 기록
+        add_job_status(job_id, body['algorithm_type'], body['difficulty'])
+        
+        # 성공 응답
+        result_url = generate_s3_url(result_key)
+        return {
+            'statusCode': 200,
+            'headers': {'Content-Type': 'application/json'},
+            'body': json.dumps({
+                'job_id': job_id,
+                'status': 'QUEUED',
+                'algorithm_type': body['algorithm_type'],
+                'difficulty': body['difficulty'],
+                'result_url': result_url,
+                'message_id': message_id
+            })
+        }
     except Exception as e:
-        print(f"Error sending message to SQS: {str(e)}")
+        print(f"Error in request handler: {str(e)}")
         return {
             'statusCode': 500,
             'headers': {'Content-Type': 'application/json'},
-            'body': json.dumps({'error': f"Failed to queue job: {str(e)}"})
+            'body': json.dumps({'error': 'Internal server error', 'details': str(e)})
         }
-    
-    # 성공 응답
-    result_url = generate_s3_url(result_key)
-    return {
-        'statusCode': 200,
-        'headers': {'Content-Type': 'application/json'},
-        'body': json.dumps({
-            'job_id': job_id,
-            'status': 'QUEUED',
-            'algorithm_type': body['algorithm_type'],
-            'difficulty': body['difficulty'],
-            'result_url': result_url
-        })
-    }

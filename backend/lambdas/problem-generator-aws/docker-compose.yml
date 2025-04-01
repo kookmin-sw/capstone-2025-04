@@ -6,8 +6,8 @@ services:
       - "4566:4566" # LocalStack 기본 포트
       - "4571:4571" # LocalStack 웹 UI 포트
     environment:
-      - SERVICES=s3,sqs,lambda
-      - DEBUG=1
+      - SERVICES=s3,sqs,dynamodb,lambda,apigateway
+      - DEBUG=${DEBUG- }
       - DATA_DIR=/tmp/localstack_data
       - DOCKER_HOST=unix:///var/run/docker.sock
       - AWS_DEFAULT_REGION=us-east-1

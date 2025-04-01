@@ -8,6 +8,7 @@ from langchain_core.prompts import ChatPromptTemplate, PromptTemplate
 from langchain_core.output_parsers import StrOutputParser, JsonOutputParser
 from langchain_core.runnables import RunnablePassthrough, RunnableLambda
 from langchain_google_genai import ChatGoogleGenerativeAI
+from pydantic import BaseModel
 import re
 
 # 향후 AWS Bedrock 지원을 위한 준비 
@@ -182,46 +183,39 @@ def create_advanced_chain(
     # 전체 파이프라인 반환
     return current_pipeline
 
-def create_json_chain(prompt_template, response_schema, model=None):
-    """구조화된 JSON 출력을 반환하는 체인 생성
+def create_json_chain(prompt_template, pydantic_model: type[BaseModel], model=None):
+    """구조화된 JSON 출력을 반환하는 체인 생성 (Pydantic 모델 사용)
     
     Args:
         prompt_template (str): {variables} 형태의 변수를 포함한 프롬프트 템플릿
-        response_schema (dict): 예상되는 출력 구조를 정의하는 JSON 스키마
+        pydantic_model (Type[BaseModel]): 예상되는 출력 구조를 정의하는 Pydantic 모델
         model (ChatGoogleGenerativeAI, optional): 사용할 LLM 모델
         
     Returns:
-        입력을 처리하고 구조화된 JSON을 반환하는 체인
+        입력을 처리하고 구조화된 JSON (Pydantic 모델 인스턴스)을 반환하는 체인
         
     Example:
         ```python
-        schema = {
-            "properties": {
-                "name": {"type": "string"},
-                "age": {"type": "integer"}
-            },
-            "required": ["name", "age"]
-        }
-        chain = create_json_chain("다음 텍스트에서 이름과 나이를 추출하세요: {text}", schema)
+        from pydantic import BaseModel, Field
+        class Person(BaseModel):
+            name: str = Field(description="사람의 이름")
+            age: int = Field(description="사람의 나이")
+        
+        chain = create_json_chain("다음 텍스트에서 이름과 나이를 추출하세요: {text}", Person)
         result = chain.invoke({"text": "홍길동은 30세입니다"})
-        # 반환값: {"name": "홍길동", "age": 30}
+        # 반환값: Person(name='홍길동', age=30)
         ```
     """
     if model is None:
         model = get_llm(model_type="thinking")
     
-    # JSON 출력을 위한 지시사항이 포함된 프롬프트 생성
-    json_instruction = f"다음 스키마에 맞는 JSON 객체 형식으로 응답하세요: {response_schema}"
-    safe_template = re.sub(r'{', r'{{', prompt_template)
-    safe_template = re.sub(r'}', r'}}', safe_template)
+    # Pydantic 모델에서 JSON 형식 지침 자동 생성 (JsonOutputParser가 처리)
+    parser = JsonOutputParser(pydantic_object=pydantic_model)
     
     prompt = ChatPromptTemplate.from_messages([
-        ("system", f"당신은 전문 AI 어시스턴트입니다. {json_instruction}"),
-        ("human", safe_template)
-    ])
-    
-    # 구조화된 출력을 위한 파서 생성
-    parser = JsonOutputParser(pydantic_schema=response_schema)
+        ("system", "당신은 전문 AI 어시스턴트입니다. 사용자의 요청을 처리하고 그 결과를 JSON 형식으로 반환하세요. 다음은 출력해야 할 JSON 객체의 형식입니다:\n{format_instructions}"),
+        ("human", prompt_template) # 중괄호 이스케이프 제거
+    ]).partial(format_instructions=parser.get_format_instructions())
     
     # 체인 구성 및 반환
     chain = prompt | model | parser

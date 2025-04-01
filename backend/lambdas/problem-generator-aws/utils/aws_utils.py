@@ -6,6 +6,8 @@ import time
 import requests
 from pathlib import Path
 import uuid
+from botocore.exceptions import ClientError
+from datetime import datetime, timezone
 
 # 상위 디렉토리에서 config 임포트할 수 있도록 경로 추가
 parent_dir = str(Path(__file__).parent.parent)
@@ -13,8 +15,9 @@ if (parent_dir not in sys.path):
     sys.path.insert(0, parent_dir)
 
 from config import (
-    get_endpoint_url, get_queue_url, initialize_s3_bucket,
-    SQS_QUEUE_NAME, S3_BUCKET_NAME, REGION, IS_LOCAL, LOCALSTACK_HOSTNAME, LOCALSTACK_PORT
+    get_endpoint_url, get_queue_url, initialize_s3_bucket, initialize_dynamodb_table,
+    SQS_QUEUE_NAME, S3_BUCKET_NAME, DYNAMODB_TABLE_NAME,
+    REGION, IS_LOCAL, LOCALSTACK_HOSTNAME, LOCALSTACK_PORT
 )
 
 def wait_for_localstack(max_retries=10, retry_delay=2):
@@ -185,3 +188,105 @@ def delete_message_from_sqs(receipt_handle):
         QueueUrl=queue_url,
         ReceiptHandle=receipt_handle
     )
+
+# DynamoDB 테이블 관련 함수 추가 시작
+
+def get_dynamodb_resource():
+    """DynamoDB 리소스를 생성하고 반환하는 함수 (Localstack 또는 실제 AWS)"""
+    endpoint_url = get_endpoint_url() if IS_LOCAL else None
+    if IS_LOCAL:
+        # DynamoDB 서비스 상태도 확인하도록 wait_for_localstack 수정 필요 (추후)
+        wait_for_localstack() # LocalStack 준비 확인
+
+    return boto3.resource(
+        'dynamodb',
+        endpoint_url=endpoint_url,
+        region_name=REGION,
+        aws_access_key_id='test' if IS_LOCAL else None,
+        aws_secret_access_key='test' if IS_LOCAL else None
+    )
+
+def get_dynamodb_table():
+    """DynamoDB 테이블 객체를 반환하는 함수"""
+    dynamodb_resource = get_dynamodb_resource()
+    # 테이블 초기화 (없으면 생성)
+    initialize_dynamodb_table(dynamodb_resource) # config에서 가져온 함수 호출
+    return dynamodb_resource.Table(DYNAMODB_TABLE_NAME)
+
+def add_job_status(job_id, algorithm_type, difficulty):
+    """DynamoDB에 새로운 작업 상태를 추가하는 함수"""
+    table = get_dynamodb_table()
+    timestamp = datetime.now(timezone.utc).isoformat()
+    try:
+        table.put_item(
+            Item={
+                'job_id': job_id,
+                'status': 'QUEUED',
+                'algorithm_type': algorithm_type,
+                'difficulty': difficulty,
+                'request_timestamp': timestamp,
+                'last_updated_timestamp': timestamp,
+                'result_url': None,
+                'error_message': None
+            },
+            ConditionExpression='attribute_not_exists(job_id)' # 이미 존재하는 job_id면 추가하지 않음
+        )
+        print(f"Job {job_id} status initialized to QUEUED in DynamoDB.")
+    except ClientError as e:
+        if e.response['Error']['Code'] == 'ConditionalCheckFailedException':
+            print(f"Job {job_id} already exists in DynamoDB. Skipping initialization.")
+        else:
+            print(f"Error adding job {job_id} to DynamoDB: {e.response['Error']['Message']}")
+            raise # 다른 오류는 전파
+
+def update_job_status(job_id, new_status, result_url=None, error_message=None):
+    """DynamoDB에서 작업 상태를 업데이트하는 함수"""
+    table = get_dynamodb_table()
+    timestamp = datetime.now(timezone.utc).isoformat()
+    update_expression = "set #s = :s, last_updated_timestamp = :t"
+    expression_attribute_names = {'#s': 'status'}
+    expression_attribute_values = {
+        ':s': new_status,
+        ':t': timestamp
+    }
+
+    # result_url 이나 error_message가 None이 아닐 때만 업데이트
+    if result_url is not None:
+        update_expression += ", result_url = :ru"
+        expression_attribute_values[':ru'] = result_url
+
+    if error_message is not None:
+        update_expression += ", error_message = :em"
+        expression_attribute_values[':em'] = error_message
+    elif result_url is not None: # 성공적으로 완료되면 error_message 를 null로 설정
+        update_expression += " remove error_message"
+
+
+    try:
+        table.update_item(
+            Key={'job_id': job_id},
+            UpdateExpression=update_expression,
+            ExpressionAttributeNames=expression_attribute_names,
+            ExpressionAttributeValues=expression_attribute_values,
+            ConditionExpression='attribute_exists(job_id)', # job_id가 존재할 때만 업데이트
+            ReturnValues="UPDATED_NEW"
+        )
+        print(f"Job {job_id} status updated to {new_status} in DynamoDB.")
+    except ClientError as e:
+        if e.response['Error']['Code'] == 'ConditionalCheckFailedException':
+             print(f"Job {job_id} does not exist in DynamoDB. Cannot update status.")
+        else:
+            print(f"Error updating job {job_id} status in DynamoDB: {e.response['Error']['Message']}")
+            raise # 다른 오류는 전파
+
+def get_job_status(job_id):
+    """DynamoDB에서 작업 상태를 조회하는 함수"""
+    table = get_dynamodb_table()
+    try:
+        response = table.get_item(Key={'job_id': job_id})
+        return response.get('Item')
+    except ClientError as e:
+        print(f"Error getting job {job_id} status from DynamoDB: {e.response['Error']['Message']}")
+        return None
+
+# DynamoDB 관련 함수 추가 끝

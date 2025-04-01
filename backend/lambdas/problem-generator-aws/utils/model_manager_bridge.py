@@ -1,6 +1,6 @@
 """
 problem-generator와 problem-generator-aws 간의 브릿지 역할을 하는 모듈입니다.
-이 모듈은 problem-generator의 핵심 기능을 직접 호출하여 연결합니다.
+AWS 환경에서 problem-generator 기능을 사용할 수 있도록 연결합니다.
 """
 import os
 import sys
@@ -8,6 +8,8 @@ import time
 import json
 import importlib
 import traceback
+import subprocess
+import tempfile
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -15,9 +17,14 @@ from dotenv import load_dotenv
 GENERATOR_PATH = Path(__file__).parent.parent.parent.parent / 'lambdas' / 'problem-generator'
 TEMPLATES_PATH = GENERATOR_PATH / 'templates'
 
+# problem-generator의 utils 폴더 경로 설정
+GENERATOR_UTILS_PATH = GENERATOR_PATH / 'utils'
+GENERATION_PATH = GENERATOR_PATH / 'generation'
+
 # problem-generator 모듈을 패키지로 인식할 수 있도록 경로 설정
-if str(GENERATOR_PATH.parent) not in sys.path:
-    sys.path.insert(0, str(GENERATOR_PATH.parent))
+for path in [str(GENERATOR_PATH), str(GENERATOR_UTILS_PATH), str(GENERATION_PATH)]:
+    if path not in sys.path:
+        sys.path.insert(0, path)
 
 # problem-generator의 .env 파일 로드 (있는 경우만)
 generator_env_path = GENERATOR_PATH / '.env'
@@ -56,8 +63,8 @@ def check_problem_generator():
     # 필요한 디렉토리 구조 확인
     required_paths = [
         TEMPLATES_PATH,
-        GENERATOR_PATH / 'generation',
-        GENERATOR_PATH / 'utils'
+        GENERATION_PATH,
+        GENERATOR_UTILS_PATH
     ]
     
     for path in required_paths:
@@ -67,11 +74,10 @@ def check_problem_generator():
             
     return True
 
-# generator.py의 generate_problem 함수를 import하고 호출
-def generate_problem(api_key, algorithm_type, difficulty, verbose=False):
+# generator.py의 generate_problem 함수를 subprocess를 통해 호출
+def generate_problem(api_key, algorithm_type, difficulty, verbose=True):
     """
-    problem-generator의 generate_problem 함수를 호출하여 문제를 생성합니다.
-    이 함수는 단순한 브릿지 역할을 하며, problem-generator의 기능을 그대로 활용합니다.
+    problem-generator의 generate_problem 함수를 subprocess를 통해 호출하여 문제를 생성합니다.
     
     Args:
         api_key (str): Google AI API 키
@@ -88,77 +94,97 @@ def generate_problem(api_key, algorithm_type, difficulty, verbose=False):
     if not api_key:
         raise ValueError("API key is required")
     
-    # 알고리즘 타입과 난이도 검증
-    if algorithm_type not in ALGORITHM_TYPES:
-        print(f"Warning: Unknown algorithm type '{algorithm_type}'. Using anyway.")
-    
-    if difficulty not in DIFFICULTY_LEVELS:
-        print(f"Warning: Unknown difficulty level '{difficulty}'. Using anyway.")
-    
     # problem-generator 모듈 접근 가능 여부 확인
     if not check_problem_generator():
         raise ImportError("Cannot access problem-generator module")
     
     try:
-        # 커스텀 imports 방식으로 직접 필요한 모듈들을 import
-        # 기존의 상대 경로 문제를 해결하기 위한 방식
+        # 임시 파일 생성 (결과 저장용)
+        with tempfile.NamedTemporaryFile(suffix='.json', delete=False, mode='w', encoding='utf-8') as temp_file:
+            temp_file_path = temp_file.name
         
-        # 1. generator.py 파일 경로 설정
-        generator_path = GENERATOR_PATH / 'generation' / 'generator.py'
-        utils_path = GENERATOR_PATH / 'utils'
+        # generator.py 스크립트 경로
+        generator_script_path = GENERATION_PATH / 'generator.py'
         
-        # 2. model_manager.py 직접 import 준비
-        sys.path.insert(0, str(utils_path))
+        # 환경 변수 설정
+        env = os.environ.copy()
+        env['GOOGLE_AI_API_KEY'] = api_key
         
-        # 3. 먼저 model_manager 모듈 import
-        try:
-            from model_manager import get_llm, create_chain
-            print("Successfully imported model_manager")
-        except ImportError as e:
-            print(f"Failed to import model_manager: {e}")
-            raise
+        # 명령어 구성
+        command = [
+            sys.executable,
+            str(generator_script_path),
+            '--algorithm_type', algorithm_type,
+            '--difficulty', difficulty,
+            '--output', temp_file_path,
+            '--json'
+        ]
         
-        # 4. generator.py 모듈 로드
-        with open(generator_path, 'r') as f:
-            generator_code = f.read()
-            
-        # 5. 상대 임포트 구문을 절대 임포트로 수정
-        generator_code = generator_code.replace("from ..utils.model_manager", "from model_manager")
+        if not verbose:
+            command.append('--quiet')
         
-        # 6. 수정된 코드를 실행하기 위한 임시 모듈 생성
-        module_name = "problem_generator_module"
-        spec = importlib.util.spec_from_loader(module_name, loader=None)
-        generator_module = importlib.util.module_from_spec(spec)
-        
-        # 7. 전역 변수 설정 (필요한 경우)
-        generator_module.__file__ = str(generator_path)
-        
-        # 8. 코드 실행
-        exec(generator_code, generator_module.__dict__)
-        
-        # 9. problem-generator의 generate_problem 함수 호출
+        # 명령어 실행
         if verbose:
             print(f"\n{algorithm_type} 유형의 {difficulty} 난이도 문제 생성을 시작합니다...\n")
         
-        # 10. generate_problem 함수 직접 호출
-        result = generator_module.generate_problem(
-            api_key=api_key,
-            algorithm_type=algorithm_type,
-            difficulty=difficulty,
-            verbose=verbose
+        process = subprocess.Popen(
+            command, 
+            env=env, 
+            stdout=subprocess.PIPE if not verbose else None, 
+            stderr=subprocess.PIPE if not verbose else None,
+            text=True
         )
         
-        end_time = time.time()
-        elapsed_time = end_time - start_time
+        # 프로세스 완료 대기
+        stdout, stderr = process.communicate()
         
-        # 메타데이터 추가
-        result["generation_time"] = elapsed_time
+        if process.returncode != 0:
+            error_msg = f"Problem generator process failed with code {process.returncode}"
+            if stderr:
+                error_msg += f": {stderr}"
+            raise RuntimeError(error_msg)
+        
+        # 결과 파일 읽기
+        try:
+            with open(temp_file_path, 'r', encoding='utf-8') as f:
+                result = json.load(f)
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Failed to parse JSON from output file: {str(e)}")
+        except FileNotFoundError:
+            raise FileNotFoundError(f"Output file not found at {temp_file_path}")
+        finally:
+            # 임시 파일 삭제
+            try:
+                os.unlink(temp_file_path)
+            except:
+                pass
+        
+        # 처리 시간 기록
+        end_time = time.time()
+        result["generation_time"] = end_time - start_time
+        
+        # 결과가 JSON 구조인지 확인하고, 그렇지 않다면 적절한 구조로 변환
+        if not isinstance(result.get("generated_problem"), dict):
+            # 문자열 결과는 full_text 필드에 저장하고 JSON 구조로 변환
+            original_problem = result.get("generated_problem", "")
+            result["generated_problem"] = {
+                "title": f"{algorithm_type} {difficulty} 문제",
+                "algorithm_type": algorithm_type,
+                "difficulty": difficulty,
+                "full_text": original_problem
+            }
+        
+        # 서브프로세스 실행 결과 포함
+        if stdout:
+            result["subprocess_stdout"] = stdout.strip()
+        if stderr:
+            result["subprocess_stderr"] = stderr.strip()
         
         if verbose:
-            print(f"완료! (소요 시간: {elapsed_time:.1f}초)")
+            print(f"완료! (소요 시간: {end_time - start_time:.1f}초)")
         
         return result
-    
+        
     except Exception as e:
         print(f"problem-generator 모듈 호출 중 오류 발생: {str(e)}")
         traceback.print_exc()
@@ -168,5 +194,10 @@ def generate_problem(api_key, algorithm_type, difficulty, verbose=False):
             "algorithm_type": algorithm_type,
             "difficulty": difficulty,
             "error": str(e),
-            "generated_problem": f"문제 생성 중 오류 발생: {str(e)}"
+            "generated_problem": {
+                "title": f"{algorithm_type} {difficulty} 문제",
+                "algorithm_type": algorithm_type,
+                "difficulty": difficulty,
+                "full_text": f"문제 생성 중 오류 발생: {str(e)}"
+            }
         }

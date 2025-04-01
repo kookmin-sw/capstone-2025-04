@@ -1,5 +1,6 @@
 import os
 from dotenv import load_dotenv
+from botocore.exceptions import ClientError
 
 # .env 파일 로드
 load_dotenv()
@@ -13,6 +14,7 @@ LOCALSTACK_PORT = os.environ.get('LOCALSTACK_PORT', '4566')
 REGION = os.environ.get('AWS_REGION', 'us-east-1')
 SQS_QUEUE_NAME = os.environ.get('SQS_QUEUE_NAME', 'problem-generator-queue')
 S3_BUCKET_NAME = os.environ.get('S3_BUCKET_NAME', 'problem-generator-results')
+DYNAMODB_TABLE_NAME = os.environ.get('DYNAMODB_TABLE_NAME', 'problem-job-status')
 
 # Localstack 엔드포인트
 def get_endpoint_url():
@@ -57,3 +59,43 @@ def initialize_s3_bucket(s3_client):
         except:
             # 이미 존재하는 경우 무시
             pass
+
+# DynamoDB 테이블 초기화 함수 추가
+def initialize_dynamodb_table(dynamodb_resource):
+    """DynamoDB 테이블을 생성하거나 존재하는지 확인합니다."""
+    try:
+        table = dynamodb_resource.create_table(
+            TableName=DYNAMODB_TABLE_NAME,
+            KeySchema=[
+                {
+                    'AttributeName': 'job_id',
+                    'KeyType': 'HASH'  # 파티션 키
+                }
+            ],
+            AttributeDefinitions=[
+                {
+                    'AttributeName': 'job_id',
+                    'AttributeType': 'S' # 문자열 타입
+                }
+            ],
+            ProvisionedThroughput={
+                'ReadCapacityUnits': 1, # 온디맨드 또는 더 낮은 값으로 설정 가능
+                'WriteCapacityUnits': 1
+            }
+        )
+        # 테이블 생성을 기다립니다.
+        print(f"Waiting for table {DYNAMODB_TABLE_NAME} to be created...")
+        table.meta.client.get_waiter('table_exists').wait(TableName=DYNAMODB_TABLE_NAME, WaiterConfig={'Delay': 1, 'MaxAttempts': 10})
+        print(f"DynamoDB table '{DYNAMODB_TABLE_NAME}' created.")
+        return table
+    except ClientError as e:
+        error_code = e.response.get('Error', {}).get('Code')
+        if error_code == 'ResourceInUseException':
+            print(f"DynamoDB table '{DYNAMODB_TABLE_NAME}' already exists.")
+            return dynamodb_resource.Table(DYNAMODB_TABLE_NAME)
+        elif error_code == 'LimitExceededException' and IS_LOCAL:
+            print(f"LocalStack DynamoDB limit reached, assuming table '{DYNAMODB_TABLE_NAME}' exists.")
+            return dynamodb_resource.Table(DYNAMODB_TABLE_NAME)
+        else:
+            print(f"Error initializing DynamoDB table: {e}")
+            raise

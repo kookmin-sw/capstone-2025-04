@@ -33,12 +33,15 @@
 
    - API Gateway를 통해 사용자로부터 문제 생성 요청 수신
    - Lambda(Request Handler)가 요청을 검증하고 SQS 큐에 작업 등록
+   - **DynamoDB에 작업 상태를 `QUEUED`로 초기화**
    - 사용자에게 작업 ID와 추후 결과를 확인할 수 있는 URL 반환
 
 2. **문제 생성 단계**:
    - Lambda(Problem Generator)가 SQS 큐에서 작업을 가져와 처리
+   - **DynamoDB의 작업 상태를 `PROCESSING`으로 업데이트**
    - LLM을 이용하여 알고리즘 문제를 생성
    - 생성된 문제를 S3에 저장
+   - **DynamoDB의 작업 상태를 `COMPLETED` (또는 오류 시 `FAILED`)로 업데이트**
    - 처리 완료된 메시지를 SQS에서 삭제
 
 이 아키텍처는 다음과 같은 이점을 제공합니다:
@@ -67,6 +70,7 @@
 3. **AWS 서비스**
    - **Amazon SQS**: 작업 대기열 관리
    - **Amazon S3**: 생성된 문제 저장
+   - **Amazon DynamoDB**: 작업 상태 추적 및 관리
    - **Amazon API Gateway**: API 엔드포인트 제공
 
 ### 파일 구조
@@ -81,6 +85,8 @@ problem-generator-aws/
 │   │   └── lambda_function.py
 │   └── problem_generator/  # 문제 생성 Lambda
 │       └── lambda_function.py
+└── dynamodb_schemas/       # DynamoDB 테이블 스키마 예시 (선택적)
+    └── job_status.json
 └── utils/
     └── aws_utils.py        # AWS 서비스 유틸리티 함수
 ```
@@ -138,6 +144,9 @@ pip install -r requirements.txt
 ```bash
 # Google AI API 키 설정 (필수)
 export GOOGLE_AI_API_KEY="your-api-key-here"
+
+# DynamoDB 테이블 이름 (선택 사항, 기본값: problem-job-status)
+export DYNAMODB_TABLE_NAME="problem-job-status"
 
 # 로컬 테스트용 설정
 export IS_LOCAL="true"
@@ -216,6 +225,7 @@ AWS 콘솔에서 Lambda 함수에 필요한 권한을 가진 IAM 역할을 생�
 - AWSLambdaBasicExecutionRole
 - AmazonSQSFullAccess
 - AmazonS3FullAccess
+- AmazonDynamoDBFullAccess (또는 더 제한적인 권한: dynamodb:PutItem, dynamodb:UpdateItem, dynamodb:GetItem)
 
 3. **Lambda 함수 생성**:
 
@@ -248,16 +258,27 @@ aws lambda create-function \
 4. **SQS 큐 생성**:
 
 ```bash
-aws sqs create-queue --queue-name problem-generator-queue
+aws sqs create-queue --queue-name problem-generator-queue # 환경 변수 SQS_QUEUE_NAME 값 사용 권장
 ```
 
 5. **S3 버킷 생성**:
 
 ```bash
-aws s3 mb s3://problem-generator-results
+aws s3 mb s3://problem-generator-results # 환경 변수 S3_BUCKET_NAME 값 사용 권장
 ```
 
-6. **Lambda 트리거 설정**:
+6. **DynamoDB 테이블 생성**:
+
+```bash
+aws dynamodb create-table \
+    --table-name problem-job-status \
+    --attribute-definitions AttributeName=job_id,AttributeType=S \
+    --key-schema AttributeName=job_id,KeyType=HASH \
+    --provisioned-throughput ReadCapacityUnits=1,WriteCapacityUnits=1
+# 환경 변수 DYNAMODB_TABLE_NAME 값 사용 권장
+```
+
+7. **Lambda 트리거 설정**:
 
 ```bash
 # SQS에서 Lambda 트리거 설정
@@ -267,7 +288,7 @@ aws lambda create-event-source-mapping \
     --batch-size 1
 ```
 
-7. **API Gateway 설정**:
+8. **API Gateway 설정**:
 
 AWS 콘솔에서 API Gateway를 설정하고 요청 처리 Lambda를 연결하세요.
 
@@ -295,13 +316,15 @@ AWS 콘솔에서 API Gateway를 설정하고 요청 처리 Lambda를 연결하�
   "status": "QUEUED",
   "algorithm_type": "그래프",
   "difficulty": "보통",
-  "result_url": "https://problem-generator-results.s3.amazonaws.com/results/550e8400-e29b-41d4-a716-446655440000.json"
+  "result_url": "https://problem-generator-results.s3.amazonaws.com/results/550e8400-e29b-41d4-a716-446655440000.json",
+  "message_id": "abcdef12-3456-7890-abcd-ef1234567890" // SQS Message ID
 }
 ```
 
 ### 결과 확인
 
 생성이 완료되면 `result_url`에서 결과를 확인할 수 있습니다. S3에서 파일을 다운로드하여 내용을 확인하세요.
+또한, DynamoDB 테이블에서 `job_id`를 사용하여 작업의 최종 상태(`COMPLETED` 또는 `FAILED`)와 결과 URL 또는 오류 메시지를 확인할 수 있습니다.
 
 ## 문제 해결
 
@@ -335,6 +358,7 @@ AWS 콘솔에서 API Gateway를 설정하고 요청 처리 Lambda를 연결하�
 5. **SQS 메시지 처리 문제**:
    - CloudWatch 로그에서 Lambda 실행 로그 확인
    - SQS 데드레터 큐 설정 고려
+   - DynamoDB 테이블에서 작업 상태가 `PROCESSING`에서 멈춰 있는지 확인
 
 ### Lambda 타임아웃 해결
 
@@ -350,7 +374,8 @@ aws lambda update-function-configuration \
 
 ## 향후 개선 사항
 
-1. **상태 추적 개선**: DynamoDB를 추가하여 작업 상태를 체계적으로 관리
+1. **상태 조회 API**: DynamoDB에 저장된 작업 상태를 조회하는 API 엔드포인트 추가
 2. **웹훅 알림**: 문제 생성 완료 시 웹훅을 통한 알림 기능
 3. **모니터링 대시보드**: CloudWatch 지표를 활용한 대시보드 구성
 4. **간소화된 배포**: AWS SAM 또는 CloudFormation 템플릿 개발
+5. **세분화된 상태 관리**: `PROCESSING` 상태를 더 세분화 (예: `GENERATING_DESCRIPTION`, `GENERATING_TESTCASES`)
