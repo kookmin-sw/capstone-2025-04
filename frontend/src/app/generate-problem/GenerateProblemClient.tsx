@@ -7,7 +7,7 @@ import {
   streamGenerationStatusDummyAPI, // Use the streaming dummy
   GenerateProblemParams,
   GeneratedProblem,
-  StreamMessage, // Import the message type
+  // StreamMessage, // Import the message type
 } from "@/api/dummy/generateProblemApi"; // Adjust path as needed
 
 // Problem type presets interface
