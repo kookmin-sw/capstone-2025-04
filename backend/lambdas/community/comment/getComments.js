@@ -23,10 +23,11 @@ exports.handler = async (event) => {
 
         const result = await dynamoDB.query(params).promise();
         const comments = result.Items || [];
+        const commentCount = comments.length; // 댓글 개수
 
         return {
             statusCode: 200,
-            body: JSON.stringify({ comments }),
+            body: JSON.stringify({ comments, commentCount }),
         };
     } catch (error) {
         console.error("댓글 조회 오류:", error);

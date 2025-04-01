@@ -34,11 +34,6 @@ exports.handler = async (event) => {
         const likesResult = await dynamoDB.query(likesParams).promise();
         const likesCount = likesResult.Items.length;
 
-        // 댓글 가져오기: getComments API 호출
-        const commentsResult = await axios.get(`https://your-api-gateway-url/comments/${postId}`);
-        const comments = commentsResult.data.comments;
-        const commentsCount = comments.length;
-
         // 반환할 데이터
         return {
             statusCode: 200,
@@ -49,8 +44,6 @@ exports.handler = async (event) => {
                 author,
                 createdAt,
                 likesCount,
-                commentsCount,
-                comments,
             }),
         };
 
