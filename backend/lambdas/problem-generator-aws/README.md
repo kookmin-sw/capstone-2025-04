@@ -1,6 +1,7 @@
 # Problem Generator AWS 서버리스 구현
 
-이 프로젝트는 알고리즘 문제 생성기(Problem Generator)를 AWS 서버리스 환경에서 운영하기 위한 구현체입니다. SQS와 S3를 활용하여 비동기 처리 파이프라인을 구성하였습니다.
+이 프로젝트는 별도의 `problem-generator` 모듈을 AWS 서버리스 환경에서 실행하고 관리하기 위한 래퍼(wrapper) 및 오케스트레이터(orchestrator)입니다.
+알고리즘 문제 생성 요청을 받아 SQS를 통해 비동기적으로 처리하고, DynamoDB로 작업 상태를 추적하며, 결과는 S3에 저장합니다.
 
 ## 목차
 
@@ -16,15 +17,27 @@
 
 이 시스템은 다음과 같은 아키텍처로 구성되어 있습니다:
 
-```
-+----------------+      +------+      +--------------------+      +------+
-| API Gateway    | ---> | SQS  | ---> | Lambda (Generator) | ---> | S3   |
-+----------------+      +------+      +--------------------+      +------+
-       |                    ㅅ
-       v                    |
-+--------------------+     |
-| Lambda (Request)   | -----
-+--------------------+
+```mermaid
+graph LR
+    subgraph "User Request Flow"
+        A[API Gateway] --> E{Lambda Request Handler};
+    end
+    subgraph "Async Processing Pipeline"
+        B(SQS Queue) -- Triggers --> C{Lambda Problem Generator};
+        C -- Saves Result --> D[S3 Bucket];
+    end
+    subgraph "State Management"
+        F[(DynamoDB Table)];
+    end
+
+    E -- 1. Enqueue Task --> B;
+    E -- 2. Record Initial Status (QUEUED) --> F;
+    C -- 3. Update Status (PROCESSING) --> F;
+    C -- 4. Update Status (COMPLETED/FAILED) --> F;
+
+    style F fill:#f9f,stroke:#333,stroke-width:2px
+    style B fill:#ccf,stroke:#333,stroke-width:2px
+    style D fill:#cfc,stroke:#333,stroke-width:2px
 ```
 
 ### 처리 흐름
@@ -39,7 +52,7 @@
 2. **문제 생성 단계**:
    - Lambda(Problem Generator)가 SQS 큐에서 작업을 가져와 처리
    - **DynamoDB의 작업 상태를 `PROCESSING`으로 업데이트**
-   - LLM을 이용하여 알고리즘 문제를 생성
+   - (`problem-generator` 모듈 호출) LLM을 이용하여 알고리즘 문제를 생성
    - 생성된 문제를 S3에 저장
    - **DynamoDB의 작업 상태를 `COMPLETED` (또는 오류 시 `FAILED`)로 업데이트**
    - 처리 완료된 메시지를 SQS에서 삭제
@@ -148,6 +161,12 @@ export GOOGLE_AI_API_KEY="your-api-key-here"
 # DynamoDB 테이블 이름 (선택 사항, 기본값: problem-job-status)
 export DYNAMODB_TABLE_NAME="problem-job-status"
 
+# SQS 큐 이름 (선택 사항, 기본값: problem-generator-queue)
+export SQS_QUEUE_NAME="problem-generator-queue"
+
+# S3 버킷 이름 (선택 사항, 기본값: problem-generator-results)
+export S3_BUCKET_NAME="problem-generator-results"
+
 # 로컬 테스트용 설정
 export IS_LOCAL="true"
 export LOCALSTACK_HOSTNAME="localhost"
@@ -230,7 +249,7 @@ AWS 콘솔에서 Lambda 함수에 필요한 권한을 가진 IAM 역할을 생�
 3. **Lambda 함수 생성**:
 
 ```bash
-# 요청 처리 Lambda
+# 요청 처리 Lambda (환경 변수 DYNAMODB_TABLE_NAME, SQS_QUEUE_NAME 추가 권장)
 aws lambda create-function \
     --function-name problem-request-handler \
     --runtime python3.9 \
@@ -240,9 +259,9 @@ aws lambda create-function \
     --layers arn:aws:lambda:<YOUR_REGION>:<YOUR_ACCOUNT_ID>:layer:problem-generator-dependencies:<VERSION> \
     --timeout 10 \
     --memory-size 128 \
-    --environment "Variables={GOOGLE_AI_API_KEY=<YOUR_API_KEY>}"
+    --environment "Variables={GOOGLE_AI_API_KEY=<YOUR_API_KEY>,DYNAMODB_TABLE_NAME=$DYNAMODB_TABLE_NAME,SQS_QUEUE_NAME=$SQS_QUEUE_NAME}"
 
-# 문제 생성 Lambda
+# 문제 생성 Lambda (환경 변수 DYNAMODB_TABLE_NAME, S3_BUCKET_NAME 추가 권장)
 aws lambda create-function \
     --function-name problem-generator-worker \
     --runtime python3.9 \
@@ -252,30 +271,29 @@ aws lambda create-function \
     --layers arn:aws:lambda:<YOUR_REGION>:<YOUR_ACCOUNT_ID>:layer:problem-generator-dependencies:<VERSION> \
     --timeout 900 \
     --memory-size 2048 \
-    --environment "Variables={GOOGLE_AI_API_KEY=<YOUR_API_KEY>}"
+    --environment "Variables={GOOGLE_AI_API_KEY=<YOUR_API_KEY>,DYNAMODB_TABLE_NAME=$DYNAMODB_TABLE_NAME,S3_BUCKET_NAME=$S3_BUCKET_NAME}"
 ```
 
 4. **SQS 큐 생성**:
 
 ```bash
-aws sqs create-queue --queue-name problem-generator-queue # 환경 변수 SQS_QUEUE_NAME 값 사용 권장
+aws sqs create-queue --queue-name ${SQS_QUEUE_NAME:-problem-generator-queue}
 ```
 
 5. **S3 버킷 생성**:
 
 ```bash
-aws s3 mb s3://problem-generator-results # 환경 변수 S3_BUCKET_NAME 값 사용 권장
+aws s3 mb s3://${S3_BUCKET_NAME:-problem-generator-results}
 ```
 
 6. **DynamoDB 테이블 생성**:
 
 ```bash
 aws dynamodb create-table \
-    --table-name problem-job-status \
+    --table-name ${DYNAMODB_TABLE_NAME:-problem-job-status} \
     --attribute-definitions AttributeName=job_id,AttributeType=S \
     --key-schema AttributeName=job_id,KeyType=HASH \
     --provisioned-throughput ReadCapacityUnits=1,WriteCapacityUnits=1
-# 환경 변수 DYNAMODB_TABLE_NAME 값 사용 권장
 ```
 
 7. **Lambda 트리거 설정**:
@@ -376,6 +394,6 @@ aws lambda update-function-configuration \
 
 1. **상태 조회 API**: DynamoDB에 저장된 작업 상태를 조회하는 API 엔드포인트 추가
 2. **웹훅 알림**: 문제 생성 완료 시 웹훅을 통한 알림 기능
-3. **모니터링 대시보드**: CloudWatch 지표를 활용한 대시보드 구성
+3. **세분화된 상태 관리**: DynamoDB에 `current_step` 필드를 추가하여 `PROCESSING` 상태를 더 세분화 (예: `ANALYZING_TEMPLATE`, `TRANSFORMING_CODE`, `GENERATING_DESCRIPTION`, `GENERATING_TESTCASES`)
 4. **간소화된 배포**: AWS SAM 또는 CloudFormation 템플릿 개발
-5. **세분화된 상태 관리**: `PROCESSING` 상태를 더 세분화 (예: `GENERATING_DESCRIPTION`, `GENERATING_TESTCASES`)
+5. **LLM 응답 스트리밍**: (복잡도 높음) WebSocket을 사용하여 특정 단계의 LLM 응답을 프론트엔드로 실시간 스트리밍
