@@ -5,11 +5,10 @@ from typing import Optional, Dict, Any, Union, List
 # Langchain 컴포넌트 가져오기
 from langchain_core.language_models import BaseLLM
 from langchain_core.prompts import ChatPromptTemplate, PromptTemplate
-from langchain_core.output_parsers import StrOutputParser, JsonOutputParser
+from langchain_core.output_parsers import StrOutputParser, PydanticOutputParser
 from langchain_core.runnables import RunnablePassthrough, RunnableLambda
 from langchain_google_genai import ChatGoogleGenerativeAI
 from pydantic import BaseModel
-import re
 
 # 향후 AWS Bedrock 지원을 위한 준비 
 # from langchain_aws import BedrockChat
@@ -99,9 +98,9 @@ def create_chain(prompt_template, model=None):
     if model is None:
         model = get_llm(model_type="thinking")
     
-    # 가장 안전한 방법: 중괄호 이스케이프를 위해 모든 중괄호를 두 배로 처리
-    safe_template = re.sub(r'{', r'{{', prompt_template)
-    safe_template = re.sub(r'}', r'}}', safe_template)
+    # f-string이 아닌 단순 문자열 템플릿을 가정하고 처리
+    # 중괄호 이스케이프를 위해 .replace() 사용
+    safe_template = prompt_template.replace('{', '{{}}').replace('}', '{{}}')
     
     # 변수 없는 채팅 프롬프트 템플릿 생성
     prompt = ChatPromptTemplate.from_messages([
@@ -184,7 +183,7 @@ def create_advanced_chain(
     return current_pipeline
 
 def create_json_chain(prompt_template, pydantic_model: type[BaseModel], model=None):
-    """구조화된 JSON 출력을 반환하는 체인 생성 (Pydantic 모델 사용)
+    """구조화된 JSON 출력을 반환하는 체인 생성 (Pydantic 모델 객체 반환)
     
     Args:
         prompt_template (str): {variables} 형태의 변수를 포함한 프롬프트 템플릿
@@ -192,7 +191,7 @@ def create_json_chain(prompt_template, pydantic_model: type[BaseModel], model=No
         model (ChatGoogleGenerativeAI, optional): 사용할 LLM 모델
         
     Returns:
-        입력을 처리하고 구조화된 JSON (Pydantic 모델 인스턴스)을 반환하는 체인
+        입력을 처리하고 구조화된 Pydantic 모델 인스턴스를 반환하는 체인
         
     Example:
         ```python
@@ -209,16 +208,22 @@ def create_json_chain(prompt_template, pydantic_model: type[BaseModel], model=No
     if model is None:
         model = get_llm(model_type="thinking")
     
-    # Pydantic 모델에서 JSON 형식 지침 자동 생성 (JsonOutputParser가 처리)
-    parser = JsonOutputParser(pydantic_object=pydantic_model)
+    # Pydantic 모델을 사용하는 파서 생성
+    parser = PydanticOutputParser(pydantic_object=pydantic_model)
     
+    # 프롬프트 템플릿 정의 (마크다운 금지 지침 추가)
+    system_message = f"""
+    당신은 전문 AI 어시스턴트입니다. 사용자의 요청을 처리하고 그 결과를 JSON 형식으로 반환하세요. 
+    다음은 출력해야 할 JSON 객체의 형식입니다:\n{{format_instructions}}
+    **중요: JSON 응답을 절대 마크다운 코드 블록(```)으로 감싸지 마세요.**
+    """
     prompt = ChatPromptTemplate.from_messages([
-        ("system", "당신은 전문 AI 어시스턴트입니다. 사용자의 요청을 처리하고 그 결과를 JSON 형식으로 반환하세요. 다음은 출력해야 할 JSON 객체의 형식입니다:\n{format_instructions}"),
-        ("human", prompt_template) # 중괄호 이스케이프 제거
+        ("system", system_message),
+        ("human", prompt_template) 
     ]).partial(format_instructions=parser.get_format_instructions())
     
-    # 체인 구성 및 반환
-    chain = prompt | model | parser
+    # 체인 구성: 마크다운 제거 단계 제거
+    chain = prompt | model | parser # StrOutputParser와 RunnableLambda 제거
     
     return chain
 

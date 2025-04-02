@@ -2,7 +2,6 @@ import os
 import random
 import json
 import argparse
-import re
 from pathlib import Path
 from dotenv import load_dotenv
 import sys
@@ -10,7 +9,8 @@ import time
 import tempfile
 import subprocess
 import importlib.util
-from typing import List
+import textwrap
+from typing import List, Dict, Any, Union
 from pydantic import BaseModel, Field
 
 # Ensure the parent directory ('problem-generator') is in the path
@@ -68,6 +68,17 @@ STYLE_DESCRIPTIONS = {
         입력, 출력, 예제, 그리고 추가적인 설명이 포함되어 문제 이해를 돕습니다.
     """
 }
+
+# Pydantic 모델 정의
+class ProblemDescriptionOutput(BaseModel):
+    problem_title: str = Field(description="문제 제목")
+    description: str = Field(description="문제 배경 및 설명")
+    input_format: str = Field(description="입력 형식 설명")
+    output_format: str = Field(description="출력 형식 설명")
+    constraints: str = Field(description="제약 조건 설명")
+
+class TestCaseGeneratorOutput(BaseModel):
+    python_code: str = Field(description="테스트 케이스 생성을 위한 Python 코드 (solution 및 generate_test_cases 함수 포함)")
 
 def load_template(algorithm_type, difficulty):
     """Load and return a template code file for the given algorithm type and difficulty"""
@@ -181,19 +192,23 @@ class ProblemGenerator:
         
         # Step 3: Problem description generation
         self.show_progress(3, 6, "문제 설명 생성 중...")
-        problem_description = self._generate_description(
+        problem_desc_output = self._generate_description(
             algorithm_type, difficulty, transformed_code, 
             style_desc, difficulty_desc
         )
         
+        # 문제 설명 생성 실패 시 처리 추가
+        if isinstance(problem_desc_output, dict) and "error" in problem_desc_output:
+             return problem_desc_output # 오류 반환
+        
         # Step 4: Test case generation
         self.show_progress(4, 6, "테스트 케이스 생성 중...")
-        test_gen_result = self._generate_test_cases(transformed_code, problem_description)
+        test_gen_result = self._generate_test_cases(transformed_code, problem_desc_output)
         
         # Step 5: Final integration
         self.show_progress(5, 6, "최종 문제 통합 중...")
         final_problem = self._integrate_results(
-            problem_description, test_gen_result, transformed_code,
+            problem_desc_output, test_gen_result, transformed_code,
             algorithm_type, difficulty
         )
         
@@ -235,14 +250,17 @@ class ProblemGenerator:
         """
         # Create a chain for this specific prompt
         chain = create_chain(prompt, self.model)
-        response = chain.invoke({})
-        return response
+        try:
+            response = chain.invoke({})
+            return response
+        except Exception as e:
+            return {"error": f"템플릿 분석 중 오류 발생: {e}"}
     
     def _transform_code(self, template_code, template_analysis):
         """Step 2: Transform the template code based on the analysis"""
-        # 템플릿 코드의 언어 감지 (Python인지 C++인지)
-        is_python = bool(re.search(r'def\s+\w+\s*\(', template_code))
-        is_cpp = bool(re.search(r'#include|using\s+namespace|int\s+main\s*\(', template_code))
+        # 템플릿 코드의 언어 감지 (Python인지 C++인지) - re 대신 in 사용
+        is_python = 'def ' in template_code and '(' in template_code and '):' in template_code
+        is_cpp = '#include' in template_code or 'using namespace' in template_code or 'int main(' in template_code
         
         # 코드 언어에 따른 프롬프트 조정
         language_note = ""
@@ -278,147 +296,180 @@ class ProblemGenerator:
         ```
         """
         chain = create_chain(prompt, self.model)
-        response = chain.invoke({})
-        return response
-    
-    def _generate_description(self, algorithm_type, difficulty, transformed_code, style_desc, difficulty_desc):
-        """Step 3: Generate problem description based on the transformed code"""
-        prompt = f"""
-        당신은 알고리즘 문제 생성 전문가입니다. 변형된 코드를 바탕으로 문제 설명을 작성해주세요:
-        
-        ## 입력 정보
-        - 알고리즘 유형: {algorithm_type}
-        - 난이도 수준: {difficulty}
-        
-        ## 문제 포맷 스타일
-        {style_desc}
-        
-        ## 난이도 요구사항
-        {difficulty_desc}
-        
-        ## 변형된 코드
-        {transformed_code}
-        
-        다음 내용을 포함한 문제 설명을 작성해주세요:
-        1. 문제 배경 및 설명
-        2. 입력 형식 설명
-        3. 출력 형식 설명
-        
-        문제 설명은 명확하고 논리적이어야 하며, 지정된 스타일과 난이도 요구사항을 준수해야 합니다.
-        예제 입력/출력은 아직 포함하지 마세요.
-        """
-        chain = create_chain(prompt, self.model)
-        response = chain.invoke({})
-        return response
-    
-    def _generate_test_cases(self, transformed_code, problem_description):
-        """Step 4: Generate test case *code* and execute it safely."""
-        # 1. LLM에게 테스트 케이스 생성 코드 요청 (원래 방식 복원)
-        prompt = f"""
-        당신은 알고리즘 문제 생성 전문가입니다. 아래 문제 설명과 코드를 바탕으로 테스트 케이스를 생성하는 **Python 코드**를 작성해주세요:
-        
-        ## 문제 설명
-        {problem_description}
-        
-        ## 문제 해결 코드 (solution)
-        ```python
-        {transformed_code} # 실제로는 이 코드 기반으로 solution 함수 구현 필요
-        ```
-        
-        다음 요구사항에 맞게 테스트 케이스 생성 코드를 작성해주세요:
-        1. 코드는 Python으로 작성되어야 합니다.
-        2. `generate_test_cases()` 함수를 포함해야 합니다. 이 함수는 테스트 케이스 목록을 반환하며, 각 테스트 케이스는 `{{\'input\': ..., \'output\': ...}}` 형식의 딕셔너리여야 합니다. (input/output은 문자열)
-        3. `solution(input_str)` 함수를 포함해야 합니다. 이 함수는 문자열 입력을 받아 문제의 정답(문자열)을 반환합니다. (위의 '문제 해결 코드'를 참고하여 구현)
-        4. `generate_test_cases()`는 최소 3개, 최대 5개의 다양한 테스트 케이스(기본, 경계값 등)를 생성해야 합니다.
-        
-        코드 전체를 단일 Python 코드 블록(```python ... ```)으로 반환해주세요. 다른 설명은 필요 없습니다.
-        """
-        
-        generated_code_str = ""
-        error_message = None
-        executed_test_cases = []
-        
         try:
-            # LLM 호출 (create_chain 사용)
-            chain = create_chain(prompt, self.model)
-            llm_response = chain.invoke({})
-            
-            # 2. 코드 추출 (마크다운 코드 블록)
-            import re
-            code_pattern = r"```python\s*(.*?)\s*```"
-            match = re.search(code_pattern, llm_response, re.DOTALL)
-            
-            if not match:
-                # 코드 블록을 찾지 못한 경우
-                raise ValueError(f"Could not extract Python code block from LLM response.\nResponse: {llm_response[:500]}...")
-                
-            generated_code_str = match.group(1).strip()
-            
-            # 3. 코드 실행 시도 (안전하게)
-            with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False, encoding='utf-8') as tmp_file:
-                tmp_file.write(generated_code_str)
-                tmp_file_path = tmp_file.name
-                
-            # 모듈 로드 및 함수 실행
-            spec = None
-            module = None
-            try:
-                spec = importlib.util.spec_from_file_location("test_gen_module", tmp_file_path)
-                if spec is None or spec.loader is None:
-                     raise ImportError("Could not create module spec.")
-                module = importlib.util.module_from_spec(spec)
-                
-                # 실행 시간 제한 추가 고려 (예: threading, multiprocessing, 또는 별도 라이브러리)
-                spec.loader.exec_module(module) # 여기서 SyntaxError 등 발생 가능
-                
-                if not hasattr(module, 'generate_test_cases') or not callable(module.generate_test_cases):
-                    raise AttributeError("Function 'generate_test_cases' not found or not callable.")
-                if not hasattr(module, 'solution') or not callable(module.solution):
-                    raise AttributeError("Function 'solution' not found or not callable.")
-                    
-                # 테스트 케이스 생성 실행
-                generated_cases = module.generate_test_cases() # 여기서 Runtime Error 가능
-                
-                if not isinstance(generated_cases, list):
-                    raise TypeError("generate_test_cases did not return a list.")
-                
-                # 생성된 테스트 케이스 검증 및 solution 실행
-                for i, case in enumerate(generated_cases[:5]): # 최대 5개 사용
-                     if not isinstance(case, dict) or 'input' not in case:
-                         print(f"Warning: Test case {i} has invalid format. Skipping.")
-                         continue
-                     
-                     input_str = str(case['input']) # 입력은 문자열로 강제
-                     expected_output = str(case.get('output')) if case.get('output') is not None else None # 출력도 문자열로
-                     
-                     # solution 함수 실행 (오류 가능성 있음)
-                     actual_output_str = str(module.solution(input_str))
-                     
-                     # 실행된 결과 저장
-                     executed_test_cases.append({
-                         'input': input_str,
-                         'expected_output': expected_output, 
-                         'actual_output': actual_output_str
-                     })
-                     
-            except Exception as exec_err:
-                 # 코드 실행 중 발생한 모든 예외 처리
-                 error_message = f"Error executing generated code: {type(exec_err).__name__} - {str(exec_err)}"
-                 print(f"Warning: {error_message}")
-                 # 오류 발생 시 빈 테스트 케이스 목록 유지
-                 executed_test_cases = []
-                 
-            finally:
-                 # 임시 파일 정리
-                 if tmp_file_path and os.path.exists(tmp_file_path):
-                     os.remove(tmp_file_path)
-
+            response = chain.invoke({})
+            # 코드 블록만 추출 (LLM이 코드만 반환하도록 유도했지만, 안전장치)
+            code_match = response.split("```")
+            if len(code_match) >= 2:
+                # 언어 식별자 제거 (예: ```python)
+                code_content = code_match[1]
+                if code_content.startswith(("python", "cpp", "c++")):
+                     code_content = code_content.split("\n", 1)[1]
+                return code_content.strip()
+            return response # 코드 블록 없으면 그대로 반환 (오류 가능성 있음)
         except Exception as e:
-            # LLM 호출, 코드 추출 등 이전 단계 오류 처리
-            error_message = f"Error in test case generation process: {type(e).__name__} - {str(e)}"
-            print(f"Error: {error_message}")
-            executed_test_cases = [] # 오류 시 빈 목록
+            return {"error": f"코드 변형 중 오류 발생: {e}"}
+    
+    def _generate_description(self, algorithm_type, difficulty, transformed_code, style_desc, difficulty_desc) -> Union[ProblemDescriptionOutput, Dict[str, Any]]:
+        """Step 3: Generate problem description based on the transformed code (returns Pydantic model or error dict)"""
+        # 프롬프트 생성을 위한 문자열 포매팅 개선
+        title_example = f"{algorithm_type} 기초 ({difficulty})" # 예시 제목 포맷
+        prompt_template = textwrap.dedent(f"""
+            당신은 알고리즘 문제 생성 전문가입니다. 변형된 코드를 바탕으로 문제 설명을 작성해주세요.
+
+            ## 입력 정보
+            - 알고리즘 유형: {{algorithm_type}}
+            - 난이도 수준: {{difficulty}}
+
+            ## 문제 포맷 스타일
+            {{style_desc}}
+
+            ## 난이도 요구사항
+            {{difficulty_desc}}
+
+            ## 변형된 코드
+            ```
+            {{transformed_code}}
+            ```
+
+            예제 입력/출력은 생성하지 마세요.
+            """)
+
+        # JSON 출력을 위한 체인 생성
+        chain = create_json_chain(prompt_template, ProblemDescriptionOutput, self.model)
+        try:
+            # invoke 시점에 변수 전달
+            response = chain.invoke({
+                "algorithm_type": algorithm_type,
+                "difficulty": difficulty,
+                "style_desc": style_desc,
+                "difficulty_desc": difficulty_desc,
+                "transformed_code": transformed_code
+            })
+            return response
+        except Exception as e:
+            print(f"Error generating description: {e}") # 디버깅용 로그
+            return {"error": f"문제 설명 생성 중 오류 발생: {e}"}
+    
+    def _generate_test_cases(self, transformed_code, problem_desc_output: ProblemDescriptionOutput) -> Dict[str, Any]:
+        """Step 4: Generate test case *code* and execute it safely."""
+
+        # 문제 설명 부분만 추출
+        problem_description_text = f"""
+        ## 문제 설명
+        {problem_desc_output.description}
+
+        ## 입력 형식
+        {problem_desc_output.input_format}
+
+        ## 출력 형식
+        {problem_desc_output.output_format}
+
+        ## 제약 조건
+        {problem_desc_output.constraints}
+        """
+
+        # 프롬프트 구조 정의 (json_example 제거)
+        prompt_structure = textwrap.dedent("""
+            당신은 알고리즘 문제 생성 전문가입니다. 아래 문제 설명과 해결 코드를 바탕으로 테스트 케이스를 생성하는 **Python 코드**를 작성해주세요.
+
+            ## 문제 설명
+            {problem_description_text}
+
+            ## 문제 해결 코드 (참고용)
+            ```python
+            {transformed_code}
+            ```
+
+            다음 요구사항에 맞게 **Python 코드 문자열 하나만 포함하는 JSON 객체**를 생성해주세요. JSON 키는 `python_code` 이어야 합니다.
+
+            `python_code` 값의 요구사항:
+            1. 코드는 Python으로 작성되어야 합니다.
+            2. `generate_test_cases()` 함수를 포함해야 합니다. 이 함수는 테스트 케이스 목록을 반환하며, 각 테스트 케이스는 `{{\"input\": ..., \"output\": ...}}` 형식의 딕셔너리여야 합니다. (input/output은 문자열)
+            3. `solution(input_str)` 함수를 포함해야 합니다. 이 함수는 문자열 입력을 받아 문제의 정답(문자열)을 반환합니다. (위의 '문제 해결 코드'를 참고하여 구현하되, 필요시 수정 가능)
+            4. `generate_test_cases()`는 최소 3개, 최대 5개의 다양한 테스트 케이스(기본, 경계값 등)를 생성해야 합니다.
+            """)
         
+        # 변수만 사용하여 프롬프트 템플릿 완성
+        prompt_template = prompt_structure.format(
+            problem_description_text="{problem_description_text}", 
+            transformed_code="{transformed_code}"
+        )
+        
+        chain = create_json_chain(prompt_template, TestCaseGeneratorOutput, self.model)
+        # invoke 시 필요한 변수만 전달
+        llm_response = chain.invoke({
+            "problem_description_text": problem_description_text,
+            "transformed_code": transformed_code
+        }) # llm_response는 TestCaseGeneratorOutput 인스턴스
+
+        # JSON 응답에서 코드 추출 (Pydantic 모델 사용)
+        generated_code_str = llm_response.python_code.strip()
+
+        # generated_code_str가 비어있는 경우 예외 처리
+        if not generated_code_str:
+             raise ValueError("LLM did not return any Python code for test case generation.")
+
+        # 3. 코드 실행 시도 (안전하게)
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False, encoding='utf-8') as tmp_file:
+            tmp_file.write(generated_code_str)
+            tmp_file_path = tmp_file.name
+
+        # 모듈 로드 및 함수 실행
+        spec = None
+        module = None
+        try:
+            spec = importlib.util.spec_from_file_location("test_gen_module", tmp_file_path)
+            if spec is None or spec.loader is None:
+                 raise ImportError("Could not create module spec.")
+            module = importlib.util.module_from_spec(spec)
+
+            # 실행 시간 제한 추가 고려 (예: threading, multiprocessing, 또는 별도 라이브러리)
+            spec.loader.exec_module(module) # 여기서 SyntaxError 등 발생 가능
+
+            if not hasattr(module, 'generate_test_cases') or not callable(module.generate_test_cases):
+                raise AttributeError("Generated code missing function 'generate_test_cases' or it's not callable.")
+            if not hasattr(module, 'solution') or not callable(module.solution):
+                raise AttributeError("Generated code missing function 'solution' or it's not callable.")
+
+            # 테스트 케이스 생성 실행
+            generated_cases = module.generate_test_cases() # 여기서 Runtime Error 가능
+
+            if not isinstance(generated_cases, list):
+                raise TypeError("generate_test_cases did not return a list.")
+
+            # 생성된 테스트 케이스 검증 및 solution 실행
+            for i, case in enumerate(generated_cases[:5]): # 최대 5개 사용
+                 if not isinstance(case, dict) or 'input' not in case:
+                     print(f"Warning: Test case {i} has invalid format. Skipping.")
+                     continue
+
+                 input_str = str(case['input']) # 입력은 문자열로 강제
+                 expected_output_str = str(case.get('output')) if case.get('output') is not None else None # 출력도 문자열로
+
+                 # solution 함수 실행 (오류 가능성 있음)
+                 actual_output_str = str(module.solution(input_str))
+
+                 # 실행된 결과 저장
+                 executed_test_cases.append({
+                     'input': input_str,
+                     # 생성된 코드의 solution 함수가 output을 직접 생성하므로, expected_output 대신 actual_output 저장
+                     # 'expected_output': expected_output_str, # LLM이 생성한 output은 부정확할 수 있음
+                     'output': actual_output_str # 실제 실행 결과 저장
+                 })
+
+        except Exception as exec_err:
+             # 코드 실행 중 발생한 모든 예외 처리
+             error_message = f"Error executing generated test code: {type(exec_err).__name__} - {str(exec_err)}"
+             print(f"Warning: {error_message}\nGenerated Code:\n{generated_code_str[:500]}...") # 오류 시 코드 일부 출력
+             # 오류 발생 시 빈 테스트 케이스 목록 유지
+             executed_test_cases = []
+
+        finally:
+             # 임시 파일 정리
+             if 'tmp_file_path' in locals() and tmp_file_path and os.path.exists(tmp_file_path):
+                 os.remove(tmp_file_path)
+
         # 결과 반환 (오류 정보 포함)
         return {
             "error": error_message,
@@ -426,47 +477,28 @@ class ProblemGenerator:
             "executed_test_cases": executed_test_cases
         }
     
-    def _integrate_results(self, problem_description, test_gen_result, transformed_code, algorithm_type, difficulty):
-        """Step 5: Final integration into a structured JSON format"""
-        
+    def _integrate_results(self, problem_desc_output: ProblemDescriptionOutput, test_gen_result: Dict[str, Any], transformed_code, algorithm_type, difficulty):
+        """Step 5: Final integration into a structured JSON format using Pydantic model output"""
+
         # 테스트 케이스 결과 처리
         test_cases_list = test_gen_result.get("executed_test_cases", [])
         test_gen_code = test_gen_result.get("generated_code", "")
         test_gen_error = test_gen_result.get("error") # 오류 메시지 가져오기
 
-        # 문제 설명에서 정보 추출 시도 (정규식 사용)
-        input_format_desc = ""
-        output_format_desc = ""
-        constraints_desc = ""
-        try:
-            input_match = re.search(r"## 입력(?: 형식)?\s*(.*?)(?=##|\Z)", problem_description, re.DOTALL | re.IGNORECASE)
-            if input_match:
-                input_format_desc = input_match.group(1).strip()
-            
-            output_match = re.search(r"## 출력(?: 형식)?\s*(.*?)(?=##|\Z)", problem_description, re.DOTALL | re.IGNORECASE)
-            if output_match:
-                output_format_desc = output_match.group(1).strip()
-                
-            constraints_match = re.search(r"## 제약(?: 조건|사항)?\s*(.*?)(?=##|\Z)", problem_description, re.DOTALL | re.IGNORECASE)
-            if constraints_match:
-                constraints_desc = constraints_match.group(1).strip()
-        except Exception as parse_err:
-             print(f"Warning: Could not parse description parts: {parse_err}")
-
-        # 최종 문제 JSON 구조 생성
+        # 최종 문제 JSON 구조 생성 (Pydantic 모델 필드 사용)
         final_problem = {
-            "title": f"{algorithm_type} 문제 ({difficulty})",
-            "description": problem_description.strip(),
-            "constraints": constraints_desc,
-            "input_format": input_format_desc,
-            "output_format": output_format_desc,
-            "examples": [], # 예제는 비워둠 (Hallucination 방지)
+            "title": problem_desc_output.problem_title, # 모델에서 가져옴
+            "description": problem_desc_output.description.strip(), # 모델에서 가져옴
+            "constraints": problem_desc_output.constraints.strip(), # 모델에서 가져옴
+            "input_format": problem_desc_output.input_format.strip(), # 모델에서 가져옴
+            "output_format": problem_desc_output.output_format.strip(), # 모델에서 가져옴
+            "examples": [], # 예제는 여전히 비워둠
             "solution_code": transformed_code.strip(), # 코드 앞뒤 공백 제거
             "test_cases": test_cases_list, # 실행된 테스트 케이스 포함
             "test_generator_code": test_gen_code, # 생성된 테스트 생성 코드
             "test_generation_error": test_gen_error # 테스트 생성/실행 중 오류 (None이면 성공)
         }
-        
+
         return final_problem
 
 def generate_problem(api_key, algorithm_type, difficulty, verbose=True):
