@@ -9,7 +9,6 @@ import SimpleHeader from "@/components/SimpleHeader";
 import Footer from "@/components/Footer";
 import { useAuthenticator } from "@aws-amplify/ui-react";
 import { signInWithRedirect } from "aws-amplify/auth";
-import "@aws-amplify/ui-react/styles.css"; // Ensure styles are imported
 
 const LoginPageContent = () => {
   const { route } = useAuthenticator((context) => [context.route]);
