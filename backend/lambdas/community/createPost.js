@@ -23,25 +23,27 @@ exports.handler = async (event) => {
             };
         }
         
-        const author = claims.username;  // JWT에서 추출한 사용자 이름
+        const author = claims.username;  // JWT에서 추출한 유저 이름
         const postId = uuidv4(); // 게시글 ID 생성
+        const createdAt = new Date().toISOString(); // 게시글 작성 시간
         
         // DynamoDB에 저장할 데이터
         const postData = {
             TableName: "Community",
             Item: {
                 PK: postId,  // 게시글 ID를 PK로 사용 (댓글도 동일한 postId를 가짐)
-                SK: `POST`,   // 정렬 키 (게시글은 POST로 고정)
+                SK: "POST",   // 정렬 키 (게시글은 POST로 고정)
                 author,
                 title,
                 content,
-                createdAt: new Date().toISOString(),
+                createdAt,
             },
         };
 
         // DynamoDB에 데이터 저장
         await dynamoDB.put(postData).promise();
 
+        // 게시글 생성 성공 응답
         return {
             statusCode: 201,
             body: JSON.stringify({
@@ -50,6 +52,7 @@ exports.handler = async (event) => {
                 author,
                 title,
                 content,
+                createdAt,
             }),
         };
 

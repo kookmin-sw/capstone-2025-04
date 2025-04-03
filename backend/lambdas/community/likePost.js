@@ -1,97 +1,75 @@
 const AWS = require("aws-sdk");
 const dynamoDB = new AWS.DynamoDB.DocumentClient();
-const { v4: uuidv4 } = require("uuid");
-const jwt = require("jsonwebtoken");
 
 exports.handler = async (event) => {
     try {
-        const token = event.headers.Authorization || event.headers.authorization;
+        const { postId } = event.pathParameters; // 요청 URL에서 postId 추출
 
-        let user;
-        if (token === "test") {
-            user = "test-user"; // 테스트 모드
-        } else {
-            if (!token) {
-                return {
-                    statusCode: 401,
-                    body: JSON.stringify({ message: "Authorization 헤더가 없습니다." }),
-                };
-            }
-
-            const jwtToken = token.replace("Bearer ", "");
-            const decoded = jwt.decode(jwtToken); // 검증 없이 디코딩
-            if (!decoded || !decoded.username) {
-                return {
-                    statusCode: 401,
-                    body: JSON.stringify({ message: "유효하지 않은 토큰입니다." }),
-                };
-            }
-            user = decoded.username;
-        }
-
-        const body = JSON.parse(event.body);
-        const { postId } = body;  // 좋아요를 누를 게시글의 postId
-
-        // postId가 없으면 에러 반환
-        if (!postId) {
+        // API Gateway JWT Authorizer에서 전달된 유저 정보 가져오기
+        const claims = event.requestContext.authorizer.claims;
+        if (!claims || !claims.username) {
             return {
-                statusCode: 400,
-                body: JSON.stringify({ message: "postId는 필수입니다." }),
+                statusCode: 401,
+                body: JSON.stringify({ message: "인증 정보가 없습니다." }),
             };
         }
+        
+        const userId = claims.username;  // JWT에서 추출한 유저 이름
 
-        // PostLikes 테이블에서 해당 사용자가 이미 좋아요를 눌렀는지 확인
-        const getLikeParams = {
-            TableName: "PostLikes",
-            Key: {
-                userId: user,
-                postId: postId,
-            },
+        // 현재 게시글 데이터 가져오기
+        const getPostParams = {
+            TableName: "Community",
+            Key: { postId },
         };
 
-        const likeResult = await dynamoDB.get(getLikeParams).promise();
+        const postResult = await dynamoDB.get(getPostParams).promise(); // JSON 응답 객체
+        const post = postResult.Item; // DB에서 가져온 게시글 데이터, 변수에 담아서 재사용성을 높임 !!
 
-        if (likeResult.Item) {
-            // 이미 좋아요를 눌렀다면 좋아요 취소 (PostLikes에서 삭제)
-            const deleteLikeParams = {
-                TableName: "PostLikes",
-                Key: {
-                    userId: user,
-                    postId: postId,
-                },
-            };
-
-            await dynamoDB.delete(deleteLikeParams).promise();
-
-            // 좋아요 취소 후 반환
+        if (!post) {
             return {
-                statusCode: 200,
-                body: JSON.stringify({ message: "좋아요가 취소되었습니다." }),
-            };
-        } else {
-            // 좋아요가 눌리지 않았다면, PostLikes 테이블에 새로 추가
-            const addLikeParams = {
-                TableName: "PostLikes",
-                Item: {
-                    userId: user,
-                    postId: postId,
-                    createdAt: new Date().toISOString(),
-                },
-            };
-
-            await dynamoDB.put(addLikeParams).promise();
-
-            // 좋아요 추가 후 반환
-            return {
-                statusCode: 200,
-                body: JSON.stringify({ message: "좋아요가 추가되었습니다." }),
+                statusCode: 404,
+                body: JSON.stringify({ message: "게시글을 찾을 수 없습니다." }),
             };
         }
+        
+        const likedUsers = new Set(post.likedUsers || []); // 좋아요를 누른 유저 목록, Set으로 변환하여 중복 제거, 없으면 빈 배열로 초기화
+        const isLiked = likedUsers.has(userId); // 현재 유저가 이미 좋아요 눌렀는지 확인
+
+        if (isLiked) {
+            // 좋아요 취소 (likedUsers에서 제거, likesCount 감소)
+            likedUsers.delete(userId);
+        } else {
+            // 좋아요 추가 (likedUsers에 추가, likesCount 증가)
+            likedUsers.add(userId);
+        }
+
+        const updateParams = {
+            TableName: "Community",
+            Key: { postId },
+            UpdateExpression: "SET likedUsers = :users, likesCount = :count",
+            ExpressionAttributeValues: {
+                ":users": Array.from(likedUsers), // Set을 배열로 변환하여 저장
+                ":count": likedUsers.size, // 좋아요 수 업데이트
+            },
+        };
+        
+        await dynamoDB.update(updateParams).promise();
+
+        return {
+            statusCode: 200,
+            body: JSON.stringify({
+                message: isLiked ? "좋아요가 취소되었습니다." : "좋아요가 추가되었습니다.",
+                likedUsers: Array.from(likedUsers), // 현재 좋아요를 누른 유저 목록
+                likesCount: likedUsers.size, // 현재 좋아요 수
+                isLiked: !isLiked, // 프론트에서 사용자가 좋아요를 눌렀는지 쉽게 확인할 수 있도록 추가
+            }),
+        };          
+        
     } catch (error) {
         console.error("좋아요 처리 중 오류 발생:", error);
         return {
             statusCode: 500,
-            body: JSON.stringify({ message: "좋아요 처리 중 오류 발생", error: error.message }),
+            body: JSON.stringify({ message: "서버 오류가 발생했습니다.", error: error.message }),
         };
     }
 };

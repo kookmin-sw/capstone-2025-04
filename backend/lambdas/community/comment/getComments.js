@@ -4,36 +4,40 @@ const dynamoDB = new AWS.DynamoDB.DocumentClient();
 // 로그인 없이 모든 유저 사용 가능
 exports.handler = async (event) => {
     try {
-        const postId = event.pathParameters.postId;
-        if (!postId) {
-            return {
-                statusCode: 400,
-                body: JSON.stringify({ message: "postId는 필수입니다." }),
-            };
-        }
+        const { postId } = event.pathParameters; // 요청 URL에서 postId 추출
 
         const params = {
-            TableName: "Comments",
-            KeyConditionExpression: "postId = :postId",
+            TableName: "Community",
+            KeyConditionExpression: "PK = :postId AND begins_with(SK, :commentPrefix)", // 댓글만 조회
             ExpressionAttributeValues: {
                 ":postId": postId,
+                ":commentPrefix": "COMMENT#",
             },
-            ScanIndexForward: false, // 최신 댓글이 먼저 오도록 정렬
+            ScanIndexForward: false, // 최신 댓글부터 정렬
         };
 
         const result = await dynamoDB.query(params).promise();
-        const comments = result.Items || [];
-        const commentCount = comments.length; // 댓글 개수
+        const rawComments = result.Items || []; // 댓글 목록 조회, 없으면 빈 배열로 초기화
+        
+        const comments = rawComments.map(({ content, author, createdAt, SK }) => ({ // 댓글 데이터 가공
+            commentId: SK.replace("COMMENT#", ""), // SK에서 댓글 ID 추출
+            content,
+            author,
+            createdAt,
+        }));
+        
+        const commentCount = comments.length;
 
         return {
             statusCode: 200,
-            body: JSON.stringify({ comments, commentCount }),
+            body: JSON.stringify({ comments, commentCount }), // 댓글 목록과 댓글 수 반환
         };
+
     } catch (error) {
         console.error("댓글 조회 오류:", error);
         return {
             statusCode: 500,
-            body: JSON.stringify({ message: "서버 오류 발생" }),
+            body: JSON.stringify({ message: "서버 오류 발생", error: error.message }),
         };
     }
 };
