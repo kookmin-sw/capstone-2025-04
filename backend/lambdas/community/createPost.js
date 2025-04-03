@@ -1,77 +1,58 @@
 const AWS = require("aws-sdk");
 const dynamoDB = new AWS.DynamoDB.DocumentClient();
 const { v4: uuidv4 } = require("uuid");
-const jwt = require("jsonwebtoken"); // npm install 필요
 
 exports.handler = async (event) => {
     try {
-        // Authorization 헤더에서 토큰 가져오기
-        const token = event.headers.Authorization || event.headers.authorization;
-        
-        let author;
-        if (token === "test") {
-            // 테스트 모드: 인증 바이패스
-            author = "test-user";
-        } else {
-            if (!token) {
-                return {
-                    statusCode: 401,
-                    body: JSON.stringify({ message: "Authorization 헤더가 없습니다." }),
-                };
-            }
-
-            const jwtToken = token.replace("Bearer ", "");
-
-            // JWT 디코딩 (검증 없이)
-            const decoded = jwt.decode(jwtToken);
-            if (!decoded || !decoded.username) {
-                return {
-                    statusCode: 401,
-                    body: JSON.stringify({ message: "유효하지 않은 토큰입니다." }),
-                };
-            }
-
-            author = decoded.username;
-        }
-
-        // 요청 본문에서 게시글 내용 받기
-        const body = JSON.parse(event.body);
-        const postId = uuidv4();  // 게시글 ID 생성 (고유값)
-        const { title, content } = body; // 게시글 제목과 내용
+        const body = JSON.parse(event.body); // 클라이언트 요청 데이터 파싱
+        const { title, content } = body; // 제목과 내용 추출
 
         if (!title || !content) {
             return {
                 statusCode: 400,
-                body: JSON.stringify({ message: "제목과 내용은 필수 항목입니다." }),
+                body: JSON.stringify({ message: "title과 content는 필수 항목입니다." }),
             };
         }
 
-        // 게시글 데이터 객체 구성
+        // API Gateway JWT Authorizer에서 전달된 유저 정보 가져오기
+        const claims = event.requestContext.authorizer.claims;
+        if (!claims || !claims.username) {
+            return {
+                statusCode: 401,
+                body: JSON.stringify({ message: "인증 정보가 없습니다." }),
+            };
+        }
+        
+        const author = claims.username;  // JWT에서 추출한 사용자 이름
+        const postId = uuidv4(); // 게시글 ID 생성
+        
+        // DynamoDB에 저장할 데이터
         const postData = {
-            TableName: "CommunityPosts",  // DynamoDB 테이블 이름
+            TableName: "Community",
             Item: {
-                postId,           // 게시글 ID
-                title,            // 게시글 제목
-                content,          // 게시글 내용
-                author,           // 작성자
-                createdAt: new Date().toISOString(), // 생성일
+                PK: postId,  // 게시글 ID를 PK로 사용 (댓글도 동일한 postId를 가짐)
+                SK: `POST`,   // 정렬 키 (게시글은 POST로 고정)
+                author,
+                title,
+                content,
+                createdAt: new Date().toISOString(),
             },
         };
 
-        // DynamoDB에 게시글 저장
+        // DynamoDB에 데이터 저장
         await dynamoDB.put(postData).promise();
 
-        // 게시글 작성 완료 응답
         return {
             statusCode: 201,
             body: JSON.stringify({
                 message: "게시글이 성공적으로 작성되었습니다.",
-                postId: postId,
-                author: author,
-                title: title,
-                content: content,
+                postId,
+                author,
+                title,
+                content,
             }),
         };
+
     } catch (error) {
         console.error("게시글 작성 중 오류 발생:", error);
         return {
