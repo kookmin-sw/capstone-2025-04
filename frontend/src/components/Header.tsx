@@ -2,10 +2,11 @@
 "use client";
 import Link from "next/link";
 import React from "react";
-import Image from "next/image";
 import { useAuthenticator } from "@aws-amplify/ui-react"; // Import the hook
 
 import { fetchAuthSession } from "aws-amplify/auth";
+import AlpacoLogo from "./AlpacoLogo";
+import AlpacoWordLogo from "./AlpacoWordLogo";
 const session = await fetchAuthSession({ forceRefresh: false });
 const idToken = session.tokens?.idToken;
 
@@ -26,20 +27,8 @@ const Header: React.FC = () => {
       <div className="w-full px-4 mx-auto max-w-7xl flex justify-between items-center">
         <div className="flex flex-row items-center text-primary transition-transform duration-200 hover:scale-105">
           <Link href="/" className="flex flex-row items-center gap-2">
-            <Image
-              src="/alpaco-logo.svg"
-              alt="ALPACO"
-              width={50}
-              height={50}
-              priority
-            />
-            <Image
-              src="/alpaco-word-logo.svg"
-              alt="ALPACO"
-              width={150}
-              height={50}
-              priority
-            />
+            <AlpacoLogo width={50} height={50} />
+            <AlpacoWordLogo height={50} />
           </Link>
         </div>
         <nav className="flex gap-6 items-center">
