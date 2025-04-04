@@ -11,6 +11,9 @@
 - [로컬 테스트](#로컬-테스트)
 - [AWS 배포 방법](#aws-배포-방법)
 - [API 사용 방법](#api-사용-방법)
+- [AWS 서비스 명세](#aws-서비스-명세)
+  - [DynamoDB 명세](#dynamodb-명세)
+  - [S3 명세](#s3-명세)
 - [문제 해결](#문제-해결)
 
 ## 아키텍처 설명
@@ -343,6 +346,125 @@ AWS 콘솔에서 API Gateway를 설정하고 요청 처리 Lambda를 연결하�
 
 생성이 완료되면 `result_url`에서 결과를 확인할 수 있습니다. S3에서 파일을 다운로드하여 내용을 확인하세요.
 또한, DynamoDB 테이블에서 `job_id`를 사용하여 작업의 최종 상태(`COMPLETED` 또는 `FAILED`)와 결과 URL 또는 오류 메시지를 확인할 수 있습니다.
+
+## AWS 서비스 명세
+
+### DynamoDB 명세
+
+DynamoDB는 작업 상태 추적을 위해 사용되며, 다음과 같은 테이블 구조를 가집니다:
+
+#### 테이블 명: `problem-job-status` (또는 환경 변수 `DYNAMODB_TABLE_NAME`으로 설정)
+
+**테이블 구조:**
+
+| 속성                     | 유형              | 설명                                              |
+| ------------------------ | ----------------- | ------------------------------------------------- |
+| `job_id`                 | String (기본 키)  | 작업의 고유 식별자 (UUID)                         |
+| `status`                 | String            | 작업 상태 (QUEUED, PROCESSING, COMPLETED, FAILED) |
+| `algorithm_type`         | String            | 문제 생성에 사용된 알고리즘 유형                  |
+| `difficulty`             | String            | 문제 난이도 (쉬움, 보통, 어려움)                  |
+| `request_timestamp`      | String (ISO 8601) | 요청이 처음 접수된 시간                           |
+| `last_updated_timestamp` | String (ISO 8601) | 상태가 마지막으로 업데이트된 시간                 |
+| `result_url`             | String (nullable) | 생성된 문제가 저장된 S3 URL                       |
+| `error_message`          | String (nullable) | 오류 발생 시 오류 메시지                          |
+
+**상태 값:**
+
+- `QUEUED`: SQS에 작업이 등록되고 처리 대기 중
+- `PROCESSING`: Lambda에서 문제 생성이 진행 중
+- `COMPLETED`: 문제 생성이 완료되고 S3에 결과가 저장됨
+- `FAILED`: 처리 중 오류가 발생함
+
+**사용 패턴:**
+
+1. **초기화**: 작업 요청 시 `add_job_status(job_id, algorithm_type, difficulty)` 호출
+
+   ```python
+   # 새 작업 상태 생성 예제
+   job_id = str(uuid.uuid4())
+   add_job_status(job_id, "그래프", "보통")
+   ```
+
+2. **상태 업데이트**: 처리 과정에 따라 `update_job_status(job_id, new_status, result_url=None, error_message=None)` 호출
+
+   ```python
+   # 처리 시작 시
+   update_job_status(job_id, "PROCESSING")
+
+   # 성공적 완료 시
+   update_job_status(job_id, "COMPLETED", result_url="https://bucket-name.s3.amazonaws.com/key")
+
+   # 오류 발생 시
+   update_job_status(job_id, "FAILED", error_message="Error message here")
+   ```
+
+3. **상태 조회**: `get_job_status(job_id)` 호출로 현재 상태 확인
+   ```python
+   # 상태 조회 예제
+   status = get_job_status(job_id)
+   print(f"Current status: {status['status']}")
+   ```
+
+### S3 명세
+
+S3는 생성된 문제를 JSON 형식으로 저장하는 데 사용됩니다:
+
+#### 버킷 명: `problem-generator-results` (또는 환경 변수 `S3_BUCKET_NAME`으로 설정)
+
+**객체 구조:**
+
+- **키 형식**: `results/{job_id}.json`
+- **콘텐츠 타입**: `application/json`
+
+**JSON 구조:**
+
+생성된 문제 JSON은 다음 필드를 포함합니다:
+
+```json
+{
+  "title": "문제 제목",
+  "description": "문제 설명 텍스트",
+  "constraints": "문제 제약조건",
+  "input_format": "입력 형식 설명",
+  "output_format": "출력 형식 설명",
+  "examples": [
+    {
+      "input": "예제 입력 데이터",
+      "output": "예제 출력 데이터"
+    }
+  ],
+  "solution_code": "문제 해결을 위한 코드",
+  "test_cases": [
+    {
+      "input": "테스트 케이스 입력",
+      "output": "테스트 케이스 출력"
+    }
+  ],
+  "test_generator_code": "테스트 케이스 생성 코드",
+  "algorithm_type": "알고리즘 유형",
+  "difficulty": "난이도"
+}
+```
+
+**사용 패턴:**
+
+1. **업로드**: `upload_to_s3(content, object_key, content_type)` 함수 사용
+
+   ```python
+   # 문제 JSON 업로드 예제
+   object_key = f"results/{job_id}.json"
+   result_url = upload_to_s3(problem_result, object_key, 'application/json')
+   ```
+
+2. **URL 생성**: `generate_s3_url(object_key)` 함수로 결과 URL 생성
+
+   ```python
+   # S3 URL 생성 예제
+   object_key = f"results/{job_id}.json"
+   url = generate_s3_url(object_key)
+   ```
+
+3. **로컬 테스트**: LocalStack에서는 URL 형식이 `http://localhost:4566/bucket-name/key`로 반환됩니다.
 
 ## 문제 해결
 
