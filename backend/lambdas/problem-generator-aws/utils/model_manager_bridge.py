@@ -114,10 +114,9 @@ def generate_problem(api_key, algorithm_type, difficulty, verbose=True):
         command = [
             sys.executable,
             str(generator_script_path),
-            '--algorithm_type', algorithm_type,
+            '--type', algorithm_type,
             '--difficulty', difficulty,
             '--output', temp_file_path,
-            '--json'
         ]
         
         if not verbose:
