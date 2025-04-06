@@ -6,11 +6,14 @@ import Footer from "@/components/Footer";
 import CodeEditor from "@/components/CodeEditor";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useAuthenticator } from "@aws-amplify/ui-react";
 
 // Create a separate component to handle search params
 const CodingTestContent: React.FC = () => {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { user } = useAuthenticator((context) => [context.user]);
+  console.log("user: ", user); // Debugging line
   const id = searchParams.get("id");
   const [code, setCode] = useState("");
   const [language, setLanguage] = useState<

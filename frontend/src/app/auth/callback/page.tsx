@@ -16,10 +16,16 @@ const LoadingSpinner = () => (
 );
 
 const CallbackContentInternal = () => {
-  const { route } = useAuthenticator((context) => [context.route]);
+  const { route, user } = useAuthenticator((context) => [
+    context.route,
+    context.user,
+  ]);
   const router = useRouter();
   const searchParams = useSearchParams();
   const [configured, setConfigured] = useState(false);
+  console.log("context: ", route); // Debugging line
+  console.log("user: ", user); // Debugging line
+  console.log("configured: ", configured); // Debugging line
 
   useEffect(() => {
     configureAmplify(); // 👈 콜백 페이지에서 한 번 더 설정
@@ -44,12 +50,12 @@ const CallbackContentInternal = () => {
       return;
     }
 
-    if (route === "authenticated") {
+    if (user !== undefined || route === "authenticated") {
       console.log("Authentication successful via hook, redirecting to home...");
       router.replace("/");
       return;
     }
-  }, [route, configured, router, searchParams]);
+  }, [route, configured, router, searchParams, user]);
 
   if (
     !configured ||

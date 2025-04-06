@@ -13,18 +13,22 @@ import { signInWithRedirect } from "aws-amplify/auth";
 // Component to handle logic using hooks
 const LoginPageContentInternal = () => {
   // Optimize: Only select the 'route' state we need for redirection logic
-  const { route } = useAuthenticator((context) => [context.authStatus]);
-  console.log("context: ", route); // Debugging line
+  const { route, user } = useAuthenticator((context) => [
+    context.route,
+    context.user,
+  ]);
   const router = useRouter();
   const searchParams = useSearchParams(); // Get URL search parameters
   const error = searchParams.get("error"); // Check for error parameter
 
   // Redirect to home if already authenticated
   useEffect(() => {
-    if (route === "authenticated") {
+    console.log("context: ", route); // Debugging line
+
+    if (route === "authenticated" || user !== undefined) {
       router.push("/");
     }
-  }, [route, router]);
+  }, [route, router, user]);
 
   // Show loading or null while redirecting or checking auth state
   if (route === "authenticated") {
