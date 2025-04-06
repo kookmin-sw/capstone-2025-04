@@ -8,8 +8,8 @@ WORKDIR /var/task
 # 현재 함수 코드 및 requirements
 COPY lambda_function.py requirements.txt ./
 
-# problem-generator 모듈 코드 복사 (상위 디렉토리에서 가져옴)
-COPY ../problem-generator ./problem_generator/
+# 미리 복사해둔 problem_generator_temp 디렉토리를 이미지 안으로 복사
+COPY problem_generator_temp/ ./problem_generator/
 # -------------------------------------------------------------
 
 # Install the specified packages from the copied requirements.txt
