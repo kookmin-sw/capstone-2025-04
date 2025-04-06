@@ -28,23 +28,37 @@ exports.handler = async (event) => {
         const commentId = uuidv4();
         const createdAt = new Date().toISOString();
 
-        // DynamoDB에 저장할 데이터
-        const params = {
-            TableName: "Community",
-            Item: {
-                PK: postId,  // 게시글 ID를 PK로 사용 (댓글도 동일한 postId를 가짐)
-                SK: `COMMENT#${commentId}`, // 댓글을 구분하는 SK 값, #이 가장 범용적이여서 적용
-                commentId,     
+        // 트랜잭션으로 댓글 생성 + 댓글 수 증가
+        await dynamoDB.transactWrite({
+        TransactItems: [
+            {
+            Put: { // DynamoDB에 저장할 데이터
+                TableName: "Community",
+                Item: {
+                PK: postId,
+                SK: `COMMENT#${commentId}`,
+                commentId,
                 author,
                 content,
                 createdAt,
+                },
             },
-        };
+            },
+            {
+            Update: { // 댓글 수 증가
+                TableName: "Community",
+                Key: { PK: postId, SK: "POST" },
+                UpdateExpression: "SET commentCount = if_not_exists(commentCount, :zero) + :inc",
+                ExpressionAttributeValues: {
+                ":inc": 1,
+                ":zero": 0,
+                },
+            },
+            },
+        ],
+        }).promise();
 
-        // DynamoDB에 데이터 저장
-        await dynamoDB.put(params).promise();
-
-        // 댓글 생성 성공 응답
+        // 댓글 생성 성공 응답, 카운트는 원한다면 할게요,,,
         return {
             statusCode: 201,
             body: JSON.stringify({

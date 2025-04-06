@@ -4,53 +4,32 @@ const dynamoDB = new AWS.DynamoDB.DocumentClient();
 // 로그인 없이 모든 유저 사용 가능
 exports.handler = async (event) => {
     try {
-        // 모든 게시글 조회
-        const postsParams = {
-            TableName: "Posts",
+        const params = {
+            TableName: "Community",
+            IndexName: "postOnlyIndex", // GSI 이름 지정 !! 코드 리뷰 반영했습니당
+            KeyConditionExpression: "SK = :sk",
+            ExpressionAttributeValues: {
+                ":sk": "POST", // PK 없이 SK로만 조회 -> GSI 필요
+            },
+            ScanIndexForward: false, // 최신순 정렬 (createdAt 기준)
         };
 
-        const postsResult = await dynamoDB.scan(postsParams).promise();
-        const posts = postsResult.Items || [];
+        const result = await dynamoDB.query(params).promise();
+        const items = result.Items || [];
 
-        // 각 게시글의 좋아요 수 & 댓글 수 가져오기
-        const postsWithCounts = await Promise.all(
-            posts.map(async (post) => {
-                const { postId, title, author } = post;
-
-                // 좋아요 수 조회
-                const likesParams = {
-                    TableName: "PostLikes",
-                    IndexName: "PostIdIndex",
-                    KeyConditionExpression: "postId = :postId",
-                    ExpressionAttributeValues: { ":postId": postId },
-                };
-
-                const likesResult = await dynamoDB.query(likesParams).promise();
-                const likesCount = likesResult.Items.length;
-
-                // 댓글 수 조회
-                const commentsParams = {
-                    TableName: "Comments",
-                    KeyConditionExpression: "postId = :postId",
-                    ExpressionAttributeValues: { ":postId": postId },
-                };
-
-                const commentsResult = await dynamoDB.query(commentsParams).promise();
-                const commentsCount = commentsResult.Items.length;
-
-                return {
-                    postId,
-                    title,
-                    author,
-                    likesCount,
-                    commentsCount,
-                };
-            })
-        );
+        const posts = items.map((item) => ({
+            postId: item.PK,
+            title: item.title,
+            author: item.author,
+            createdAt: item.createdAt,
+            likesCount: item.likesCount || 0,
+            commentCount: item.commentCount || 0,
+            job_id: item.job_id || null,
+        }));
 
         return {
             statusCode: 200,
-            body: JSON.stringify(postsWithCounts),
+            body: JSON.stringify(posts),
         };
 
     } catch (error) {

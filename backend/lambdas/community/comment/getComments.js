@@ -26,7 +26,7 @@ exports.handler = async (event) => {
             createdAt,
         }));
         
-        const commentCount = comments.length;
+        const commentCount = comments.length; // 많지 않아서 그냥 배열 길이로 댓글 수 계산 디비에 접근하면 비효율적일것 같아요
 
         return {
             statusCode: 200,

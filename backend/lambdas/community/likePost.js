@@ -19,7 +19,10 @@ exports.handler = async (event) => {
         // 현재 게시글 데이터 가져오기
         const getPostParams = {
             TableName: "Community",
-            Key: { postId },
+            Key: { 
+                PK: postId,   // 게시글 ID
+                SK: "POST"  // 게시글은 SK를 고정값으로 설정
+            },
         };
 
         const postResult = await dynamoDB.get(getPostParams).promise(); // JSON 응답 객체
@@ -45,7 +48,10 @@ exports.handler = async (event) => {
 
         const updateParams = {
             TableName: "Community",
-            Key: { postId },
+            Key: { 
+                PK: postId,
+                SK: "POST" 
+            },
             UpdateExpression: "SET likedUsers = :users, likesCount = :count",
             ExpressionAttributeValues: {
                 ":users": Array.from(likedUsers), // Set을 배열로 변환하여 저장

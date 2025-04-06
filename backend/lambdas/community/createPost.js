@@ -5,7 +5,7 @@ const { v4: uuidv4 } = require("uuid");
 exports.handler = async (event) => {
     try {
         const body = JSON.parse(event.body); // 클라이언트 요청 데이터 파싱
-        const { title, content } = body; // 제목과 내용 추출
+        const { title, content, job_id } = body; // 제목과 내용 추출, job_id는 선택적
 
         if (!title || !content) {
             return {
@@ -37,6 +37,7 @@ exports.handler = async (event) => {
                 title,
                 content,
                 createdAt,
+                ...(job_id && { job_id }) // job_id가 있을 때만 추가
             },
         };
 
@@ -53,6 +54,7 @@ exports.handler = async (event) => {
                 title,
                 content,
                 createdAt,
+                ...(job_id && { job_id }) 
             }),
         };
 
