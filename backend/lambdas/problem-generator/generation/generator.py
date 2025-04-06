@@ -11,11 +11,13 @@ import subprocess
 import importlib.util
 import textwrap
 from typing import List, Dict, Any, Union
+import asyncio
+import traceback
 
 # langchain 관련 import 추가
 from langchain_core.prompts import PromptTemplate
-from langchain_core.runnables import RunnablePassthrough
-from langchain_core.output_parsers import JsonOutputParser # Pydantic 대신 JsonOutputParser 사용
+from langchain_core.runnables import RunnablePassthrough, RunnableLambda
+from langchain_core.output_parsers import JsonOutputParser
 
 # pydantic 모델은 더 이상 직접 사용하지 않을 수 있음 (파이프라인 내에서 처리)
 # from pydantic import BaseModel, Field
@@ -138,16 +140,177 @@ def load_template(algorithm_type, difficulty):
 
         return template_code, f"{template_path.parent.name}/{template_path.name}"
 
+def ensure_test_case_structure(parsed_json: dict) -> dict:
+    if not isinstance(parsed_json, dict):
+        return {"test_case_generation_code": "", "generated_examples": []}
+    if not isinstance(parsed_json.get("generated_examples"), list):
+        parsed_json["generated_examples"] = []
+    if "test_case_generation_code" not in parsed_json:
+         parsed_json["test_case_generation_code"] = ""
+    return parsed_json
+
 class ProblemGenerator:
     def __init__(self, api_key=None, verbose=True):
-        """Initialize the problem generator with API key"""
+        """Initialize the problem generator with API key and pre-build components."""
         self.api_key = api_key or os.getenv("GOOGLE_AI_API_KEY")
         if not self.api_key:
             raise ValueError("No API key provided. Set GOOGLE_AI_API_KEY in .env file or pass it as an argument.")
 
-        # Use our model manager instead of direct Google API
-        self.model = get_llm(api_key=self.api_key, model_type="thinking") # 가정: get_llm은 Langchain LLM 객체 반환
+        self.model = get_llm(api_key=self.api_key, model_type="thinking")
         self.verbose = verbose
+
+        # --- Pre-build Parsers, Lambda, Bound Model --- 
+        self.json_parser = JsonOutputParser()
+        self.ensure_structure_lambda = RunnableLambda(ensure_test_case_structure)
+        self.json_mode_model = self.model.bind(generation_config={"response_mime_type": "application/json"})
+
+        # --- Build Prompts --- 
+        self._build_prompts()
+
+    def _build_prompts(self):
+        """Build and assign all PromptTemplate instances using f-strings."""
+        # 1. Template Analysis Prompt
+        self.template_analysis_prompt = PromptTemplate.from_template(
+            textwrap.dedent(f'''\
+                당신은 알고리즘 문제 생성 전문가입니다. 다음 템플릿 코드를 분석하고 문제 변형 계획을 세워주세요.
+
+                ## 입력 정보
+                - 알고리즘 유형: {{algorithm_type}}
+                - 난이도 수준: {{difficulty}}
+
+                ## 템플릿 코드
+                ```python
+                {{template_code}}
+                ```
+
+                ## 분석 요청 사항
+                1. 코드의 핵심 알고리즘 아이디어는 무엇인가요?
+                2. 독창적인 문제로 변형하기 위해 어떤 부분을 수정할 수 있을까요?
+                3. 난이도 ({{difficulty}})에 맞게 코드를 어떻게 조정할 수 있을까요? (예: 복잡화, 단순화)
+                4. 이 템플릿으로 어떤 유형의 문제를 만들 수 있을까요?
+
+                분석 결과를 명확하고 구체적으로 작성해주세요.
+            ''')
+        )
+
+        # 2. Code Transformation Prompt
+        self.code_transform_prompt = PromptTemplate.from_template(
+            textwrap.dedent(f'''\
+                당신은 알고리즘 문제 생성 전문가입니다. 이전 분석을 바탕으로 아래 템플릿 코드를 **최소한으로 변형**해주세요.
+
+                ## 템플릿 분석 결과
+                {{template_analysis}}
+
+                ## 원본 템플릿 코드
+                ```python
+                {{template_code}}
+                ```
+
+                ## 코드 변형 요구사항
+                1. **원본 코드의 프로그래밍 언어(Python 또는 C++)를 반드시 유지하세요.** 다른 언어로 변경하지 마세요.
+                2. **템플릿의 핵심 알고리즘 구조와 주요 로직 흐름을 반드시 유지하세요.** 함수/메서드 구조, 클래스 구조 등을 크게 변경하지 마세요.
+                3. 변수명 변경, 상수 값 수정, 문자열 내용 변경, 주석 추가/수정 등 **가벼운 수정**을 통해 독창성을 더하세요. 복잡한 로직 변경은 최소화하세요.
+                4. 변경된 부분에는 명확한 주석을 추가하여 의도를 설명해주세요.
+                5. 변형된 코드가 문법적으로 올바르고 논리적으로 실행 가능한지 확인하세요.
+                6. 생성될 테스트 케이스를 고려하여 입출력 처리가 용이한 형태로 코드를 구성하세요 (필요시 최소한의 수정).
+
+                변형된 코드만 원본 언어의 코드 블록 안에 작성해주세요. 다른 설명은 포함하지 마세요.
+                ```<language>  # 예: ```python 또는 ```cpp
+                # 변형된 코드 작성 시작
+                ...
+                # 변형된 코드 작성 끝
+                ```
+            ''')
+        )
+
+        # 3. Description Generation Prompt (Simplified)
+        self.description_prompt = PromptTemplate.from_template(
+            textwrap.dedent(f'''\
+                당신은 알고리즘 문제 생성 전문가입니다. 주어진 정보를 바탕으로 문제 설명을 JSON 형식으로 작성해주세요.
+
+                ## 입력 정보
+                - 알고리즘 유형: {{algorithm_type}}
+                - 난이도 수준: {{difficulty}}
+                - 문제 스타일: {{style_desc}}
+                - 난이도 요구사항: {{difficulty_desc}}
+
+                ## 변형된 코드 (참고용)
+                ```python
+                {{transformed_code}}
+                ```
+
+                ## 작성 요청 내용 (JSON 필드)
+                - `problem_title`: 창의적이고 내용과 관련 있는 문제 제목
+                - `description`: 문제 배경 및 상세 설명 (스토리텔링 포함 가능)
+                - `input_format`: 명확하고 상세한 입력 형식 설명
+                - `output_format`: 명확하고 상세한 출력 형식 설명
+                - `constraints`: 입력 크기, 값의 범위 등 난이도에 맞는 제약 조건
+
+                지정된 스타일({{style_desc}})과 난이도 요구사항({{difficulty_desc}})을 준수하여 명확하고 논리적인 설명을 각 필드에 맞게 작성해주세요.
+                다른 텍스트 없이, 위 필드들을 포함하는 JSON 객체만 반환해야 합니다.
+            ''')
+        )
+
+        # 4. Test Case Generation Prompt (Simplified)
+        self.test_cases_prompt = PromptTemplate.from_template(
+            textwrap.dedent(f'''\
+                당신은 알고리즘 문제 생성 전문가입니다. 주어진 문제 설명과 코드를 바탕으로 테스트 케이스 생성 코드와 예제를 포함하는 JSON 객체를 생성해주세요.
+
+                ## 문제 설명 (JSON 형태)
+                {{problem_description}} # 주의: 이 입력은 실제로는 파싱된 dict 지만, 프롬프트에서는 문자열처럼 다룸
+
+                ## 변형된 코드 (정답 코드)
+                ```python
+                {{transformed_code}}
+                ```
+
+                ## 생성 요청 내용 (JSON 필드)
+                1. `test_case_generation_code` (문자열):
+                   - 주어진 '변형된 코드'를 포함하는 `solution` 함수.
+                   - 다양한 테스트 케이스(기본, 경계, 예외 등)를 생성하고, 각 입력에 대해 `solution` 함수를 실행하여 출력을 계산하는 `generate_test_cases` 함수.
+                   - `generate_test_cases` 함수는 `[(입력 딕셔너리, 출력 딕셔너리), ...]` 형식의 리스트를 반환해야 함 (최소 3개, 최대 5개).
+                   - 위의 두 함수를 포함하는 전체 실행 가능한 Python 코드 문자열.
+                2. `generated_examples` (리스트):
+                   - 위 `generate_test_cases` 함수를 실행했을 때 반환되는 (입력, 출력) 딕셔너리의 리스트.
+
+                다른 텍스트 없이, 위 두 필드를 포함하는 JSON 객체만 반환해야 합니다.
+            ''')
+        )
+
+        # 5. Integration Prompt (Simplified & template_file input added)
+        self.integration_prompt = PromptTemplate.from_template(
+            textwrap.dedent(f'''\
+                당신은 알고리즘 문제 생성 전문가입니다. 지금까지 생성된 모든 구성 요소를 통합하여 최종 문제 결과물을 JSON 형식으로 완성해주세요.
+
+                ## 문제 기본 정보
+                - 알고리즘 유형: {{algorithm_type}}
+                - 난이도 수준: {{difficulty}}
+                - 사용된 템플릿 파일: {{template_file}}
+
+                ## 생성된 구성 요소
+                1. 문제 설명 (JSON): {{problem_description}} # 주의: 이 입력은 dict
+                2. 테스트 케이스 (JSON): {{test_cases}} # 주의: 이 입력은 dict
+                3. 변형된 코드 (문자열):
+                   ```python
+                   {{transformed_code}}
+                   ```
+
+                ## 최종 결과물 필드 생성 지침
+                - `problem_title`: `problem_description`의 `problem_title` 사용.
+                - `description`: `problem_description`의 `description` 사용.
+                - `input_format`: `problem_description`의 `input_format` 사용.
+                - `output_format`: `problem_description`의 `output_format` 사용.
+                - `constraints`: `problem_description`의 `constraints` 사용.
+                - `example_input`: `test_cases`의 `generated_examples` 리스트가 비어있지 않으면 첫 번째 요소의 `input` 사용, 비어있으면 빈 문자열 "" 사용.
+                - `example_output`: `test_cases`의 `generated_examples` 리스트가 비어있지 않으면 첫 번째 요소의 `output` 사용, 비어있으면 빈 문자열 "" 사용.
+                - `algorithm_hint`: 난이도가 "튜토리얼"일 경우 알고리즘 설명 및 적용 방식 서술, 아닐 경우 빈 문자열 "" 사용.
+                - `solution_code`: `transformed_code` 문자열 사용.
+                - `test_case_generation_code`: `test_cases`의 `test_case_generation_code` 사용.
+                - `template_source`: 입력으로 받은 `template_file` 문자열 사용.
+
+                다른 어떤 텍스트도 포함하지 말고, 위의 지침에 따라 각 필드를 채운 최종 JSON 객체 하나만 생성하여 반환하세요.
+            ''')
+        )
 
     def show_progress(self, step, total_steps=6, message=""): # 총 단계 수를 6으로 조정
         """Display progress information for the current step"""
@@ -168,169 +331,23 @@ class ProblemGenerator:
             sys.stdout.write('\n')
 
     def generate_problem(self, algorithm_type, difficulty):
-        """Generate a problem using Langchain Expression Language (LCEL) pipeline and JsonOutputParser."""
+        """Generate a problem using LCEL pipeline (using pre-built components)."""
         if self.verbose:
             print(f"\n{algorithm_type} 유형의 {difficulty} 난이도 문제 생성을 시작합니다...\n")
-
         start_time = time.time()
-
-        # Load template
         try:
             self.show_progress(0, 6, "템플릿 파일 불러오는 중...")
             template_code, template_file = load_template(algorithm_type, difficulty)
         except (ValueError, FileNotFoundError) as e:
-            print(f"\n오류: {e}") # 오류 메시지 명확화
+            print(f"\n오류: {e}")
             return {"error": str(e)}
-
-        # Get difficulty-specific description and style
         difficulty_desc = DIFFICULTY_DESCRIPTIONS.get(difficulty, "")
         style_desc = STYLE_DESCRIPTIONS["Atcoder"]
         if difficulty in ["보통", "어려움"]:
             style_desc = STYLE_DESCRIPTIONS["Baekjoon"]
 
-        # --- 프롬프트 템플릿 정의 ---
-        # 각 단계의 프롬프트는 명확한 역할과 필요한 입력을 받도록 설계
-
-        # 1. 템플릿 분석 프롬프트
-        template_analysis_prompt = PromptTemplate.from_template(textwrap.dedent("""
-            당신은 알고리즘 문제 생성 전문가입니다. 다음 템플릿 코드를 분석하고 문제 변형 계획을 세워주세요.
-
-            ## 입력 정보
-            - 알고리즘 유형: {algorithm_type}
-            - 난이도 수준: {difficulty}
-
-            ## 템플릿 코드
-            ```python
-            {template_code}
-            ```
-
-            ## 분석 요청 사항
-            1. 코드의 핵심 알고리즘 아이디어는 무엇인가요?
-            2. 독창적인 문제로 변형하기 위해 어떤 부분을 수정할 수 있을까요?
-            3. 난이도 ({difficulty})에 맞게 코드를 어떻게 조정할 수 있을까요? (예: 복잡화, 단순화)
-            4. 이 템플릿으로 어떤 유형의 문제를 만들 수 있을까요?
-
-            분석 결과를 명확하고 구체적으로 작성해주세요.
-            """))
-
-        # 2. 코드 변형 프롬프트 (수정: 언어/구조 유지 강조)
-        code_transform_prompt = PromptTemplate.from_template(textwrap.dedent("""
-            당신은 알고리즘 문제 생성 전문가입니다. 이전 분석을 바탕으로 아래 템플릿 코드를 **최소한으로 변형**해주세요.
-
-            ## 템플릿 분석 결과
-            {template_analysis}
-
-            ## 원본 템플릿 코드
-            ```python
-            {template_code}
-            ```
-
-            ## 코드 변형 요구사항
-            1. **원본 코드의 프로그래밍 언어(Python 또는 C++)를 반드시 유지하세요.** 다른 언어로 변경하지 마세요.
-            2. **템플릿의 핵심 알고리즘 구조와 주요 로직 흐름을 반드시 유지하세요.** 함수/메서드 구조, 클래스 구조 등을 크게 변경하지 마세요.
-            3. 변수명 변경, 상수 값 수정, 문자열 내용 변경, 주석 추가/수정 등 **가벼운 수정**을 통해 독창성을 더하세요. 복잡한 로직 변경은 최소화하세요.
-            4. 변경된 부분에는 명확한 주석을 추가하여 의도를 설명해주세요.
-            5. 변형된 코드가 문법적으로 올바르고 논리적으로 실행 가능한지 확인하세요.
-            6. 생성될 테스트 케이스를 고려하여 입출력 처리가 용이한 형태로 코드를 구성하세요 (필요시 최소한의 수정).
-
-            변형된 코드만 원본 언어의 코드 블록 안에 작성해주세요. 다른 설명은 포함하지 마세요.
-            ```<language>  # 예: ```python 또는 ```cpp
-            # 변형된 코드 작성 시작
-            ...
-            # 변형된 코드 작성 끝
-            ```
-            """))
-
-        # 3. 문제 설명 생성 프롬프트 (간소화)
-        description_prompt = PromptTemplate.from_template(textwrap.dedent("""
-            당신은 알고리즘 문제 생성 전문가입니다. 주어진 정보를 바탕으로 문제 설명을 JSON 형식으로 작성해주세요.
-
-            ## 입력 정보
-            - 알고리즘 유형: {algorithm_type}
-            - 난이도 수준: {difficulty}
-            - 문제 스타일: {style_desc}
-            - 난이도 요구사항: {difficulty_desc}
-
-            ## 변형된 코드 (참고용)
-            ```python
-            {transformed_code}
-            ```
-
-            ## 작성 요청 내용 (JSON 필드)
-            - `problem_title`: 창의적이고 내용과 관련 있는 문제 제목
-            - `description`: 문제 배경 및 상세 설명 (스토리텔링 포함 가능)
-            - `input_format`: 명확하고 상세한 입력 형식 설명
-            - `output_format`: 명확하고 상세한 출력 형식 설명
-            - `constraints`: 입력 크기, 값의 범위 등 난이도에 맞는 제약 조건
-
-            지정된 스타일({style_desc})과 난이도 요구사항({difficulty_desc})을 준수하여 명확하고 논리적인 설명을 각 필드에 맞게 작성해주세요.
-            다른 텍스트 없이, 위 필드들을 포함하는 JSON 객체만 반환해야 합니다.
-            """))
-
-        # 4. 테스트 케이스 생성 프롬프트 (간소화)
-        test_cases_prompt = PromptTemplate.from_template(textwrap.dedent("""
-            당신은 알고리즘 문제 생성 전문가입니다. 주어진 문제 설명과 코드를 바탕으로 테스트 케이스 생성 코드와 예제를 포함하는 JSON 객체를 생성해주세요.
-
-            ## 문제 설명 (JSON 형태)
-            {problem_description}
-
-            ## 변형된 코드 (정답 코드)
-            ```python
-            {transformed_code}
-            ```
-
-            ## 생성 요청 내용 (JSON 필드)
-            1. `test_case_generation_code` (문자열):
-               - 주어진 '변형된 코드'를 포함하는 `solution` 함수.
-               - 다양한 테스트 케이스(기본, 경계, 예외 등)를 생성하고, 각 입력에 대해 `solution` 함수를 실행하여 출력을 계산하는 `generate_test_cases` 함수.
-               - `generate_test_cases` 함수는 `[{{\"input\": ..., \"output\": ...}}, ...]` 형식의 (입력, 출력) 딕셔너리 리스트를 반환해야 함 (최소 3개, 최대 5개).
-               - 위의 두 함수를 포함하는 전체 실행 가능한 Python 코드 문자열.
-            2. `generated_examples` (리스트):
-               - 위 `generate_test_cases` 함수를 실행했을 때 반환되는 (입력, 출력) 딕셔너리의 리스트.
-
-            다른 텍스트 없이, 위 두 필드를 포함하는 JSON 객체만 반환해야 합니다.
-            """))
-
-        # 5. 최종 통합 프롬프트 (수정: template_file 추가)
-        integration_prompt = PromptTemplate.from_template(textwrap.dedent("""
-            당신은 알고리즘 문제 생성 전문가입니다. 지금까지 생성된 모든 구성 요소를 통합하여 최종 문제 결과물을 JSON 형식으로 완성해주세요.
-
-            ## 문제 기본 정보
-            - 알고리즘 유형: {algorithm_type}
-            - 난이도 수준: {difficulty}
-            - 사용된 템플릿 파일: {template_file}
-
-            ## 생성된 구성 요소
-            1. 문제 설명 (JSON): {problem_description}
-            2. 테스트 케이스 (JSON): {test_cases}
-            3. 변형된 코드 (문자열):
-               ```python
-               {transformed_code}
-               ```
-
-            ## 최종 결과물 필드 생성 지침
-            - `problem_title`: `problem_description`의 `problem_title` 사용.
-            - `description`: `problem_description`의 `description` 사용.
-            - `input_format`: `problem_description`의 `input_format` 사용.
-            - `output_format`: `problem_description`의 `output_format` 사용.
-            - `constraints`: `problem_description`의 `constraints` 사용.
-            - `example_input`: `test_cases`의 `generated_examples` 리스트가 비어있지 않으면 첫 번째 요소의 `input` 사용, 비어있으면 빈 문자열 "" 사용.
-            - `example_output`: `test_cases`의 `generated_examples` 리스트가 비어있지 않으면 첫 번째 요소의 `output` 사용, 비어있으면 빈 문자열 "" 사용.
-            - `algorithm_hint`: 난이도가 "튜토리얼"일 경우 알고리즘 설명 및 적용 방식 서술, 아닐 경우 빈 문자열 "" 사용.
-            - `solution_code`: `transformed_code` 문자열 사용.
-            - `test_case_generation_code`: `test_cases`의 `test_case_generation_code` 사용.
-            - `template_source`: 입력으로 받은 `template_file` 문자열 사용.
-
-            다른 어떤 텍스트도 포함하지 말고, 위의 지침에 따라 각 필드를 채운 최종 JSON 객체 하나만 생성하여 반환하세요.
-            """))
-
-        # JsonOutputParser 인스턴스 생성
-        json_parser = JsonOutputParser()
-
-        # --- LCEL 파이프라인 구성 ---
+        # --- LCEL 파이프라인 구성 (self 속성 사용) ---
         self.show_progress(1, 6, "파이프라인 구성 중...")
-
-        # 초기 상태 설정
         initial_state = {
             "algorithm_type": algorithm_type,
             "difficulty": difficulty,
@@ -339,67 +356,178 @@ class ProblemGenerator:
             "style_desc": style_desc,
             "difficulty_desc": difficulty_desc
         }
-
-        # 단계별 진행 상황 업데이트를 위한 래퍼 함수
         def wrap_with_progress(step, message, runnable):
             def update_and_run(inputs):
                 self.show_progress(step, 6, message)
-                # 필요한 입력만 runnable에 전달 (필요시 조정)
                 return runnable.invoke(inputs)
             return update_and_run
 
-        # JSON 모드를 적용할 모델 바인딩
-        json_mode_model = self.model.bind(generation_config={"response_mime_type": "application/json"})
-
-        # 파이프라인 정의 (JSON 필요한 단계에서 json_mode_model 사용)
+        # self의 속성을 사용하여 파이프라인 정의
         pipeline = (
             RunnablePassthrough.assign(
-                template_analysis=wrap_with_progress(2, "템플릿 분석 중...", template_analysis_prompt | self.model) # 일반 모델 사용
+                template_analysis=wrap_with_progress(2, "템플릿 분석 중...", self.template_analysis_prompt | self.model)
             )
             | RunnablePassthrough.assign(
-                transformed_code=wrap_with_progress(3, "코드 변형 중...", code_transform_prompt | self.model) # 일반 모델 사용
+                transformed_code=wrap_with_progress(3, "코드 변형 중...", self.code_transform_prompt | self.model)
             )
             | RunnablePassthrough.assign(
-                # 문제 설명: JSON 모드 모델 + JSON 파서 사용
-                problem_description=wrap_with_progress(4, "문제 설명 생성 중...", description_prompt | json_mode_model | json_parser)
+                problem_description=wrap_with_progress(4, "문제 설명 생성 중...", self.description_prompt | self.json_mode_model | self.json_parser)
             )
             | RunnablePassthrough.assign(
-                # 테스트 케이스: JSON 모드 모델 + JSON 파서 사용
-                test_cases=wrap_with_progress(5, "테스트 케이스 생성 중...", test_cases_prompt | json_mode_model | json_parser)
+                test_cases=wrap_with_progress(5, "테스트 케이스 생성 중...", self.test_cases_prompt | self.json_mode_model | self.json_parser)
             )
-            # 최종 통합: JSON 모드 모델 + JSON 파서 사용
-            | wrap_with_progress(6, "최종 결과 통합 중...", integration_prompt | json_mode_model | json_parser)
+            | wrap_with_progress(6, "최종 결과 통합 중...", self.integration_prompt | self.json_mode_model | self.json_parser)
         )
 
-        # 파이프라인 실행
+        # --- 파이프라인 실행 및 결과 반환 (변경 없음) ---
         try:
-            result = pipeline.invoke(initial_state) # 최종 결과는 파싱된 JSON 객체
+            result = pipeline.invoke(initial_state)
             end_time = time.time()
             elapsed_time = end_time - start_time
             self.show_progress(6, 6, f"완료! (소요 시간: {elapsed_time:.1f}초)")
-
-            # 최종 반환 형식 조정 (필요시)
             return {
                 "algorithm_type": algorithm_type,
                 "difficulty": difficulty,
                 "template_used": template_file,
-                "generated_problem_json": result, # 파싱된 JSON 결과를 반환
+                "generated_problem_json": result,
                 "generation_time": elapsed_time
             }
         except Exception as e:
-            # 파이프라인 실행 중 오류 처리
             print(f"\n파이프라인 실행 중 오류 발생: {e}")
-            # 실패한 단계 정보나 원인 등을 로깅하거나 반환할 수 있음
             self.show_progress(6, 6, "오류 발생으로 중단")
             return {"error": f"파이프라인 실행 실패: {e}"}
 
+    def _clean_llm_code_output(self, code_str: str) -> str:
+        """Removes markdown code blocks (```) from LLM string output."""
+        lines = code_str.strip().split('\n')
+        # Check and remove first line if it's a language identifier
+        if lines and lines[0].startswith('```'):
+            lines.pop(0)
+        # Check and remove last line if it's the closing backticks
+        if lines and lines[-1] == '```':
+            lines.pop(-1)
+        return '\n'.join(lines).strip()
 
-    # --- 기존 보조 메서드들은 LCEL 파이프라인 사용으로 불필요해짐 ---
-    # def _analyze_template(self, template_code, algorithm_type, difficulty): ...
-    # def _transform_code(self, template_code, template_analysis): ...
-    # def _generate_description(self, ...): ...
-    # def _generate_test_cases(self, ...): ...
-    # def _integrate_results(self, ...): ...
+    async def generate_problem_stream(
+        self,
+        algorithm_type: str,
+        difficulty: str,
+        response_stream,
+        format_stream_message_func,
+        verbose: bool = True
+    ):
+        """문제 생성을 스트리밍 방식으로 처리 (using pre-built components, refactored)."""
+        request_id = getattr(response_stream, 'context', None)
+        request_id = getattr(request_id, 'aws_request_id', "local") if request_id else "local"
+        if verbose: print(f"[{request_id}] 스트리밍 문제 생성 시작: {algorithm_type} ({difficulty})")
+        start_time = time.time()
+        final_payload = []
+
+        try:
+            # --- 0. 템플릿 로드 ---
+            if verbose: print(f"[{request_id}] 단계 0: 템플릿 로드 중...")
+            response_stream.write(format_stream_message_func("status", "템플릿 파일 불러오는 중...").encode('utf-8'))
+            await asyncio.sleep(0.1)
+            try:
+                template_code, template_file = load_template(algorithm_type, difficulty)
+            except (ValueError, FileNotFoundError) as e:
+                 raise ValueError(f"템플릿 로드 실패: {e}")
+            difficulty_desc = DIFFICULTY_DESCRIPTIONS.get(difficulty, "")
+            style_desc = STYLE_DESCRIPTIONS["Atcoder"]
+            if difficulty in ["보통", "어려움"]:
+                style_desc = STYLE_DESCRIPTIONS["Baekjoon"]
+
+            intermediate_results = {}
+
+            # --- Define Chains for each step ---
+            analysis_chain = self.template_analysis_prompt | self.model
+            transform_chain = self.code_transform_prompt | self.model
+            description_chain = self.description_prompt | self.json_mode_model # Parser applied after stream
+            test_cases_chain = self.test_cases_prompt | self.json_mode_model | self.json_parser | self.ensure_structure_lambda
+
+            # --- 1. 템플릿 분석 ---
+            if verbose: print(f"[{request_id}] 단계 1: 템플릿 분석 중...")
+            response_stream.write(format_stream_message_func("status", "템플릿 코드 분석 중...").encode('utf-8'))
+            await asyncio.sleep(0.1)
+            analysis_result = await analysis_chain.ainvoke({"algorithm_type": algorithm_type, "difficulty": difficulty, "template_code": template_code})
+            intermediate_results["template_analysis"] = analysis_result.content if hasattr(analysis_result, 'content') else str(analysis_result)
+            if verbose: print(f"[{request_id}] 템플릿 분석 완료.")
+
+            # --- 2. 코드 변형 ---
+            if verbose: print(f"[{request_id}] 단계 2: 코드 변형 중...")
+            response_stream.write(format_stream_message_func("status", "코드 변형 중...").encode('utf-8'))
+            await asyncio.sleep(0.1)
+            transformed_code_result = await transform_chain.ainvoke({"template_analysis": intermediate_results["template_analysis"], "template_code": template_code})
+            transformed_code_str = transformed_code_result.content if hasattr(transformed_code_result, 'content') else str(transformed_code_result)
+            # Use helper method to clean code output
+            intermediate_results["transformed_code"] = self._clean_llm_code_output(transformed_code_str)
+            if verbose: print(f"[{request_id}] 코드 변형 완료.")
+
+            # --- 3. 문제 설명 생성 (스트리밍) ---
+            if verbose: print(f"[{request_id}] 단계 3: 문제 설명 생성 스트리밍 시작...")
+            response_stream.write(format_stream_message_func("status", "문제 설명 생성 스트리밍 시작...").encode('utf-8'))
+            await asyncio.sleep(0.1)
+            full_llm_description = ""
+            async for chunk in description_chain.astream({
+                "algorithm_type": algorithm_type, "difficulty": difficulty,
+                "style_desc": style_desc, "difficulty_desc": difficulty_desc,
+                "transformed_code": intermediate_results["transformed_code"],
+            }):
+                token_payload = chunk.content if hasattr(chunk, 'content') else str(chunk)
+                full_llm_description += token_payload
+                response_stream.write(format_stream_message_func("token", token_payload).encode('utf-8'))
+                await asyncio.sleep(0.02)
+            try:
+                intermediate_results["problem_description"] = self.json_parser.parse(full_llm_description)
+            except Exception as parse_err:
+                 raise ValueError(f"문제 설명 JSON 파싱 실패: {parse_err}\n원본 응답: {full_llm_description[:500]}...")
+            if not isinstance(intermediate_results["problem_description"], dict):
+                 raise ValueError(f"문제 설명이 유효한 JSON 객체가 아님: {type(intermediate_results['problem_description'])}")
+            if verbose: print(f"[{request_id}] 문제 설명 생성 스트리밍 완료.")
+
+            # --- 4. 테스트 케이스 생성 ---
+            if verbose: print(f"[{request_id}] 단계 4: 테스트 케이스 생성 중...")
+            response_stream.write(format_stream_message_func("status", "테스트 케이스 생성 중...").encode('utf-8'))
+            await asyncio.sleep(0.1)
+            intermediate_results["test_cases"] = await test_cases_chain.ainvoke({
+                "problem_description": intermediate_results["problem_description"],
+                "transformed_code": intermediate_results["transformed_code"]
+            })
+            if verbose: print(f"[{request_id}] 테스트 케이스 생성 완료.")
+
+            # --- 5. 최종 결과 통합 (Python 로직) ---
+            if verbose: print(f"[{request_id}] 단계 5: 최종 결과 통합 중...")
+            response_stream.write(format_stream_message_func("status", "최종 결과 통합 및 포맷팅 중...").encode('utf-8'))
+            await asyncio.sleep(0.1)
+            desc_data = intermediate_results["problem_description"]
+            test_data = intermediate_results["test_cases"]
+            examples = test_data.get("generated_examples", [])
+            final_result_json = {
+                "id": hash(intermediate_results["transformed_code"] + str(time.time())) % 100000,
+                "title": desc_data.get("problem_title", f"{algorithm_type} {difficulty} 문제"),
+                "description": desc_data.get("description", ""), "difficulty": difficulty,
+                "input_format": desc_data.get("input_format", ""), "output_format": desc_data.get("output_format", ""),
+                "constraints": desc_data.get("constraints", ""),
+                "example_input": examples[0].get("input", "") if examples else "", "example_output": examples[0].get("output", "") if examples else "",
+                "solution_code": intermediate_results["transformed_code"],
+                "test_case_generation_code": test_data.get("test_case_generation_code", ""),
+                "template_source": template_file
+            }
+            final_payload = [final_result_json]
+            elapsed_time = time.time() - start_time
+            if verbose: print(f"[{request_id}] 최종 결과 통합 완료.")
+            if verbose: print(f"[{request_id}] 스트리밍 문제 생성 완료! (소요 시간: {elapsed_time:.1f}초)")
+
+            return final_payload
+        except Exception as e:
+            elapsed_time = time.time() - start_time
+            error_message = f"스트리밍 문제 생성 중 오류 발생 ({elapsed_time:.1f}초 경과): {str(e)}"
+            print(f"[{request_id}] {error_message}\n{traceback.format_exc()}")
+            try:
+                response_stream.write(format_stream_message_func("error", error_message).encode('utf-8'))
+                response_stream.write(format_stream_message_func("status", "❌ 오류 발생").encode('utf-8'))
+            except Exception as write_err: print(f"[{request_id}] 오류 메시지 스트림 전송 실패: {write_err}")
+            raise e
 
 
 # Helper function (if used externally) - 이 부분은 유지하거나 필요에 맞게 수정

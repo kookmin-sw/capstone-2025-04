@@ -1,0 +1,8 @@
+# backend/lambdas/problem-generator-streaming/requirements.txt
+langchain>=0.1.0,<0.2.0
+langchain-core>=0.1.0,<0.2.0
+langchain-google-genai>=0.1.0,<0.2.0 # 또는 최신 안정 버전
+boto3>=1.28.0,<2.0.0 # AWS SDK
+python-dotenv>=0.21.0,<1.1.0 # 환경 변수 로드용 (로컬 테스트 시 유용)
+# 추가적으로 problem-generator 에서 사용하는 라이브러리가 있다면 포함
+# 예: google-generativeai (langchain-google-genai 가 자동으로 설치할 수 있음) 
