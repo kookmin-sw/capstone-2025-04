@@ -491,11 +491,14 @@ const GenerateProblemClient = () => {
                         </p>
                       )}
                       <Link
-                        href={`/coding-test/progress?id=${
-                          problem.id
-                        }&title=${encodeURIComponent(
-                          problem.title
-                        )}&desc=${encodeURIComponent(problem.description)}`}
+                        href={{
+                          pathname: "/coding-test/progress",
+                          query: {
+                            id: problem.id,
+                            title: problem.title,
+                            desc: problem.description,
+                          },
+                        }}
                         className="inline-block px-4 py-1.5 bg-primary text-white text-sm font-medium rounded-md hover:bg-primary-hover transition duration-200 ease-in-out"
                       >
                         문제 풀기
