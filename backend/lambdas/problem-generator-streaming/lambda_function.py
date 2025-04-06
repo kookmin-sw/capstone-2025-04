@@ -5,13 +5,15 @@ import os
 import sys
 import traceback
 from pathlib import Path
+from typing import Union
 
 # --- 경로 설정: problem-generator 모듈 임포트를 위해 ---
-# 이 Lambda 함수 파일의 위치를 기준으로 problem-generator 디렉토리 경로 계산
-current_dir = Path(__file__).parent
-generator_lambda_dir = current_dir.parent.parent / 'lambdas' / 'problem-generator'
-if str(generator_lambda_dir) not in sys.path:
-    sys.path.insert(0, str(generator_lambda_dir))
+# Docker 이미지 내 복사된 경로를 사용
+generator_module_path = Path("/var/task/problem_generator")
+if str(generator_module_path) not in sys.path:
+    sys.path.insert(0, str(generator_module_path))
+# .env 파일 로드를 위한 경로도 업데이트 (필요한 경우)
+generator_env_path = generator_module_path / '.env'
 # --- 경로 설정 끝 ---
 
 # --- problem-generator 모듈 임포트 ---
@@ -21,7 +23,7 @@ try:
     # 환경 변수 로드를 위해 load_dotenv 임포트 (필요시)
     from dotenv import load_dotenv
     # .env 파일 로드 (Lambda 환경변수를 우선 사용)
-    generator_env_path = generator_lambda_dir / '.env'
+    # generator_env_path = generator_lambda_dir / '.env' # 이전 코드 주석 처리
     if generator_env_path.exists():
         load_dotenv(dotenv_path=generator_env_path)
         print("Loaded .env from problem-generator")
@@ -38,7 +40,7 @@ def format_stream_message(msg_type: str, payload: any) -> str:
     """스트리밍 메시지를 JSON Lines 형식으로 포맷합니다."""
     return json.dumps({"type": msg_type, "payload": payload}) + "\n"
 
-def find_algorithm_type(prompt: str) -> str | None:
+def find_algorithm_type(prompt: str) -> Union[str, None]:
     """간단한 키워드 매칭으로 프롬프트에서 알고리즘 유형을 찾습니다."""
     if not prompt: return None
     prompt_lower = prompt.lower()

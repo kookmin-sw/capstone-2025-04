@@ -134,6 +134,10 @@ resource "aws_lambda_function" "generator_streaming_lambda" {
     Environment = var.environment
     ManagedBy   = "Terraform"
   }
+
+  depends_on = [
+    aws_iam_role_policy_attachment.generator_streaming_lambda_policy_attach
+  ]
 }
 
 # WebSocket API Gateway for Problem Generator Streaming

@@ -240,6 +240,16 @@ resource "aws_iam_policy" "generator_streaming_lambda_policy" {
          # Resource ARN needs to be constructed carefully, typically involves the API ID
          # Using a wildcard for now, refine if possible/needed
          Resource = "arn:aws:execute-api:${var.aws_region}:${data.aws_caller_identity.current.account_id}:*/*"
+      },
+      {
+        # ECR permissions to pull the Lambda container image
+        "Action": [
+          "ecr:GetDownloadUrlForLayer",
+          "ecr:BatchGetImage",
+          "ecr:BatchCheckLayerAvailability"
+        ],
+        "Effect": "Allow",
+        "Resource": "*" // Allow pulling images from any ECR repo in the account. Refine if needed.
       }
       # Add other necessary permissions here (e.g., S3 if needed)
     ]
