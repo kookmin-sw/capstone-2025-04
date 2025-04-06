@@ -63,7 +63,7 @@ const GreedyIcon = () => (
 const GenerateProblemClient = () => {
   const [prompt, setPrompt] = useState("");
   const [difficulty, setDifficulty] = useState<"Easy" | "Medium" | "Hard">(
-    "Medium",
+    "Medium"
   );
   const [isLoading, setIsLoading] = useState(false);
   // State for UI feedback from stream
@@ -118,7 +118,7 @@ const GenerateProblemClient = () => {
       const minHeight = 38;
       textareaRef.current.style.height = `${Math.max(
         minHeight,
-        Math.min(scrollHeight, 200),
+        Math.min(scrollHeight, 200)
       )}px`;
     }
   }, []);
@@ -156,7 +156,7 @@ const GenerateProblemClient = () => {
       if (generatedProblems.length > 0) {
         sessionStorage.setItem(
           SESSION_STORAGE_KEY,
-          JSON.stringify(generatedProblems),
+          JSON.stringify(generatedProblems)
         );
       } else {
         if (sessionStorage.getItem(SESSION_STORAGE_KEY)) {
@@ -328,26 +328,31 @@ const GenerateProblemClient = () => {
         <div
           className={`
                     bg-white rounded-lg shadow-sm border transition-all duration-150 ease-in-out cursor-text
-                    ${isInputFocused ? "border-primary ring-2 ring-primary/20" : "border-gray-200 hover:border-gray-300"}
-                    ${isLoading ? "bg-gray-50 opacity-75 pointer-events-none" : "bg-white"}
+                    ${
+                      isInputFocused
+                        ? "border-primary ring-2 ring-primary/20"
+                        : "border-gray-200 hover:border-gray-300"
+                    }
+                    ${
+                      isLoading
+                        ? "bg-gray-50 opacity-75 pointer-events-none"
+                        : "bg-white"
+                    }
                 `}
           onClick={() => !isLoading && textareaRef.current?.focus()}
         >
-          <div className="px-6 pt-3 pb-0">
-            <textarea
-              ref={textareaRef}
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              onKeyDown={handleKeyPress}
-              onFocus={() => setIsInputFocused(true)}
-              onBlur={() => setIsInputFocused(false)}
-              placeholder="생성하고 싶은 문제 유형을 입력하세요... (예: DP 기초 문제)"
-              className="w-full pt-2 border-none focus:ring-0 outline-none text-gray-900 placeholder-gray-400 text-sm resize-none overflow-auto leading-relaxed bg-transparent disabled:text-gray-500"
-              rows={1}
-              disabled={isLoading}
-              style={{ minHeight: "24px" }}
-            />
-          </div>
+          <textarea
+            ref={textareaRef}
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            onKeyDown={handleKeyPress}
+            onFocus={() => setIsInputFocused(true)}
+            onBlur={() => setIsInputFocused(false)}
+            placeholder="생성하고 싶은 문제 유형을 입력하세요... (예: DP 기초 문제)"
+            className="w-full pt-2 px-6 border-none focus:ring-0 outline-none text-gray-900 placeholder-gray-400 text-sm resize-none overflow-auto leading-relaxed bg-transparent disabled:text-gray-500 [min-height:24px]"
+            rows={1}
+            disabled={isLoading}
+          />
           <div className="flex gap-1.5 px-6 pb-3 pt-1 bg-transparent rounded-b-md items-center">
             <div className="flex items-center space-x-1 bg-gray-100 p-1 rounded-full">
               {(["Easy", "Medium", "Hard"] as const).map((level) => (
@@ -358,13 +363,17 @@ const GenerateProblemClient = () => {
                     if (!isLoading) setDifficulty(level);
                   }}
                   disabled={isLoading}
-                  className={`px-3 py-1 rounded-full text-xs font-medium transition-colors border-primary ring-2 ring-gray-200 disabled:opacity-50 disabled:cursor-not-allowed ${difficulty === level ? "bg-primary text-white shadow-sm" : "text-gray-600 hover:bg-gray-200"}`}
+                  className={`px-3 py-1 rounded-full text-xs font-medium transition-colors border-primary ring-2 ring-gray-200 disabled:opacity-50 disabled:cursor-not-allowed ${
+                    difficulty === level
+                      ? "bg-primary text-white shadow-sm"
+                      : "text-gray-600 hover:bg-gray-200"
+                  }`}
                 >
                   {level === "Easy"
                     ? "쉬움"
                     : level === "Medium"
-                      ? "중간"
-                      : "어려움"}
+                    ? "중간"
+                    : "어려움"}
                 </button>
               ))}
             </div>
@@ -375,7 +384,11 @@ const GenerateProblemClient = () => {
                   handleGenerate();
                 }}
                 disabled={isLoading || !prompt.trim()}
-                className={`h-9 w-9 flex items-center justify-center rounded-full transition-colors ${isLoading || !prompt.trim() ? "bg-gray-300 text-gray-500 cursor-not-allowed" : "bg-primary hover:bg-primary-hover text-white"}`}
+                className={`h-9 w-9 flex items-center justify-center rounded-full transition-colors ${
+                  isLoading || !prompt.trim()
+                    ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+                    : "bg-primary hover:bg-primary-hover text-white"
+                }`}
                 aria-label="생성하기"
               >
                 {isLoading ? <LoadingSpinnerIcon /> : <SendIcon />}
@@ -460,7 +473,13 @@ const GenerateProblemClient = () => {
                           {problem.title}
                         </h4>
                         <span
-                          className={`flex-shrink-0 ml-2 px-2 py-0.5 text-xs font-medium rounded-full ${problem.difficulty === "Easy" ? "bg-green-100 text-green-800" : problem.difficulty === "Medium" ? "bg-yellow-100 text-yellow-800" : "bg-red-100 text-red-800"}`}
+                          className={`flex-shrink-0 ml-2 px-2 py-0.5 text-xs font-medium rounded-full ${
+                            problem.difficulty === "Easy"
+                              ? "bg-green-100 text-green-800"
+                              : problem.difficulty === "Medium"
+                              ? "bg-yellow-100 text-yellow-800"
+                              : "bg-red-100 text-red-800"
+                          }`}
                         >
                           {problem.difficulty}
                         </span>
@@ -472,7 +491,11 @@ const GenerateProblemClient = () => {
                         </p>
                       )}
                       <Link
-                        href={`/coding-test/progress?id=${problem.id}&title=${encodeURIComponent(problem.title)}&desc=${encodeURIComponent(problem.description)}`}
+                        href={`/coding-test/progress?id=${
+                          problem.id
+                        }&title=${encodeURIComponent(
+                          problem.title
+                        )}&desc=${encodeURIComponent(problem.description)}`}
                         className="inline-block px-4 py-1.5 bg-primary text-white text-sm font-medium rounded-md hover:bg-primary-hover transition duration-200 ease-in-out"
                       >
                         문제 풀기
