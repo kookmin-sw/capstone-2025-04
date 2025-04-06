@@ -137,4 +137,11 @@ async def handler(event, context):
     finally:
         # --- 스트림 닫기 (필수) ---
         response_stream.close()
-        print(f"[{request_id}] Response stream closed.") 
+        print(f"[{request_id}] Response stream closed.")
+
+    # 스트리밍이 완료된 후 또는 오류 발생 후, Lambda 런타임에 반환할 기본 응답
+    # API Gateway 프록시 통합은 일반적으로 이 형식을 기대함
+    return {
+        'statusCode': 200,
+        'body': json.dumps({'message': 'Streaming process initiated or completed.'})
+    } 
