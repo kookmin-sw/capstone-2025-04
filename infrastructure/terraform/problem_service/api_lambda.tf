@@ -115,8 +115,8 @@ resource "aws_lambda_function" "generator_streaming_lambda" {
   role          = aws_iam_role.generator_streaming_lambda_role.arn
   package_type  = "Image" # 패키지 타입을 Image로 변경
   architectures = ["x86_64"] # 실행 아키텍처 명시적 지정
-  # image_uri 는 ecr.tf 에서 생성된 리포지토리 URL 사용
-  image_uri     = "${aws_ecr_repository.generator_streaming_repo.repository_url}:latest"
+  # image_uri 는 ecr.tf 에서 생성된 리포지토리 URL과 variables.tf 의 태그 변수 사용
+  image_uri     = "${aws_ecr_repository.generator_streaming_repo.repository_url}:${var.generator_streaming_image_tag}"
   memory_size   = var.generator_streaming_lambda_memory_size
   timeout       = var.generator_streaming_lambda_timeout
 

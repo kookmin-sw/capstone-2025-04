@@ -60,9 +60,15 @@
     - **해결:** `iam.tf`의 `generator_streaming_lambda_policy`에 ECR 권한(`ecr:GetDownloadUrlForLayer`, `ecr:BatchGetImage`, `ecr:BatchCheckLayerAvailability`)을 추가했습니다. `apply` 실행 전에 CloudShell에서 이미지를 다시 푸시(성공 확인)했습니다.
 
 6.  **API Gateway 스테이지 생성 실패 (CloudWatch Logs 역할):**
+
     - **오류:** `generator_streaming_stage` 생성 시 `BadRequestException: CloudWatch Logs role ARN must be set in account settings to enable logging` 오류로 `terraform apply`가 실패했습니다.
     - **진단:** 대상 리전(`ap-northeast-2`)의 AWS 계정 API Gateway 설정에 CloudWatch Logs IAM 역할이 구성되어 있지 않았으며, 이는 Terraform에서 스테이지 로깅을 활성화할 때 필요합니다.
     - **해결:** AWS Management Console을 통해 `ap-northeast-2` 리전의 API Gateway 설정에서 CloudWatch Logs 역할 ARN을 수동으로 구성했습니다. 이는 계정/리전 수준의 일회성 설정입니다.
+
+7.  **Lambda 이미지 업데이트 안됨 (`:latest` 태그 사용 시):**
+    - **문제:** ECR에 새 이미지를 `:latest` 태그로 푸시해도 `terraform apply`가 변경 사항을 감지하지 못하여 Lambda 함수가 업데이트되지 않았습니다.
+    - **원인:** Terraform은 `:latest` 태그의 내용 변경이 아닌, 이미지 URI(태그 포함) 문자열 변경을 기준으로 업데이트를 수행합니다.
+    - **해결:** 이미지 빌드/푸시 시 고유 태그(타임스탬프 등)를 사용하고, Terraform 변수(`generator_streaming_image_tag`) 및 `api_lambda.tf`의 `image_uri` 설정을 수정하여 `terraform apply` 시 `-var` 옵션으로 새 태그를 전달하도록 변경했습니다.
 
 ## 현재 상태
 

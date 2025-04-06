@@ -92,53 +92,73 @@ graph TD
 이 Lambda 함수를 포함한 전체 인프라 배포는 Terraform으로 관리되지만, Lambda 함수의 코드를 업데이트하는 과정은 다음과 같습니다.
 
 1.  **Lambda 코드 수정:** `backend/lambdas/problem-generator-streaming/` 디렉토리 내의 Python 코드 (`lambda_function.py` 및 관련 모듈)를 수정합니다.
-2.  **Docker 이미지 빌드:** 수정된 코드를 포함하여 새 Docker 이미지를 빌드합니다. 이 디렉토리의 `Dockerfile` 이 빌드 설정을 정의합니다. AWS CloudShell 이나 Linux 기반 환경에서 빌드하는 것을 권장합니다 (호환성 문제 방지).
+2.  **Docker 이미지 빌드 및 푸시:** 수정된 코드를 포함하여 고유 태그(예: 타임스탬프)를 사용하여 새 Docker 이미지를 빌드하고 ECR에 푸시합니다. 로컬 환경에서는 `--platform linux/amd64` 플래그 사용이 필수적입니다.
+
     ```bash
-    # 예시: backend/lambdas/problem-generator-streaming/ 디렉토리에서 실행
-    # ECR 리포지토리 URI는 terraform output generator_streaming_ecr_repo_url 로 확인 가능
-    REPO_URL=$(terraform -chdir=../../../infrastructure/terraform/problem_service output -raw generator_streaming_ecr_repo_url)
-    aws ecr get-login-password --region ap-northeast-2 | docker login --username AWS --password-stdin $REPO_URL
-    docker build -t $REPO_URL:latest .
+    # 예시: backend/lambdas/ 디렉토리에서 실행
+
+    # 고유 태그 생성 (Timestamp)
+    TAG=$(date +%Y%m%d%H%M%S)
+    echo "Using tag: $TAG"
+
+    # ECR 리포지토리 URI 확인 (필요시)
+    # REPO_URL=$(terraform -chdir=../../infrastructure/terraform/problem_service output -raw generator_streaming_ecr_repo_url)
+    REPO_URL="<AWS_ACCOUNT_ID>.dkr.ecr.ap-northeast-2.amazonaws.com/alpaco/problem-generator-streaming-dev" # 실제 URL로 대체 필요
+
+    # Docker 로그인 (필요시)
+    # aws ecr get-login-password --region ap-northeast-2 | docker login --username AWS --password-stdin $REPO_URL
+
+    # 이미지 빌드 (Dockerfile 위치 및 빌드 컨텍스트 주의)
+    docker build --platform linux/amd64 -t alpaco/problem-generator-streaming-dev:$TAG -f problem-generator-streaming/Dockerfile .
+
+    # ECR 주소로 이미지 태그 지정
+    docker tag alpaco/problem-generator-streaming-dev:$TAG $REPO_URL:$TAG
+
+    # ECR로 이미지 푸시
+    docker push $REPO_URL:$TAG
     ```
-3.  **Docker 이미지 푸시:** 빌드된 이미지를 Terraform으로 생성된 ECR 리포지토리에 푸시합니다.
+
+3.  **Terraform 적용 (`terraform apply`):** `infrastructure/terraform/problem_service` 디렉토리에서 `terraform apply` 를 실행하여 Lambda 함수를 업데이트합니다. 이때 `-var` 옵션을 사용하여 새 이미지 태그를 전달해야 합니다.
     ```bash
-    docker push $REPO_URL:latest
+    # 이전 단계에서 생성한 태그($TAG)를 사용
+    terraform apply -var="generator_streaming_image_tag=$TAG" -auto-approve
     ```
-4.  **Terraform 적용 (`terraform apply`):** `infrastructure/terraform/problem_service` 디렉토리에서 `terraform apply` 를 실행합니다. Terraform은 `aws_lambda_function.generator_streaming_lambda` 리소스 정의에 있는 `image_uri` 가 변경된 것을 감지하고 (만약 이미지 태그를 변경했다면), Lambda 함수를 새 이미지로 업데이트합니다. `latest` 태그를 계속 사용하는 경우, Lambda 함수 설정에서 수동으로 업데이트하거나 `image_uri`를 명시적으로 변경하여 Terraform이 변화를 감지하게 해야 할 수 있습니다. (일반적으로는 버전 태그(예: Git commit hash) 사용 권장)
 
 ## 4. 문제 해결 기록 (이 Lambda 함수 관련)
 
 이 Lambda 함수를 배포하고 테스트하는 과정에서 다음과 같은 주요 문제들이 발생했습니다.
 
-1.  **Lambda 소스 이미지를 찾을 수 없음 (초기):**
+1.  **Lambda 소스 이미지를 찾을 수 없음 (초기):** (해결됨)
     - **오류:** `terraform apply` 시 `InvalidParameterValueException: Source image ...:latest does not exist.`
     - **원인:** ECR 리포지토리에 `:latest` 태그가 붙은 이미지가 푸시되지 않았음.
-    - **해결:** `backend/lambdas/problem-generator-streaming/` 에 `Dockerfile` 을 정의하고, 이미지를 빌드하여 해당 ECR 리포지토리에 `:latest` 태그로 푸시함.
-2.  **Lambda 소스 이미지 미디어 타입 미지원:**
+    - **해결:** `Dockerfile` 정의 및 이미지 빌드/푸시.
+2.  **Lambda 소스 이미지 미디어 타입 미지원:** (해결됨)
     - **오류:** 이미지를 푸시한 후 `terraform apply` 또는 AWS 콘솔에서 함수 생성 시 `InvalidParameterValueException: The image manifest, config or layer media type ... is not supported.`
-    - **원인:** 로컬 macOS 환경에서 빌드된 Docker 이미지 형식이 AWS Lambda 실행 환경과 호환되지 않음 (`--platform linux/amd64` 지정해도 발생).
-    - **해결:** **AWS CloudShell** (Linux 기반 환경)을 사용하여 이미지를 다시 빌드하고 푸시하여 호환성 문제를 해결함.
-3.  **Lambda 소스 이미지를 찾을 수 없음 (Destroy/재푸시 후):**
+    - **원인:** 로컬 macOS 환경에서 빌드된 Docker 이미지 형식이 AWS Lambda 실행 환경과 호환되지 않음.
+    - **해결:** 로컬 빌드 시 `--platform linux/amd64` 플래그 사용. (또는 CloudShell 사용)
+3.  **Lambda 소스 이미지를 찾을 수 없음 (Destroy/재푸시 후):** (해결됨)
     - **오류:** `terraform destroy` 후 CloudShell에서 이미지를 다시 푸시했음에도 `apply` 시 "Source image ... does not exist" 오류 재발생.
-    - **원인:** Lambda 함수의 실행 역할(`generator_streaming_lambda_role`)에 ECR 리포지토리에서 이미지를 가져올 수 있는 권한(`ecr:GetDownloadUrlForLayer`, `ecr:BatchGetImage`, `ecr:BatchCheckLayerAvailability`)이 누락됨.
-    - **해결:** `iam.tf` 의 `generator_streaming_lambda_policy` 에 필요한 ECR 권한을 추가하고, `terraform apply` 를 다시 실행함 (이미지 재푸시 필요).
-4.  **"Internal server error" (WebSocket 테스트 중):**
-    - **오류:** `wscat` 으로 WebSocket 연결 후 `generateProblem` 메시지 전송 시 Lambda 함수 로그에 오류 발생 및 클라이언트에 "Internal server error" 반환.
-    - **세부 오류 1 (CloudWatch 로그):** `TypeError: unsupported operand type(s) for |: 'type' and 'NoneType'` at `lambda_function.py` line 41 (`-> str | None:`).
+    - **원인:** Lambda 함수의 실행 역할에 필요한 ECR 권한 누락.
+    - **해결:** `iam.tf` 에 ECR 권한 추가.
+4.  **`terraform apply` 시 Lambda 업데이트 안됨:** (해결됨)
+    - **오류:** ECR에 새 이미지를 `:latest` 태그로 푸시한 후 `terraform apply`를 실행해도 Lambda 함수가 업데이트되지 않음 (`No changes`).
+    - **원인:** Terraform은 이미지 내용 변경이 아닌 `image_uri` (태그 포함) 변경을 기준으로 업데이트를 감지함. `:latest` 태그는 이름이 변경되지 않음.
+    - **해결:** 고유한 이미지 태그(타임스탬프, Git 해시 등) 사용 및 Terraform 변수(`generator_streaming_image_tag`)를 통해 `image_uri`를 동적으로 설정하도록 변경. `terraform apply` 시 `-var` 옵션으로 태그 전달.
+5.  **"Internal server error" (WebSocket 테스트 중):**
+    - **오류:** `wscat` 으로 WebSocket 연결 후 `generateProblem` 메시지 전송 시 Lambda 함수 로그에 오류 발생.
+    - **세부 오류 1 (CloudWatch 로그):** `TypeError: unsupported operand type(s) for |: 'type' and 'NoneType'` (해결됨)
       - **원인:** Lambda 함수 런타임의 Python 버전(3.9 이하 추정)이 파이썬 3.10+ 타입 힌트 문법(`|`)을 지원하지 않음.
-      - **해결:** 타입 힌트를 `Union[str, None]` (from `typing` import `Union`) 으로 수정 필요. **(현재 진행 필요)**
-    - **세부 오류 2 (CloudWatch 로그):** `ImportError: No module named 'generation'`.
-      - **원인:** `lambda_function.py` 에서 사용하는 `generation` 모듈이 Docker 이미지 빌드 시 포함되지 않음. `Dockerfile` 의 `COPY` 명령어나 소스 코드 구조 문제.
-      - **해결:** `Dockerfile` 을 수정하여 `generation` 모듈(관련 `.py` 파일 또는 디렉토리)이 이미지 내 작업 디렉토리로 올바르게 복사되도록 하고, `lambda_function.py` 의 import 경로가 맞는지 확인 필요. **(현재 진행 필요)**
+      - **해결:** 타입 힌트를 `Union[str, None]` 으로 수정.
+    - **세부 오류 2 (CloudWatch 로그):** `ImportError: No module named 'generation'` (해결됨)
+      - **원인:** `generation` 모듈이 Docker 이미지 빌드 시 포함되지 않음.
+      - **해결:** `Dockerfile` 수정 (`COPY` 명령어 추가 및 빌드 컨텍스트 조정) 및 `lambda_function.py` 의 `sys.path` 수정.
 
 ## 5. 현재 상태 및 다음 단계
 
-현재 `generator_streaming_lambda` 함수는 배포되었으나, WebSocket을 통한 실제 기능 테스트 시 내부 코드 오류(`TypeError`, `ImportError`)로 인해 정상 작동하지 않습니다.
+Lambda 함수 코드 오류(`TypeError`, `ImportError`) 및 배포 방식(`:latest` 태그 문제)을 해결하기 위한 수정 사항이 적용되었습니다. Terraform 구성도 고유 태그를 사용하도록 업데이트되었습니다.
 
 다음 단계는 다음과 같습니다.
 
-1.  `lambda_function.py` 코드에서 **타입 힌트 문법 수정** (`|` -> `Union`).
-2.  `Dockerfile` 및 관련 코드 구조를 검토/수정하여 **`generation` 모듈이 Docker 이미지에 올바르게 포함**되도록 함.
-3.  수정된 코드로 **Docker 이미지를 다시 빌드하고 ECR에 푸시**.
-4.  `terraform apply` 를 실행하여 **Lambda 함수 업데이트**.
-5.  `wscat` 또는 다른 WebSocket 클라이언트를 사용하여 **기능 재테스트**.
+1.  수정된 코드와 `Dockerfile`을 사용하여 **고유 태그로 Docker 이미지를 다시 빌드하고 ECR에 푸시**.
+2.  `terraform apply -var="generator_streaming_image_tag=<YOUR_NEW_TAG>" -auto-approve` 명령을 사용하여 **Lambda 함수 업데이트**.
+3.  `wscat` 또는 다른 WebSocket 클라이언트를 사용하여 **기능 재테스트**.

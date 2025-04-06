@@ -75,4 +75,10 @@ variable "generator_streaming_websocket_route_key" {
   description = "Route key for the WebSocket API integration"
   type        = string
   default     = "$default" # 또는 특정 라우트 키 (e.g., "generate")
+}
+
+variable "generator_streaming_image_tag" {
+  description = "Problem Generator Streaming Lambda 함수의 Docker 이미지 태그 (예: latest, v1.0, timestamp)"
+  type        = string
+  default     = "latest" # 기본값은 latest지만, terraform apply 시 오버라이드 필요
 } 
