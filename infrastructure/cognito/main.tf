@@ -1,5 +1,3 @@
-
-# 1. Cognito User Pool 생성
 resource "aws_cognito_user_pool" "main" {
   name = "${var.project_name}-user-pool-${var.environment}"
 
@@ -18,6 +16,12 @@ resource "aws_cognito_user_pool" "main" {
 
   # MFA 비활성화 (필요시 "ON" 또는 "OPTIONAL"로 변경)
   mfa_configuration = "OFF"
+
+  # ===> Lambda Trigger Configuration <===
+  lambda_config {
+    # Invoke the Lambda function after user confirmation
+    post_confirmation = aws_lambda_function.post_confirmation_trigger.arn
+  }
 
   tags = var.common_tags
 }
@@ -97,3 +101,110 @@ resource "aws_cognito_user_pool_client" "app_client" {
   # User Pool에 Google IdP를 추가했으므로, User Pool Client가 이를 사용하도록 명시적 의존성 추가
   depends_on = [aws_cognito_identity_provider.google]
 }
+
+
+# ===> NEW: Cognito User Groups <===
+resource "aws_cognito_user_group" "general_users" {
+  name         = "${var.project_name}-GeneralUsers-${var.environment}" # Group name
+  user_pool_id = aws_cognito_user_pool.main.id
+  description  = "General users, typically added automatically on signup/confirmation"
+  precedence   = 10 # Lower precedence means less priority if role mappings were used
+}
+
+resource "aws_cognito_user_group" "admins" {
+  name         = "${var.project_name}-Admins-${var.environment}" # Group name
+  user_pool_id = aws_cognito_user_pool.main.id
+  description  = "Administrators with elevated privileges (manual assignment)"
+  precedence   = 1 # Higher precedence
+}
+
+
+# ===> NEW: Lambda Function for Post Confirmation Trigger <===
+
+# IAM Role for the Lambda Function
+resource "aws_iam_role" "cognito_group_adder_role" {
+  name = "${var.project_name}-cognito-group-adder-role-${var.environment}"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action    = "sts:AssumeRole"
+      Effect    = "Allow"
+      Principal = { Service = "lambda.amazonaws.com" }
+    }]
+  })
+  tags = var.common_tags
+}
+
+# IAM Policy for the Lambda Function
+resource "aws_iam_policy" "cognito_group_adder_policy" {
+  name        = "${var.project_name}-cognito-group-adder-policy-${var.environment}"
+  description = "Allows Lambda to add users to Cognito groups and write logs"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "cognito-idp:AdminAddUserToGroup"
+        Effect = "Allow"
+        # Restrict to the specific user pool for better security
+        Resource = aws_cognito_user_pool.main.arn # Correct: Target the User Pool ARN
+      },
+      {
+        # Basic Lambda logging permissions
+        Action   = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
+        Effect   = "Allow"
+        Resource = "arn:aws:logs:*:*:*"
+      }
+    ]
+  })
+}
+
+# Attach Policy to Role
+resource "aws_iam_role_policy_attachment" "cognito_group_adder_attach" {
+  role       = aws_iam_role.cognito_group_adder_role.name
+  policy_arn = aws_iam_policy.cognito_group_adder_policy.arn
+}
+
+# Package Lambda function code from a local file
+data "archive_file" "lambda_zip" {
+  type = "zip"
+  # Assumes lambda_function.py is in the same directory as the terraform files
+  source_file = "${path.module}/lambda_function.py"
+  output_path = "${path.module}/post_confirmation_lambda.zip"
+}
+
+# Lambda Function Resource
+resource "aws_lambda_function" "post_confirmation_trigger" {
+  filename         = data.archive_file.lambda_zip.output_path
+  source_code_hash = data.archive_file.lambda_zip.output_base64sha256 # Ensures updates when code changes
+
+  function_name = "${var.project_name}-post-confirmation-trigger-${var.environment}"
+  role          = aws_iam_role.cognito_group_adder_role.arn
+  handler       = "lambda_function.lambda_handler" # Assumes lambda_function.py with handler named lambda_handler
+  runtime       = "python3.9"                      # Choose a supported runtime
+  timeout       = 15                               # Seconds
+
+  environment {
+    variables = {
+      GENERAL_USERS_GROUP_NAME = "${var.project_name}-GeneralUsers-${var.environment}"
+    }
+  }
+
+  tags = var.common_tags
+
+  # Ensure the role exists before creating the function
+  depends_on = [
+  ]
+}
+
+# Permission for Cognito to Invoke the Lambda Function
+resource "aws_lambda_permission" "allow_cognito" {
+  statement_id  = "AllowCognitoInvokePostConfirmationTrigger"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.post_confirmation_trigger.function_name
+  principal     = "cognito-idp.amazonaws.com"
+  # Source ARN must be the User Pool ARN
+  source_arn = aws_cognito_user_pool.main.arn
+}
+
+data "aws_caller_identity" "current" {}

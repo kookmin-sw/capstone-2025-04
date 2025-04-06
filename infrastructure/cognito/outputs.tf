@@ -23,3 +23,13 @@ output "cognito_user_pool_provider_url" {
   # OIDC Provider URL 형식: https://cognito-idp.{region}.amazonaws.com/{userPoolId}
   value = "https://cognito-idp.${var.aws_region}.amazonaws.com/${aws_cognito_user_pool.main.id}"
 }
+# ===> NEW: Group Outputs <===
+output "cognito_general_users_group_name" {
+  description = "Name of the General Users group"
+  value       = aws_cognito_user_group.general_users.name
+}
+
+output "cognito_admins_group_name" {
+  description = "Name of the Admins group"
+  value       = aws_cognito_user_group.admins.name
+}

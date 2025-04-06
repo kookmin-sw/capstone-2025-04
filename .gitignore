@@ -88,6 +88,7 @@ terraform.tfvars.json
 !infrastructure/backend-setup/
 !infrastructure/backend-setup/terraform.tfstate
 # Keep the terraform state file for backend setup
+infrastructure/cognito/post_confirmation_lambda.zip
 
 # Keep .gitkeep files
 !.gitkeep
