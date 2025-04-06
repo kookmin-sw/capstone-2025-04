@@ -1,125 +1,107 @@
 const AWS = require("aws-sdk");
 const dynamoDB = new AWS.DynamoDB.DocumentClient();
-const jwt = require("jsonwebtoken");
 
 exports.handler = async (event) => {
     try {
-        const token = event.headers.Authorization || event.headers.authorization;
+        const { postId } = event.pathParameters; // 요청 URL에서 postId 가져오기
 
-        let author;
-        let isAdmin = false;
-        if (token === "test") {
-            author = "test-user"; // 테스트 모드
-            isAdmin = true;  // 테스트 모드에서는 관리자 권한 부여
-        } else {
-            if (!token) {
-                return {
-                    statusCode: 401,
-                    body: JSON.stringify({ message: "Authorization 헤더가 없습니다." }),
-                };
-            }
-
-            const jwtToken = token.replace("Bearer ", "");
-            const decoded = jwt.decode(jwtToken);
-            if (!decoded || !decoded.username) {
-                return {
-                    statusCode: 401,
-                    body: JSON.stringify({ message: "유효하지 않은 토큰입니다." }),
-                };
-            }
-            author = decoded.username;
-            isAdmin = decoded.role === 'admin';
-        }
-
-        const body = JSON.parse(event.body);
-        const { postId } = body;
-
-        if (!postId) {
+        // API Gateway JWT Authorizer에서 전달된 유저 정보 가져오기
+        const claims = event.requestContext.authorizer.claims;
+        if (!claims || !claims.username) {
             return {
-                statusCode: 400,
-                body: JSON.stringify({ message: "postId는 필수입니다." }),
+                statusCode: 401,
+                body: JSON.stringify({ message: "인증 정보가 없습니다." }),
             };
         }
 
-        // 게시글 가져오기
-        const getPostParams = {
-            TableName: "Posts",
-            Key: { postId: postId },
+        const author = claims.username;
+
+        // 게시글 존재 여부 확인
+        const getParams = {
+            TableName: "Community",
+            Key: {
+                PK: postId,
+                SK: "POST",
+            },
         };
 
-        const postResult = await dynamoDB.get(getPostParams).promise();
+        const result = await dynamoDB.get(getParams).promise();
+        const post = result.Item;
 
-        if (!postResult.Item) {
+        if (!post) {
             return {
                 statusCode: 404,
-                body: JSON.stringify({ message: "게시글이 존재하지 않습니다." }),
+                body: JSON.stringify({ message: "게시글을 찾을 수 없습니다." }),
             };
         }
 
-        if (postResult.Item.author !== author && !isAdmin) {
+        // 본인 확인
+        if (post.author !== author) {
             return {
                 statusCode: 403,
-                body: JSON.stringify({ message: "이 게시글을 삭제할 권한이 없습니다." }),
+                body: JSON.stringify({ message: "게시글을 삭제할 권한이 없습니다." }),
             };
         }
 
-        // 댓글 삭제
-        const getCommentsParams = {
-            TableName: "Comments",
-            IndexName: "PostIdIndex",
-            KeyConditionExpression: "postId = :postId",
-            ExpressionAttributeValues: { ":postId": postId },
+        // 댓글 조회 (최대 24개까지만 지원. 그 이상이면 반복 처리 필요)
+        const commentQuery = await dynamoDB.query({
+            TableName: "Community",
+            KeyConditionExpression: "PK = :postId AND begins_with(SK, :prefix)",
+            ExpressionAttributeValues: {
+                ":postId": postId,
+                ":prefix": "COMMENT#",
+            },
+        }).promise();
+
+        const commentDeleteOps = commentQuery.Items.map((comment) => ({
+            Delete: {
+                TableName: "Community",
+                Key: {
+                    PK: comment.PK,
+                    SK: comment.SK,
+                },
+            },
+        }));
+
+        // 게시글 삭제도 포함
+        const deletePostOp = {
+            Delete: {
+                TableName: "Community",
+                Key: {
+                    PK: postId,
+                    SK: "POST",
+                },
+            },
         };
 
-        const commentsResult = await dynamoDB.query(getCommentsParams).promise();
-        const comments = commentsResult.Items || [];
+        // 트랜잭션 실행 (최대 25개)
+        const transactItems = [deletePostOp, ...commentDeleteOps];
 
-        for (let comment of comments) {
-            const deleteCommentParams = {
-                TableName: "Comments",
-                Key: { commentId: comment.commentId, postId: postId },
+        if (transactItems.length > 25) {
+            return {
+                statusCode: 400,
+                body: JSON.stringify({ message: "댓글 수가 너무 많아 한 번에 삭제할 수 없습니다. (최대 24개까지 지원)" }),
             };
-            await dynamoDB.delete(deleteCommentParams).promise();
         }
 
-        // 좋아요 삭제
-        const getLikesParams = {
-            TableName: "PostLikes",
-            IndexName: "PostIdIndex",
-            KeyConditionExpression: "postId = :postId",
-            ExpressionAttributeValues: { ":postId": postId },
-        };
-
-        const likesResult = await dynamoDB.query(getLikesParams).promise();
-        const likes = likesResult.Items || [];
-
-        for (let like of likes) {
-            const deleteLikeParams = {
-                TableName: "PostLikes",
-                Key: { userId: like.userId, postId: postId },
-            };
-            await dynamoDB.delete(deleteLikeParams).promise();
-        }
-
-        // 게시글 삭제
-        const deletePostParams = {
-            TableName: "Posts",
-            Key: { postId: postId },
-        };
-
-        await dynamoDB.delete(deletePostParams).promise();
+        await dynamoDB.transactWrite({
+            TransactItems: transactItems,
+        }).promise();
 
         return {
             statusCode: 200,
             body: JSON.stringify({
-                message: "게시글과 관련된 댓글, 좋아요가 모두 삭제되었습니다.",
+                message: "게시글과 모든 댓글이 성공적으로 삭제되었습니다.",
+                deletedComments: commentDeleteOps.length,
             }),
         };
+
+        
     } catch (error) {
         console.error("게시글 삭제 중 오류 발생:", error);
         return {
             statusCode: 500,
-            body: JSON.stringify({ message: "게시글 삭제 중 오류 발생", error: error.message }),
+            body: JSON.stringify({ message: "서버 오류가 발생했습니다.", error: error.message }),
         };
     }
 };
