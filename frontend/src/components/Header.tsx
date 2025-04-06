@@ -13,17 +13,26 @@ console.log("Session:", session); // Log the session to the console
 console.log("ID Token:", idToken); // Log the ID token to the console
 
 const Header: React.FC = () => {
-  // Get authentication status and user details from the hook
-  const { user, signOut, route } = useAuthenticator((context) => [
+  // Optimize: Select only the states needed by the Header
+  const { user, signOut, authStatus } = useAuthenticator((context) => [
     context.user,
     context.signOut,
-    context.route,
+    context.authStatus, // Still need route to determine if authenticated
   ]);
-  const isAuthenticated = route === "authenticated";
+  const isAuthenticated = authStatus === "authenticated";
+  console.log("context: ", user, authStatus); // Debugging line
+
+  // Function to get user identifier (e.g., email or username)
+  const getUserIdentifier = () => {
+    if (!user) return "사용자";
+    // Use signInDetails.loginId (often email) or fallback to username
+    return user.signInDetails?.loginId || user.username || "사용자";
+  };
 
   return (
     <header className="bg-white py-4 sticky top-0 z-10 shadow-md">
       <div className="w-full px-4 mx-auto max-w-7xl flex justify-between items-center">
+        {/* Logo */}
         <div className="flex flex-row items-center text-primary transition-transform duration-200 hover:scale-105">
           <Link href="/" className="flex flex-row items-center gap-2">
             <Image
@@ -42,9 +51,9 @@ const Header: React.FC = () => {
             />
           </Link>
         </div>
+
+        {/* Navigation */}
         <nav className="flex gap-6 items-center">
-          {" "}
-          {/* Added items-center */}
           <Link
             href="/community"
             className="font-medium text-gray-600 relative hover:text-primary transition-colors duration-200 hover:after:content-[''] hover:after:absolute hover:after:bottom-[-0.5rem] hover:after:left-0 hover:after:w-full hover:after:h-0.5 hover:after:bg-primary hover:after:rounded-sm"
@@ -65,15 +74,15 @@ const Header: React.FC = () => {
               내 저장소
             </Link>
           )}
-          {/* Conditional Login/Logout Button */}
+
+          {/* Auth Buttons / User Info */}
           {isAuthenticated ? (
             <>
               <span className="text-sm text-gray-700 hidden md:inline">
-                {/* Display user email if available */}
-                {user?.signInDetails?.loginId || "사용자"}님
+                {getUserIdentifier()}님 {/* Display user identifier */}
               </span>
               <button
-                onClick={signOut}
+                onClick={signOut} // Use the signOut function from the hook
                 className="font-medium text-gray-600 relative hover:text-primary transition-colors duration-200 hover:after:content-[''] hover:after:absolute hover:after:bottom-[-0.5rem] hover:after:left-0 hover:after:w-full hover:after:h-0.5 hover:after:bg-primary hover:after:rounded-sm"
               >
                 로그아웃
@@ -87,8 +96,6 @@ const Header: React.FC = () => {
               로그인
             </Link>
           )}
-          {/* Remove signup link as it's handled by Google login */}
-          {/* <Link href="/signup" className="...">회원가입</Link> */}
         </nav>
       </div>
     </header>
