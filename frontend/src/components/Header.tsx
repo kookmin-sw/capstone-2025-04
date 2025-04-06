@@ -1,10 +1,19 @@
-// components/Header.tsx
+// src/components/Header.tsx
 "use client";
 import Link from "next/link";
 import React from "react";
 import Image from "next/image";
+import { useAuthenticator } from "@aws-amplify/ui-react"; // Import the hook
 
 const Header: React.FC = () => {
+  // Get authentication status and user details from the hook
+  const { user, signOut, route } = useAuthenticator((context) => [
+    context.user,
+    context.signOut,
+    context.route,
+  ]);
+  const isAuthenticated = route === "authenticated";
+
   return (
     <header className="bg-white py-4 sticky top-0 z-10 shadow-md">
       <div className="w-full px-4 mx-auto max-w-7xl flex justify-between items-center">
@@ -26,7 +35,9 @@ const Header: React.FC = () => {
             />
           </Link>
         </div>
-        <nav className="flex gap-6">
+        <nav className="flex gap-6 items-center">
+          {" "}
+          {/* Added items-center */}
           <Link
             href="/community"
             className="font-medium text-gray-600 relative hover:text-primary transition-colors duration-200 hover:after:content-[''] hover:after:absolute hover:after:bottom-[-0.5rem] hover:after:left-0 hover:after:w-full hover:after:h-0.5 hover:after:bg-primary hover:after:rounded-sm"
@@ -39,24 +50,38 @@ const Header: React.FC = () => {
           >
             코딩 테스트
           </Link>
-          <Link
-            href="/storage"
-            className="font-medium text-gray-600 relative hover:text-primary transition-colors duration-200 hover:after:content-[''] hover:after:absolute hover:after:bottom-[-0.5rem] hover:after:left-0 hover:after:w-full hover:after:h-0.5 hover:after:bg-primary hover:after:rounded-sm"
-          >
-            내 저장소
-          </Link>
-          <Link
-            href="/login"
-            className="font-medium text-gray-600 relative hover:text-primary transition-colors duration-200 hover:after:content-[''] hover:after:absolute hover:after:bottom-[-0.5rem] hover:after:left-0 hover:after:w-full hover:after:h-0.5 hover:after:bg-primary hover:after:rounded-sm"
-          >
-            로그인
-          </Link>
-          <Link
-            href="/signup"
-            className="font-medium text-gray-600 relative hover:text-primary transition-colors duration-200 hover:after:content-[''] hover:after:absolute hover:after:bottom-[-0.5rem] hover:after:left-0 hover:after:w-full hover:after:h-0.5 hover:after:bg-primary hover:after:rounded-sm"
-          >
-            회원가입
-          </Link>
+          {isAuthenticated && ( // Only show storage if authenticated
+            <Link
+              href="/storage"
+              className="font-medium text-gray-600 relative hover:text-primary transition-colors duration-200 hover:after:content-[''] hover:after:absolute hover:after:bottom-[-0.5rem] hover:after:left-0 hover:after:w-full hover:after:h-0.5 hover:after:bg-primary hover:after:rounded-sm"
+            >
+              내 저장소
+            </Link>
+          )}
+          {/* Conditional Login/Logout Button */}
+          {isAuthenticated ? (
+            <>
+              <span className="text-sm text-gray-700 hidden md:inline">
+                {/* Display user email if available */}
+                {user?.signInDetails?.loginId || "사용자"}님
+              </span>
+              <button
+                onClick={signOut}
+                className="font-medium text-gray-600 relative hover:text-primary transition-colors duration-200 hover:after:content-[''] hover:after:absolute hover:after:bottom-[-0.5rem] hover:after:left-0 hover:after:w-full hover:after:h-0.5 hover:after:bg-primary hover:after:rounded-sm"
+              >
+                로그아웃
+              </button>
+            </>
+          ) : (
+            <Link
+              href="/auth/login"
+              className="font-medium text-gray-600 relative hover:text-primary transition-colors duration-200 hover:after:content-[''] hover:after:absolute hover:after:bottom-[-0.5rem] hover:after:left-0 hover:after:w-full hover:after:h-0.5 hover:after:bg-primary hover:after:rounded-sm"
+            >
+              로그인
+            </Link>
+          )}
+          {/* Remove signup link as it's handled by Google login */}
+          {/* <Link href="/signup" className="...">회원가입</Link> */}
         </nav>
       </div>
     </header>

@@ -56,7 +56,7 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_IAM_ROLE_ARN }}
-          aws-region: ${{ secrets.AWS_REGION }}
+          aws-region: ${{ secrets.AWS_REGION }} # Make sure AWS_REGION secret is also set for this step
 
       - name: Install dependencies
         working-directory: ./frontend
@@ -65,15 +65,28 @@ jobs:
       - name: Build Next.js static site
         working-directory: ./frontend
         run: npm run build
+        # Inject NEXT_PUBLIC_ variables required by the build process
+        env:
+          # --- 여기에 환경 변수 설정 ---
+          # These names MUST match the process.env. keys in your configureAmplify.ts
+          # And the values MUST reference the corresponding GitHub Secrets
+          NEXT_PUBLIC_AWS_REGION: ${{ secrets.NEXT_PUBLIC_AWS_REGION }}
+          NEXT_PUBLIC_COGNITO_USER_POOL_ID: ${{ secrets.NEXT_PUBLIC_COGNITO_USER_POOL_ID }}
+          NEXT_PUBLIC_COGNITO_CLIENT_ID: ${{ secrets.NEXT_PUBLIC_COGNITO_CLIENT_ID }}
+          NEXT_PUBLIC_COGNITO_DOMAIN: ${{ secrets.NEXT_PUBLIC_COGNITO_DOMAIN }}
+          # 프로덕션 URL 설정 (CloudFront 도메인 사용)
+          NEXT_PUBLIC_APP_BASE_URL: https://${{ secrets.CLOUDFRONT_DOMAIN_NAME }} # GitHub Secret (Terraform 'app' 출력값: cloudfront_distribution_domain_name)
+          # NODE_ENV: production # Optional: Explicitly set Node environment for build if needed
+          # ---------------------------
 
       - name: Sync files to S3
+        # Use the AWS credentials configured earlier
         run: |
           aws s3 sync ./frontend/out s3://${{ secrets.AWS_S3_BUCKET_NAME }} --delete
-        env:
-          AWS_S3_BUCKET_NAME: ${{ secrets.AWS_S3_BUCKET_NAME }}
+        # No need for separate env here, AWS creds are already configured for the job
 
       - name: Invalidate CloudFront cache
+        # Use the AWS credentials configured earlier
         run: |
           aws cloudfront create-invalidation --distribution-id ${{ secrets.AWS_CLOUDFRONT_DISTRIBUTION_ID }} --paths "/*"
-        env:
-          AWS_CLOUDFRONT_DISTRIBUTION_ID: ${{ secrets.AWS_CLOUDFRONT_DISTRIBUTION_ID }}
+        # No need for separate env here
