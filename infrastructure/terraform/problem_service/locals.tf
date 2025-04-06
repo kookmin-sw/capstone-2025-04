@@ -21,4 +21,10 @@ locals {
     #   container_name = var.runner_cpp_container_name
     # }
   }
+
+  # Lambda 코드를 포함하는 디렉토리 경로
+  lambda_code_dir = "../../../backend/lambdas/problem-generator-streaming/"
+  # Lambda 레이어 빌드 관련 경로
+  layer_build_dir = "${path.module}/lambda_layer_build"
+  layer_zip_path  = "${path.module}/generator_streaming_lambda_layer.zip"
 } 

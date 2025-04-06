@@ -66,6 +66,61 @@ resource "aws_route_table_association" "public_assoc_c" {
   route_table_id = aws_route_table.public_rt.id
 }
 
+# Private Subnet 생성 (최소 2개의 가용 영역에 걸쳐 생성 권장)
+resource "aws_subnet" "private_subnet_a" {
+  vpc_id            = aws_vpc.grader_vpc.id
+  cidr_block        = "10.0.101.0/24" # 예시 CIDR
+  availability_zone = "${var.aws_region}a" # 첫 번째 가용 영역
+
+  tags = merge(var.tags, {
+    Name = "${var.project_name}-PrivateSubnetA-${var.environment}"
+  })
+}
+
+resource "aws_subnet" "private_subnet_c" {
+  vpc_id            = aws_vpc.grader_vpc.id
+  cidr_block        = "10.0.102.0/24" # 예시 CIDR
+  availability_zone = "${var.aws_region}c" # 다른 가용 영역
+
+  tags = merge(var.tags, {
+    Name = "${var.project_name}-PrivateSubnetC-${var.environment}"
+  })
+}
+
+# Private Route Table 생성 (각 AZ별 권장)
+resource "aws_route_table" "private_rt_a" {
+  vpc_id = aws_vpc.grader_vpc.id
+
+  # 프라이빗 서브넷은 기본적으로 외부 통신 불가. NAT Gateway 필요시 관련 라우트 추가
+  # route {
+  #   cidr_block = "0.0.0.0/0"
+  #   nat_gateway_id = aws_nat_gateway.nat_gw_a.id # 예시: NAT 게이트웨이 필요 시
+  # }
+
+  tags = merge(var.tags, {
+    Name = "${var.project_name}-PrivateRT-A-${var.environment}"
+  })
+}
+
+resource "aws_route_table" "private_rt_c" {
+  vpc_id = aws_vpc.grader_vpc.id
+
+  tags = merge(var.tags, {
+    Name = "${var.project_name}-PrivateRT-C-${var.environment}"
+  })
+}
+
+# Route Table을 Private Subnet에 연결
+resource "aws_route_table_association" "private_assoc_a" {
+  subnet_id      = aws_subnet.private_subnet_a.id
+  route_table_id = aws_route_table.private_rt_a.id
+}
+
+resource "aws_route_table_association" "private_assoc_c" {
+  subnet_id      = aws_subnet.private_subnet_c.id
+  route_table_id = aws_route_table.private_rt_c.id
+}
+
 # Fargate Task용 보안 그룹
 resource "aws_security_group" "fargate_sg" {
   name        = "${var.project_name}-FargateSG-${var.environment}"

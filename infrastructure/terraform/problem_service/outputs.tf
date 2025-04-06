@@ -12,8 +12,14 @@ output "s3_bucket_name" {
 
 # 생성된 DynamoDB 테이블 이름 출력
 output "submissions_table_name" {
-  description = "Name of the DynamoDB table for submissions"
+  description = "The name of the DynamoDB table for submissions"
   value       = aws_dynamodb_table.submissions_table.name
+}
+
+output "generator_streaming_websocket_api_endpoint" {
+  description = "The endpoint URL for the WebSocket API for Problem Generator Streaming"
+  # Correct attribute is 'id', not 'api_id'
+  value       = "wss://${aws_apigatewayv2_api.generator_streaming_api.id}.execute-api.${var.aws_region}.amazonaws.com/${aws_apigatewayv2_stage.generator_streaming_stage.name}"
 }
 
 output "problems_table_name" {

@@ -1,3 +1,5 @@
+data "aws_caller_identity" "current" {}
+
 # ECS Task Execution Role (Fargate가 ECR, CloudWatch 등에 접근)
 resource "aws_iam_role" "ecs_task_execution_role" {
   name = "${var.project_name}-ECSTaskExecutionRole-${var.environment}"
@@ -143,7 +145,8 @@ resource "aws_iam_policy" "lambda_policy" {
       {
         Effect = "Allow",
         Action = "states:StartExecution",
-        Resource = aws_sfn_state_machine.problem_grader_state_machine.arn # Terraform 리소스 참조 사용
+        # ARN 직접 참조 대신 이름 기반 와일드카드 ARN 사용
+        Resource = "arn:aws:states:${var.aws_region}:${data.aws_caller_identity.current.account_id}:stateMachine:${var.project_name}-ProblemGrader-${var.environment}"
       }
       # Step Functions 도입으로 Lambda에서 직접 ECS Task를 실행할 필요가 없어졌으므로 주석 처리
       # {
@@ -170,7 +173,87 @@ resource "aws_iam_policy" "lambda_policy" {
   })
 }
 
-resource "aws_iam_role_policy_attachment" "lambda_policy_attachment" {
+resource "aws_iam_role_policy_attachment" "lambda_policy_attach" {
   role       = aws_iam_role.lambda_execution_role.name
   policy_arn = aws_iam_policy.lambda_policy.arn
+}
+
+# IAM Role for Problem Generator Streaming Lambda
+resource "aws_iam_role" "generator_streaming_lambda_role" {
+  name = "${var.project_name}-generator-streaming-lambda-role-${var.environment}"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "lambda.amazonaws.com"
+        }
+      },
+    ]
+  })
+
+  tags = {
+    Project     = var.project_name
+    Environment = var.environment
+    ManagedBy   = "Terraform"
+  }
+}
+
+# IAM Policy for Problem Generator Streaming Lambda
+resource "aws_iam_policy" "generator_streaming_lambda_policy" {
+  name        = "${var.project_name}-generator-streaming-lambda-policy-${var.environment}"
+  description = "Policy for Problem Generator Streaming Lambda Function"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        # Basic Lambda execution permissions (CloudWatch Logs)
+        Action = [
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents"
+        ]
+        Effect   = "Allow"
+        Resource = "arn:aws:logs:*:*:*"
+      },
+      {
+        # DynamoDB permissions for problems_table
+        Action = [
+          "dynamodb:PutItem",
+          "dynamodb:GetItem",
+          "dynamodb:UpdateItem",
+          "dynamodb:Query" # Optional, if needed
+        ]
+        Effect   = "Allow"
+        Resource = aws_dynamodb_table.problems_table.arn
+      },
+      {
+         # Permissions to manage WebSocket connections via API Gateway Management API
+         Action = [
+             "execute-api:ManageConnections"
+         ]
+         Effect = "Allow"
+         # Resource ARN needs to be constructed carefully, typically involves the API ID
+         # Using a wildcard for now, refine if possible/needed
+         Resource = "arn:aws:execute-api:${var.aws_region}:${data.aws_caller_identity.current.account_id}:*/*"
+      }
+      # Add other necessary permissions here (e.g., S3 if needed)
+    ]
+  })
+
+  tags = {
+    Project     = var.project_name
+    Environment = var.environment
+    ManagedBy   = "Terraform"
+  }
+}
+
+# Attach policy to the role
+resource "aws_iam_role_policy_attachment" "generator_streaming_lambda_policy_attach" {
+  role       = aws_iam_role.generator_streaming_lambda_role.name
+  policy_arn = aws_iam_policy.generator_streaming_lambda_policy.arn
 } 

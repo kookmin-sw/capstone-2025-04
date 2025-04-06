@@ -1,0 +1,374 @@
+{
+  "Comment": "Problem Grading Workflow",
+  "StartAt": "StartGrading",
+  "States": {
+    "StartGrading": {
+      "Type": "Pass",
+      "Result": {
+        "message": "Grading process started"
+      },
+      "ResultPath": "$.initial_setup",
+      "Next": "GetProblemDetails"
+    },
+    "GetProblemDetails": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${lambda_function_name}",
+        "Payload": {
+          "action": "getProblemDetails",
+          "problem_id.$": "$.problem_id"
+        }
+      },
+      "ResultSelector": {
+        "details.$": "$.Payload"
+      },
+      "ResultPath": "$.problem_info",
+      "Next": "CheckProblemDetails",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error_info",
+          "Next": "FailState"
+        }
+      ]
+    },
+    "CheckProblemDetails": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.problem_info.details.error",
+          "IsPresent": true,
+          "Next": "FailState"
+        }
+      ],
+      "Default": "GenerateTestCases"
+    },
+    "GenerateTestCases": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::ecs:runTask.sync",
+      "Parameters": {
+        "LaunchType": "FARGATE",
+        "Cluster": "${ecs_cluster_arn}",
+        "TaskDefinition": "${generator_task_def_arn}",
+        "NetworkConfiguration": {
+          "AwsvpcConfiguration": {
+            "Subnets": ["${fargate_subnet_id_1}", "${fargate_subnet_id_2}"],
+            "SecurityGroups": ["${fargate_sg_id_1}"],
+            "AssignPublicIp": "ENABLED"
+          }
+        },
+        "Overrides": {
+          "ContainerOverrides": [
+            {
+              "Name": "${generator_container_name}",
+              "Environment": [
+                {
+                  "Name": "GENERATOR_CODE",
+                  "Value.$": "$.problem_info.details.generation_code"
+                },
+                {
+                  "Name": "S3_BUCKET",
+                  "Value": "${grader_output_bucket_name}"
+                },
+                {
+                  "Name": "S3_KEY",
+                  "Value.$": "States.Format('grader-outputs/generator/{}/output.json', $$.Execution.Id)"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "ResultSelector": {
+        "TaskArn.$": "$.TaskArn",
+        "TaskId": "States.ArrayGetItem(States.StringSplit($.TaskArn, '/'), 2)"
+      },
+      "ResultPath": "$.generator_task_info",
+      "Next": "ParseGeneratorOutput",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error_info",
+          "Next": "FailState"
+        }
+      ]
+    },
+    "ParseGeneratorOutput": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${lambda_function_name}",
+        "Payload": {
+          "action": "parseS3Output",
+          "s3_bucket": "${grader_output_bucket_name}",
+          "s3_key.$": "States.Format('grader-outputs/generator/{}/output.json', $.generator_task_info.TaskId)",
+          "task_type": "generator"
+        }
+      },
+      "ResultSelector": {
+        "cases.$": "$.Payload"
+      },
+      "ResultPath": "$.parsed_generator_output",
+      "Next": "CheckGeneratedCases",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error_info",
+          "Next": "FailState"
+        }
+      ]
+    },
+    "CheckGeneratedCases": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.parsed_generator_output.cases.error",
+          "IsPresent": true,
+          "Next": "FailState"
+        },
+        {
+          "Variable": "$.parsed_generator_output.cases",
+          "IsNull": true,
+          "Next": "NoTestCasesState"
+        },
+        {
+          "Variable": "$.parsed_generator_output.cases.$",
+          "NumericEquals": 0,
+          "Next": "NoTestCasesState"
+        }
+      ],
+      "Default": "PrepareMapInput"
+    },
+    "PrepareMapInput": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${lambda_function_name}",
+        "Payload": {
+          "action": "prepareMapInput",
+          "input.$": "$"
+        }
+      },
+      "ResultSelector": {
+        "map_input.$": "$.Payload"
+      },
+      "ResultPath": "$.map_input_from_lambda",
+      "Next": "RunTestCasesMap",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error_info",
+          "Next": "FailState"
+        }
+      ]
+    },
+    "NoTestCasesState": {
+      "Type": "Pass",
+      "Result": {
+        "status": "NO_TEST_CASES",
+        "results": [],
+        "execution_time": 0.0
+      },
+      "ResultPath": "$.final_result",
+      "Next": "SaveResult"
+    },
+    "RunTestCasesMap": {
+      "Type": "Map",
+      "InputPath": "$.map_input_from_lambda.map_input.items",
+      "ResultPath": "$.map_results",
+      "MaxConcurrency": 10,
+      "Parameters": {
+        "case_data.$": "$",
+        "context.$": "$.map_input_from_lambda.map_input.context"
+      },
+      "Iterator": {
+        "StartAt": "RunSingleTestCase",
+        "States": {
+          "RunSingleTestCase": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::ecs:runTask.sync",
+            "Parameters": {
+              "LaunchType": "FARGATE",
+              "Cluster": "${ecs_cluster_arn}",
+              "TaskDefinition.$": "$.context.runner_task_def_arn",
+              "NetworkConfiguration": {
+                "AwsvpcConfiguration": {
+                  "Subnets": [
+                    "${fargate_subnet_id_1}",
+                    "${fargate_subnet_id_2}"
+                  ],
+                  "SecurityGroups": ["${fargate_sg_id_1}"],
+                  "AssignPublicIp": "ENABLED"
+                }
+              },
+              "Overrides": {
+                "ContainerOverrides": [
+                  {
+                    "Name.$": "$.context.runner_container_name",
+                    "Environment": [
+                      {
+                        "Name": "USER_CODE",
+                        "Value.$": "$.context.user_code"
+                      },
+                      {
+                        "Name": "INPUT_DATA",
+                        "Value.$": "States.JsonToString($.case_data.input)"
+                      },
+                      {
+                        "Name": "TIME_LIMIT",
+                        "Value.$": "States.Format('{}', $.context.problem_details.time_limit)"
+                      },
+                      {
+                        "Name": "S3_BUCKET",
+                        "Value": "${grader_output_bucket_name}"
+                      },
+                      {
+                        "Name": "S3_KEY",
+                        "Value.$": "States.Format('grader-outputs/runner/{}/{}/output.json', $$.Execution.Id, $$.Map.Item.Index)"
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            "ResultSelector": {
+              "TaskArn.$": "$.TaskArn",
+              "TaskId": "States.ArrayGetItem(States.StringSplit($.TaskArn, '/'), 2)"
+            },
+            "ResultPath": "$.runner_task_info",
+            "Next": "ParseRunnerOutput",
+            "Catch": [
+              {
+                "ErrorEquals": ["States.ALL"],
+                "ResultPath": "$.error_info",
+                "Next": "MapItemFail"
+              }
+            ]
+          },
+          "ParseRunnerOutput": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "Parameters": {
+              "FunctionName": "${lambda_function_name}",
+              "Payload": {
+                "action": "parseS3Output",
+                "s3_bucket": "${grader_output_bucket_name}",
+                "s3_key.$": "States.Format('grader-outputs/runner/{}/{}/output.json', $$.Execution.Id, $$.Map.Item.Index)",
+                "task_type": "runner"
+              }
+            },
+            "ResultSelector": {
+              "output.$": "$.Payload"
+            },
+            "ResultPath": "$.parsed_runner_output",
+            "Next": "FormatMapItemResult",
+            "Catch": [
+              {
+                "ErrorEquals": ["States.ALL"],
+                "ResultPath": "$.error_info",
+                "Next": "MapItemFail"
+              }
+            ]
+          },
+          "FormatMapItemResult": {
+            "Type": "Pass",
+            "Parameters": {
+              "case_index.$": "$$.Map.Item.Index",
+              "status.$": "$.parsed_runner_output.output.status",
+              "execution_time.$": "$.parsed_runner_output.output.execution_time",
+              "stdout.$": "$.parsed_runner_output.output.stdout",
+              "stderr.$": "$.parsed_runner_output.output.stderr",
+              "expected_output.$": "$.case_data.output"
+            },
+            "End": true
+          },
+          "MapItemFail": {
+            "Type": "Pass",
+            "Result": {
+              "case_index.$": "$$.Map.Item.Index",
+              "status": "GRADER_ERROR",
+              "error_info.$": "$.error_info"
+            },
+            "End": true
+          }
+        }
+      },
+      "Next": "AggregateResults"
+    },
+    "AggregateResults": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${lambda_function_name}",
+        "Payload": {
+          "action": "aggregateResults",
+          "map_results.$": "$.map_results"
+        }
+      },
+      "ResultSelector": {
+        "final_status.$": "$.Payload"
+      },
+      "ResultPath": "$.aggregation_result",
+      "Next": "SaveResult",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error_info",
+          "Next": "FailState"
+        }
+      ]
+    },
+    "SaveResult": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::dynamodb:putItem",
+      "Parameters": {
+        "TableName": "${submissions_table_name}",
+        "Item": {
+          "submission_id": {
+            "S.$": "$.submission_id"
+          },
+          "problem_id": {
+            "N.$": "States.Format('{}', $.problem_id)"
+          },
+          "language": {
+            "S.$": "$.language"
+          },
+          "status": {
+            "S.$": "$.aggregation_result.final_status.status"
+          },
+          "execution_time": {
+            "N.$": "States.Format('{}', $.aggregation_result.final_status.execution_time)"
+          },
+          "results_json": {
+            "S.$": "States.JsonToString($.aggregation_result.final_status.results)"
+          },
+          "submission_time": {
+            "N.$": "States.Format('{}', $$.Execution.StartTime.EpochSeconds)"
+          },
+          "user_code": {
+            "S.$": "$.user_code"
+          }
+        }
+      },
+      "ResultPath": null,
+      "Next": "SuccessState",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error_info",
+          "Next": "FailState"
+        }
+      ]
+    },
+    "FailState": {
+      "Type": "Fail",
+      "Comment": "Grading failed",
+      "Cause": "$.error_info",
+      "Error": "GraderError"
+    },
+    "SuccessState": {
+      "Type": "Succeed"
+    }
+  }
+}

@@ -85,6 +85,11 @@ terraform.tfvars
 terraform.tfvars.json
 .terraform.lock.hcl
 
+# Lambda packages
+infrastructure/terraform/problem_service/generator_streaming_lambda.zip
+infrastructure/terraform/problem_service/generator_streaming_lambda_layer.zip
+infrastructure/terraform/problem_service/lambda_package.zip
+
 # Keep .gitkeep files
 !.gitkeep
 

@@ -16,6 +16,8 @@ logger.setLevel(logging.INFO)
 ecs_client = boto3.client('ecs')
 dynamodb = boto3.resource('dynamodb')
 s3_client = boto3.client('s3') # S3 클라이언트 추가
+sfn_client = boto3.client('stepfunctions')
+lambda_client = boto3.client('lambda') # Needed for prepareMapInput
 
 # --- 환경 변수 (설정 필요) ---
 DYNAMODB_TABLE_NAME = os.environ.get("DYNAMODB_TABLE_NAME", "AlpacoProblems")
