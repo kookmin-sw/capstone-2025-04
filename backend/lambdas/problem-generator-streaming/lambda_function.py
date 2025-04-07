@@ -46,9 +46,12 @@ def find_algorithm_type(prompt: str) -> str | None:
     for alg_type in ALGORITHM_TYPES:
         # 한국어 및 영어 키워드 고려 (예시, 실제로는 더 정교한 매칭 필요)
         keywords = [alg_type.lower()]
-        if "그래프" in alg_type: keywords.append("graph")
-        if "다이나믹" in alg_type or "dynamic" in alg_type: keywords.extend(["dp", "dynamic programming"])
-        if "구현" in alg_type: keywords.append("implementation")
+        if "그래프" in alg_type:
+            keywords.append("graph")
+        if "다이나믹" in alg_type or "dynamic" in alg_type:
+            keywords.extend(["dp", "dynamic programming"])
+        if "구현" in alg_type:
+            keywords.append("implementation")
         # ... 다른 유형에 대한 키워드 추가 ...
 
         for keyword in keywords:
