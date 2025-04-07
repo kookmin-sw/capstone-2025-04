@@ -31,7 +31,8 @@ except ImportError as e:
     # 필요한 경우, 의존성 없이는 작동할 수 없으므로 핸들러에서 오류 처리
     ProblemGenerator = None # 임포트 실패 시 핸들러에서 확인용
     ALGORITHM_TYPES = []
-    DIFFICULTY_LEVELS = ["Easy", "Medium", "Hard"] # 임시 기본값
+    # 임시 기본값 - generation.generator에서 실제 값을 가져오므로 주석 처리 또는 제거 가능
+    # DIFFICULTY_LEVELS = ["Easy", "Medium", "Hard"] # 임시 기본값
 
 # --- 헬퍼 함수 ---
 def format_stream_message(msg_type: str, payload: any) -> str:
@@ -71,21 +72,21 @@ async def handler(event, context):
         print(f"[{request_id}] Request received: {event.get('rawPath', '')}")
         body_str = event.get("body", "{}")
         request_body = json.loads(body_str)
-        prompt_input = request_body.get("prompt") # 사용자 입력 프롬프트
-        difficulty_input = request_body.get("difficulty") # 예: "Easy", "Medium", "Hard"
+        prompt_input = request_body.get("prompt")
+        difficulty_input = request_body.get("difficulty") # 예: "튜토리얼", "쉬움", "보통", "어려움"
 
         if not prompt_input or not difficulty_input:
             raise ValueError("Missing 'prompt' or 'difficulty' in request body")
 
-        # 난이도 매핑 (프론트엔드 형식 -> 내부 형식) - 필요시 조정
-        difficulty_map = {"easy": "쉬움", "medium": "보통", "hard": "어려움"}
-        difficulty = difficulty_map.get(difficulty_input.lower(), "쉬움") # 기본값 '쉬움'
+        # 난이도 값 검증
+        if difficulty_input not in DIFFICULTY_LEVELS:
+            raise ValueError(f"Invalid 'difficulty' value: {difficulty_input}. Must be one of {DIFFICULTY_LEVELS}")
+        difficulty = difficulty_input # 매핑 없이 직접 사용
 
-        print(f"[{request_id}] Parsed request - Prompt: {prompt_input}, Difficulty: {difficulty_input} -> {difficulty}")
+        print(f"[{request_id}] Parsed request - Prompt: {prompt_input}, Difficulty: {difficulty}")
 
-        # --- 상태 업데이트: 분석 시작 ---
+        # 상태 업데이트: 요청 분석 시작
         response_stream.write(format_stream_message("status", f"요청 분석 시작: '{prompt_input}' ({difficulty})").encode('utf-8'))
-        await asyncio.sleep(0.1)
 
         # --- 알고리즘 유형 추출 ---
         algorithm_type = find_algorithm_type(prompt_input)
@@ -98,7 +99,6 @@ async def handler(event, context):
         else:
              response_stream.write(format_stream_message("status", f"알고리즘 유형 감지됨: '{algorithm_type}'").encode('utf-8'))
              await asyncio.sleep(0.1)
-
 
         # --- ProblemGenerator 인스턴스 생성 ---
         if not api_key:
@@ -122,6 +122,15 @@ async def handler(event, context):
         # --- 최종 상태 ---
         response_stream.write(format_stream_message("status", "✅ 생성 완료!").encode('utf-8'))
         print(f"[{request_id}] Request processed successfully.")
+
+    except ValueError as ve:
+        print(f"[{request_id}] Error processing request: {traceback.format_exc()}")
+        error_message = f"오류 발생: {str(ve)}"
+        try:
+            response_stream.write(format_stream_message("error", error_message).encode('utf-8'))
+            response_stream.write(format_stream_message("status", "❌ 오류 발생").encode('utf-8'))
+        except Exception as write_err:
+            print(f"[{request_id}] Failed to write error to stream: {write_err}")
 
     except Exception as e:
         print(f"[{request_id}] Error processing request: {traceback.format_exc()}")
