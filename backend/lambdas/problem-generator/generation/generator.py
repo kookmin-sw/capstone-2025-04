@@ -6,24 +6,35 @@ from pathlib import Path
 from dotenv import load_dotenv
 import sys
 import time
+import tempfile
+import subprocess
+import importlib.util
+import textwrap
+from typing import List, Dict, Any, Union
 
-# Fix import error when running directly
-if __name__ == "__main__":
-    # Add parent directory to sys.path
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    parent_dir = os.path.dirname(script_dir)
-    sys.path.insert(0, parent_dir)
-    from utils.model_manager import get_llm, create_chain
-else:
-    # When imported as a module, use relative import
-    from ..utils.model_manager import get_llm, create_chain
+# langchain 관련 import 추가
+from langchain_core.prompts import PromptTemplate
+from langchain_core.runnables import RunnablePassthrough
+from langchain_core.output_parsers import JsonOutputParser # Pydantic 대신 JsonOutputParser 사용
+
+# pydantic 모델은 더 이상 직접 사용하지 않을 수 있음 (파이프라인 내에서 처리)
+# from pydantic import BaseModel, Field
+
+# Ensure the parent directory ('problem-generator') is in the path
+# to allow imports like 'utils.model_manager'
+problem_generator_dir = Path(__file__).parent.parent
+if str(problem_generator_dir) not in sys.path:
+    sys.path.insert(0, str(problem_generator_dir))
+
+# Now import using the package structure relative to problem_generator_dir
+from utils.model_manager import get_llm # create_chain, create_json_chain 불필요
 
 # Load environment variables from .env file
 load_dotenv()
 
 # Available algorithm types and difficulty levels
 ALGORITHM_TYPES = [
-    "구현", "그래프", "다이나믹 프로그래밍", "그리디", "이분 탐색", 
+    "구현", "그래프", "다이나믹 프로그래밍", "그리디", "이분 탐색",
     "너비 우선 탐색", "깊이 우선 탐색", "최단 경로", "정렬", "자료구조"
 ]
 DIFFICULTY_LEVELS = ["튜토리얼", "쉬움", "보통", "어려움"]
@@ -65,56 +76,66 @@ STYLE_DESCRIPTIONS = {
     """
 }
 
+# Pydantic 모델 정의는 JsonOutputParser 사용 시 불필요할 수 있음
+# class ProblemDescriptionOutput(BaseModel):
+#     problem_title: str = Field(description="문제 제목")
+#     description: str = Field(description="문제 배경 및 설명")
+#     input_format: str = Field(description="입력 형식 설명")
+#     output_format: str = Field(description="출력 형식 설명")
+#     constraints: str = Field(description="제약 조건 설명")
+
+# class TestCaseGeneratorOutput(BaseModel):
+#     python_code: str = Field(description="테스트 케이스 생성을 위한 Python 코드 (solution 및 generate_test_cases 함수 포함)")
+
 def load_template(algorithm_type, difficulty):
     """Load and return a template code file for the given algorithm type and difficulty"""
     # 상위 디렉토리의 templates 폴더 접근
     templates_dir = Path(__file__).parent.parent / "templates"
-    
+
     # Ensure templates directory exists
     if not templates_dir.exists():
         raise FileNotFoundError(f"Templates directory not found: {templates_dir}")
-    
+
     # First look in the specific algorithm type directory
-    algorithm_dir = templates_dir / algorithm_type.lower()
-    
+    algorithm_dir = templates_dir / algorithm_type.lower().replace(" ", "_") # 폴더명 형식 일치
+
     # Find matching template files
     template_files = []
-    
+
     # If specific algorithm directory exists, look there first
     if (algorithm_dir.exists()):
         template_files = list(algorithm_dir.glob("*.py")) + list(algorithm_dir.glob("*.cpp"))
-    
+
     # If no templates found in specific directory or it doesn't exist, search all subdirectories
     if not template_files:
         for alg_subdir in templates_dir.iterdir():
             if alg_subdir.is_dir():
                 template_files.extend(list(alg_subdir.glob("*.py")) + list(alg_subdir.glob("*.cpp")))
-    
+
     if not template_files:
         raise ValueError(f"No templates found for algorithm type: {algorithm_type}")
-    
+
     # For difficult problems, we might want to combine templates
     if difficulty == "어려움" and random.random() < 0.7 and len(template_files) >= 2:
         # Select two different templates
         selected_templates = random.sample(template_files, 2)
         template_paths = []
         template_codes = []
-        
+
         for template_path in selected_templates:
             with open(template_path, "r", encoding="utf-8") as f:
                 template_codes.append(f.read())
             template_paths.append(f"{template_path.parent.name}/{template_path.name}")
-            
-        combined_code = "\n\n# Template 1: " + template_paths[0] + "\n" + template_codes[0] + \
-                        "\n\n# Template 2: " + template_paths[1] + "\n" + template_codes[1]
+
+        combined_code = f"# Template 1: {template_paths[0]}\n{template_codes[0]}\n\n# Template 2: {template_paths[1]}\n{template_codes[1]}"
         return combined_code, "Combined: " + " + ".join(template_paths)
     else:
         # Randomly select a template
         template_path = random.choice(template_files)
-        
+
         with open(template_path, "r", encoding="utf-8") as f:
             template_code = f.read()
-        
+
         return template_code, f"{template_path.parent.name}/{template_path.name}"
 
 class ProblemGenerator:
@@ -123,317 +144,314 @@ class ProblemGenerator:
         self.api_key = api_key or os.getenv("GOOGLE_AI_API_KEY")
         if not self.api_key:
             raise ValueError("No API key provided. Set GOOGLE_AI_API_KEY in .env file or pass it as an argument.")
-        
+
         # Use our model manager instead of direct Google API
-        self.model = get_llm(api_key=self.api_key, model_type="thinking")
+        self.model = get_llm(api_key=self.api_key, model_type="thinking") # 가정: get_llm은 Langchain LLM 객체 반환
         self.verbose = verbose
-        
-    def show_progress(self, step, total_steps=5, message=""):
+
+    def show_progress(self, step, total_steps=6, message=""): # 총 단계 수를 6으로 조정
         """Display progress information for the current step"""
         if not self.verbose:
             return
-            
+
         progress_bar_length = 30
         filled_length = int(progress_bar_length * step / total_steps)
-        
+
         bar = '█' * filled_length + '░' * (progress_bar_length - filled_length)
         percent = int(100 * step / total_steps)
-        
-        sys.stdout.write(f'\r[{bar}] {percent}% | 단계 {step}/{total_steps} | {message}')
+
+        # 단계별 메시지 표시 개선
+        sys.stdout.write(f'\r[{bar}] {percent}% | 단계 {step}/{total_steps} | {message:<50}') # 메시지 너비 확보
         sys.stdout.flush()
-        
+
         if step == total_steps:
             sys.stdout.write('\n')
-        
+
     def generate_problem(self, algorithm_type, difficulty):
-        """Generate a problem using multiple prompts in sequence (Chain-of-thoughts)"""
+        """Generate a problem using Langchain Expression Language (LCEL) pipeline and JsonOutputParser."""
         if self.verbose:
             print(f"\n{algorithm_type} 유형의 {difficulty} 난이도 문제 생성을 시작합니다...\n")
-            
+
         start_time = time.time()
-        
+
         # Load template
         try:
             self.show_progress(0, 6, "템플릿 파일 불러오는 중...")
             template_code, template_file = load_template(algorithm_type, difficulty)
         except (ValueError, FileNotFoundError) as e:
+            print(f"\n오류: {e}") # 오류 메시지 명확화
             return {"error": str(e)}
-        
-        # Get difficulty-specific description for the prompt
+
+        # Get difficulty-specific description and style
         difficulty_desc = DIFFICULTY_DESCRIPTIONS.get(difficulty, "")
-        
-        # Determine style based on difficulty
         style_desc = STYLE_DESCRIPTIONS["Atcoder"]
         if difficulty in ["보통", "어려움"]:
             style_desc = STYLE_DESCRIPTIONS["Baekjoon"]
-        
-        # Step 1: Template analysis
-        self.show_progress(1, 6, "템플릿 코드 분석 중...")
-        template_analysis = self._analyze_template(template_code, algorithm_type, difficulty)
-        
-        # Step 2: Code transformation
-        self.show_progress(2, 6, "코드 변형 중...")
-        transformed_code = self._transform_code(template_code, template_analysis)
-        
-        # Step 3: Problem description generation
-        self.show_progress(3, 6, "문제 설명 생성 중...")
-        problem_description = self._generate_description(
-            algorithm_type, difficulty, transformed_code, 
-            style_desc, difficulty_desc
-        )
-        
-        # Step 4: Test case generation
-        self.show_progress(4, 6, "테스트 케이스 생성 중...")
-        test_cases = self._generate_test_cases(transformed_code, problem_description)
-        
-        # Step 5: Final integration
-        self.show_progress(5, 6, "최종 문제 통합 중...")
-        final_problem = self._integrate_results(
-            problem_description, test_cases, transformed_code,
-            algorithm_type, difficulty
-        )
-        
-        end_time = time.time()
-        elapsed_time = end_time - start_time
-        
-        # Final completion message
-        self.show_progress(6, 6, f"완료! (소요 시간: {elapsed_time:.1f}초)")
-        
-        return {
+
+        # --- 프롬프트 템플릿 정의 ---
+        # 각 단계의 프롬프트는 명확한 역할과 필요한 입력을 받도록 설계
+
+        # 1. 템플릿 분석 프롬프트
+        template_analysis_prompt = PromptTemplate.from_template(textwrap.dedent("""
+            당신은 알고리즘 문제 생성 전문가입니다. 다음 템플릿 코드를 분석하고 문제 변형 계획을 세워주세요.
+
+            ## 입력 정보
+            - 알고리즘 유형: {algorithm_type}
+            - 난이도 수준: {difficulty}
+
+            ## 템플릿 코드
+            ```python
+            {template_code}
+            ```
+
+            ## 분석 요청 사항
+            1. 코드의 핵심 알고리즘 아이디어는 무엇인가요?
+            2. 독창적인 문제로 변형하기 위해 어떤 부분을 수정할 수 있을까요?
+            3. 난이도 ({difficulty})에 맞게 코드를 어떻게 조정할 수 있을까요? (예: 복잡화, 단순화)
+            4. 이 템플릿으로 어떤 유형의 문제를 만들 수 있을까요?
+
+            분석 결과를 명확하고 구체적으로 작성해주세요.
+            """))
+
+        # 2. 코드 변형 프롬프트 (수정: 언어/구조 유지 강조)
+        code_transform_prompt = PromptTemplate.from_template(textwrap.dedent("""
+            당신은 알고리즘 문제 생성 전문가입니다. 이전 분석을 바탕으로 아래 템플릿 코드를 **최소한으로 변형**해주세요.
+
+            ## 템플릿 분석 결과
+            {template_analysis}
+
+            ## 원본 템플릿 코드
+            ```python
+            {template_code}
+            ```
+
+            ## 코드 변형 요구사항
+            1. **원본 코드의 프로그래밍 언어(Python 또는 C++)를 반드시 유지하세요.** 다른 언어로 변경하지 마세요.
+            2. **템플릿의 핵심 알고리즘 구조와 주요 로직 흐름을 반드시 유지하세요.** 함수/메서드 구조, 클래스 구조 등을 크게 변경하지 마세요.
+            3. 변수명 변경, 상수 값 수정, 문자열 내용 변경, 주석 추가/수정 등 **가벼운 수정**을 통해 독창성을 더하세요. 복잡한 로직 변경은 최소화하세요.
+            4. 변경된 부분에는 명확한 주석을 추가하여 의도를 설명해주세요.
+            5. 변형된 코드가 문법적으로 올바르고 논리적으로 실행 가능한지 확인하세요.
+            6. 생성될 테스트 케이스를 고려하여 입출력 처리가 용이한 형태로 코드를 구성하세요 (필요시 최소한의 수정).
+
+            변형된 코드만 원본 언어의 코드 블록 안에 작성해주세요. 다른 설명은 포함하지 마세요.
+            ```<language>  # 예: ```python 또는 ```cpp
+            # 변형된 코드 작성 시작
+            ...
+            # 변형된 코드 작성 끝
+            ```
+            """))
+
+        # 3. 문제 설명 생성 프롬프트 (간소화)
+        description_prompt = PromptTemplate.from_template(textwrap.dedent("""
+            당신은 알고리즘 문제 생성 전문가입니다. 주어진 정보를 바탕으로 문제 설명을 JSON 형식으로 작성해주세요.
+
+            ## 입력 정보
+            - 알고리즘 유형: {algorithm_type}
+            - 난이도 수준: {difficulty}
+            - 문제 스타일: {style_desc}
+            - 난이도 요구사항: {difficulty_desc}
+
+            ## 변형된 코드 (참고용)
+            ```python
+            {transformed_code}
+            ```
+
+            ## 작성 요청 내용 (JSON 필드)
+            - `problem_title`: 창의적이고 내용과 관련 있는 문제 제목
+            - `description`: 문제 배경 및 상세 설명 (스토리텔링 포함 가능)
+            - `input_format`: 명확하고 상세한 입력 형식 설명
+            - `output_format`: 명확하고 상세한 출력 형식 설명
+            - `constraints`: 입력 크기, 값의 범위 등 난이도에 맞는 제약 조건
+
+            지정된 스타일({style_desc})과 난이도 요구사항({difficulty_desc})을 준수하여 명확하고 논리적인 설명을 각 필드에 맞게 작성해주세요.
+            다른 텍스트 없이, 위 필드들을 포함하는 JSON 객체만 반환해야 합니다.
+            """))
+
+        # 4. 테스트 케이스 생성 프롬프트 (간소화)
+        test_cases_prompt = PromptTemplate.from_template(textwrap.dedent("""
+            당신은 알고리즘 문제 생성 전문가입니다. 주어진 문제 설명과 코드를 바탕으로 테스트 케이스 생성 코드와 예제를 포함하는 JSON 객체를 생성해주세요.
+
+            ## 문제 설명 (JSON 형태)
+            {problem_description}
+
+            ## 변형된 코드 (정답 코드)
+            ```python
+            {transformed_code}
+            ```
+
+            ## 생성 요청 내용 (JSON 필드)
+            1. `test_case_generation_code` (문자열):
+               - 주어진 '변형된 코드'를 포함하는 `solution` 함수.
+               - 다양한 테스트 케이스(기본, 경계, 예외 등)를 생성하고, 각 입력에 대해 `solution` 함수를 실행하여 출력을 계산하는 `generate_test_cases` 함수.
+               - `generate_test_cases` 함수는 `[{{\"input\": ..., \"output\": ...}}, ...]` 형식의 (입력, 출력) 딕셔너리 리스트를 반환해야 함 (최소 3개, 최대 5개).
+               - 위의 두 함수를 포함하는 전체 실행 가능한 Python 코드 문자열.
+            2. `generated_examples` (리스트):
+               - 위 `generate_test_cases` 함수를 실행했을 때 반환되는 (입력, 출력) 딕셔너리의 리스트.
+
+            다른 텍스트 없이, 위 두 필드를 포함하는 JSON 객체만 반환해야 합니다.
+            """))
+
+        # 5. 최종 통합 프롬프트 (수정: template_file 추가)
+        integration_prompt = PromptTemplate.from_template(textwrap.dedent("""
+            당신은 알고리즘 문제 생성 전문가입니다. 지금까지 생성된 모든 구성 요소를 통합하여 최종 문제 결과물을 JSON 형식으로 완성해주세요.
+
+            ## 문제 기본 정보
+            - 알고리즘 유형: {algorithm_type}
+            - 난이도 수준: {difficulty}
+            - 사용된 템플릿 파일: {template_file}
+
+            ## 생성된 구성 요소
+            1. 문제 설명 (JSON): {problem_description}
+            2. 테스트 케이스 (JSON): {test_cases}
+            3. 변형된 코드 (문자열):
+               ```python
+               {transformed_code}
+               ```
+
+            ## 최종 결과물 필드 생성 지침
+            - `problem_title`: `problem_description`의 `problem_title` 사용.
+            - `description`: `problem_description`의 `description` 사용.
+            - `input_format`: `problem_description`의 `input_format` 사용.
+            - `output_format`: `problem_description`의 `output_format` 사용.
+            - `constraints`: `problem_description`의 `constraints` 사용.
+            - `example_input`: `test_cases`의 `generated_examples` 리스트가 비어있지 않으면 첫 번째 요소의 `input` 사용, 비어있으면 빈 문자열 "" 사용.
+            - `example_output`: `test_cases`의 `generated_examples` 리스트가 비어있지 않으면 첫 번째 요소의 `output` 사용, 비어있으면 빈 문자열 "" 사용.
+            - `algorithm_hint`: 난이도가 "튜토리얼"일 경우 알고리즘 설명 및 적용 방식 서술, 아닐 경우 빈 문자열 "" 사용.
+            - `solution_code`: `transformed_code` 문자열 사용.
+            - `test_case_generation_code`: `test_cases`의 `test_case_generation_code` 사용.
+            - `template_source`: 입력으로 받은 `template_file` 문자열 사용.
+
+            다른 어떤 텍스트도 포함하지 말고, 위의 지침에 따라 각 필드를 채운 최종 JSON 객체 하나만 생성하여 반환하세요.
+            """))
+
+        # JsonOutputParser 인스턴스 생성
+        json_parser = JsonOutputParser()
+
+        # --- LCEL 파이프라인 구성 ---
+        self.show_progress(1, 6, "파이프라인 구성 중...")
+
+        # 초기 상태 설정
+        initial_state = {
             "algorithm_type": algorithm_type,
             "difficulty": difficulty,
-            "template_used": template_file,
-            "generated_problem": final_problem,
-            "generation_time": elapsed_time
+            "template_code": template_code,
+            "template_file": template_file,
+            "style_desc": style_desc,
+            "difficulty_desc": difficulty_desc
         }
-    
-    def _analyze_template(self, template_code, algorithm_type, difficulty):
-        """Step 1: Analyze the template and plan modifications"""
-        prompt = f"""
-        당신은 알고리즘 문제 생성 전문가입니다. 다음 템플릿 코드를 분석하고 어떻게 변형할지 계획을 세워주세요:
-        
-        ## 입력 정보
-        - 알고리즘 유형: {algorithm_type}
-        - 난이도 수준: {difficulty}
-        
-        ## 템플릿 코드
-        ```
-        {template_code}
-        ```
-        
-        다음 항목들을 분석해주세요:
-        1. 이 코드가 구현하는 알고리즘의 핵심 아이디어는 무엇인가요?
-        2. 어떤 부분을 변형하면 더 독창적인 문제가 될 수 있을까요?
-        3. 난이도에 맞게 어떤 부분을 복잡하게 또는 단순하게 만들 수 있을까요?
-        4. 이 코드를 기반으로 어떤 유형의 문제를 만들 수 있을까요?
-        
-        응답은 명확하고 구체적으로 작성해주세요.
-        """
-        # Create a chain for this specific prompt
-        chain = create_chain(prompt, self.model)
-        response = chain.invoke({})
-        return response
-    
-    def _transform_code(self, template_code, template_analysis):
-        """Step 2: Transform the template code based on the analysis"""
-        prompt = f"""
-        당신은 알고리즘 문제 생성 전문가입니다. 아래 템플릿 코드를 이전 분석을 바탕으로 변형해주세요:
-        
-        ## 템플릿 분석 결과
-        {template_analysis}
-        
-        ## 원본 템플릿 코드
-        ```
-        {template_code}
-        ```
-        
-        다음 요구사항에 맞게 코드를 변형해주세요:
-        1. 템플릿의 알고리즘 구조는 유지하되, 구체적인 구현을 새롭게 변경
-        2. 변경한 부분에는 명확한 주석 추가
-        3. 변경된 코드가 올바르게 동작하는지 확인
-        4. 테스트 케이스를 쉽게 만들 수 있는 형태로 구성
-        
-        변형된 코드만 python 코드 블록으로 반환해주세요.
-        """
-        chain = create_chain(prompt, self.model)
-        response = chain.invoke({})
-        return response
-    
-    def _generate_description(self, algorithm_type, difficulty, transformed_code, style_desc, difficulty_desc):
-        """Step 3: Generate problem description based on the transformed code"""
-        prompt = f"""
-        당신은 알고리즘 문제 생성 전문가입니다. 변형된 코드를 바탕으로 문제 설명을 작성해주세요:
-        
-        ## 입력 정보
-        - 알고리즘 유형: {algorithm_type}
-        - 난이도 수준: {difficulty}
-        
-        ## 문제 포맷 스타일
-        {style_desc}
-        
-        ## 난이도 요구사항
-        {difficulty_desc}
-        
-        ## 변형된 코드
-        {transformed_code}
-        
-        다음 내용을 포함한 문제 설명을 작성해주세요:
-        1. 문제 배경 및 설명
-        2. 입력 형식 설명
-        3. 출력 형식 설명
-        
-        문제 설명은 명확하고 논리적이어야 하며, 지정된 스타일과 난이도 요구사항을 준수해야 합니다.
-        예제 입력/출력은 아직 포함하지 마세요.
-        """
-        chain = create_chain(prompt, self.model)
-        response = chain.invoke({})
-        return response
-    
-    def _generate_test_cases(self, transformed_code, problem_description):
-        """Step 4: Generate test cases for the problem"""
-        prompt = f"""
-        당신은 알고리즘 문제 생성 전문가입니다. 아래 문제 설명과 코드를 바탕으로 테스트 케이스를 생성해주세요:
-        
-        ## 문제 설명
-        {problem_description}
-        
-        ## 변형된 코드
-        {transformed_code}
-        
-        다음 항목들을 생성해주세요:
-        1. 테스트 케이스를 생성하는 Python 코드 (무작위 입력 생성 또는 특정 케이스 생성)
-        2. 위 코드로 생성한 3~5개의 예제 입력과 해당하는 출력
-        3. 문제 난이도에 적합한 다양한 테스트 케이스 (기본 케이스, 경계 케이스, 예외 케이스 등)
-        
-        모든 테스트 케이스는 변형된 코드로 해결할 수 있어야 합니다.
-        """
-        chain = create_chain(prompt, self.model)
-        response = chain.invoke({})
-        return response
-    
-    def _integrate_results(self, problem_description, test_cases, transformed_code, algorithm_type, difficulty):
-        """Step 5: Integrate all previous steps into a complete problem"""
-        prompt = f"""
-        당신은 알고리즘 문제 생성 전문가입니다. 지금까지 생성된 내용을 통합하여 최종 문제를 완성해주세요:
-        
-        ## 문제 설명, 입력, 출력 형식
-        {problem_description}
-        
-        ## 테스트 케이스 및 예제
-        {test_cases}
-        
-        ## 변형된 코드
-        {transformed_code}
-        
-        ## 입력 정보
-        - 알고리즘 유형: {algorithm_type}
-        - 난이도 수준: {difficulty}
-        
-        다음 정확한 형식으로 최종 문제를 구성해주세요:
-        
-        ## 문제 설명
-        
-        [통합된 문제 설명]
-        
-        ## 입력
-        
-        [입력 형식 설명]
-        
-        ## 출력
-        
-        [출력 형식 설명]
-        
-        ### 예제 입력
-        
-        [테스트 케이스에서 선택한 예제 입력]
-        
-        ### 예제 출력
-        
-        [테스트 케이스에서 선택한 예제 출력]
-        
-        {"### 사용되는 알고리즘" if difficulty == "튜토리얼" else ""}
-        
-        {"[알고리즘 유형에 대한 간략한 설명]" if difficulty == "튜토리얼" else ""}
-        
-        {"[이 문제가 해당 알고리즘에 어떻게 적용되는지 설명]" if difficulty == "튜토리얼" else ""}
-        
-        ### 정답 코드
-        
-        ```python
-        [변형된 코드]
-        ```
-        
-        ### 테스트 케이스 생성 코드
-        
-        ```python
-        [테스트 케이스 생성 코드]
-        ```
-        
-        각 부분을 유기적으로 연결하여 완성도 높은 최종 문제를 만들어주세요.
-        """
-        chain = create_chain(prompt, self.model)
-        response = chain.invoke({})
-        return response
 
+        # 단계별 진행 상황 업데이트를 위한 래퍼 함수
+        def wrap_with_progress(step, message, runnable):
+            def update_and_run(inputs):
+                self.show_progress(step, 6, message)
+                # 필요한 입력만 runnable에 전달 (필요시 조정)
+                return runnable.invoke(inputs)
+            return update_and_run
+
+        # JSON 모드를 적용할 모델 바인딩
+        json_mode_model = self.model.bind(generation_config={"response_mime_type": "application/json"})
+
+        # 파이프라인 정의 (JSON 필요한 단계에서 json_mode_model 사용)
+        pipeline = (
+            RunnablePassthrough.assign(
+                template_analysis=wrap_with_progress(2, "템플릿 분석 중...", template_analysis_prompt | self.model) # 일반 모델 사용
+            )
+            | RunnablePassthrough.assign(
+                transformed_code=wrap_with_progress(3, "코드 변형 중...", code_transform_prompt | self.model) # 일반 모델 사용
+            )
+            | RunnablePassthrough.assign(
+                # 문제 설명: JSON 모드 모델 + JSON 파서 사용
+                problem_description=wrap_with_progress(4, "문제 설명 생성 중...", description_prompt | json_mode_model | json_parser)
+            )
+            | RunnablePassthrough.assign(
+                # 테스트 케이스: JSON 모드 모델 + JSON 파서 사용
+                test_cases=wrap_with_progress(5, "테스트 케이스 생성 중...", test_cases_prompt | json_mode_model | json_parser)
+            )
+            # 최종 통합: JSON 모드 모델 + JSON 파서 사용
+            | wrap_with_progress(6, "최종 결과 통합 중...", integration_prompt | json_mode_model | json_parser)
+        )
+
+        # 파이프라인 실행
+        try:
+            result = pipeline.invoke(initial_state) # 최종 결과는 파싱된 JSON 객체
+            end_time = time.time()
+            elapsed_time = end_time - start_time
+            self.show_progress(6, 6, f"완료! (소요 시간: {elapsed_time:.1f}초)")
+
+            # 최종 반환 형식 조정 (필요시)
+            return {
+                "algorithm_type": algorithm_type,
+                "difficulty": difficulty,
+                "template_used": template_file,
+                "generated_problem_json": result, # 파싱된 JSON 결과를 반환
+                "generation_time": elapsed_time
+            }
+        except Exception as e:
+            # 파이프라인 실행 중 오류 처리
+            print(f"\n파이프라인 실행 중 오류 발생: {e}")
+            # 실패한 단계 정보나 원인 등을 로깅하거나 반환할 수 있음
+            self.show_progress(6, 6, "오류 발생으로 중단")
+            return {"error": f"파이프라인 실행 실패: {e}"}
+
+
+    # --- 기존 보조 메서드들은 LCEL 파이프라인 사용으로 불필요해짐 ---
+    # def _analyze_template(self, template_code, algorithm_type, difficulty): ...
+    # def _transform_code(self, template_code, template_analysis): ...
+    # def _generate_description(self, ...): ...
+    # def _generate_test_cases(self, ...): ...
+    # def _integrate_results(self, ...): ...
+
+
+# Helper function (if used externally) - 이 부분은 유지하거나 필요에 맞게 수정
 def generate_problem(api_key, algorithm_type, difficulty, verbose=True):
-    """
-    Generate a problem using Langchain abstraction
-    """
-    generator = ProblemGenerator(api_key, verbose=verbose)
+    generator = ProblemGenerator(api_key=api_key, verbose=verbose)
     return generator.generate_problem(algorithm_type, difficulty)
 
+# Main execution part (if run as script) - 이 부분은 유지하거나 필요에 맞게 수정
 def main():
-    parser = argparse.ArgumentParser(description='Generate algorithmic problems using Google AI')
-    parser.add_argument('--api_key', help='Google AI Studio API key')
-    parser.add_argument('--algorithm_type', choices=ALGORITHM_TYPES, help='Type of algorithm')
-    parser.add_argument('--difficulty', choices=DIFFICULTY_LEVELS, help='Difficulty level')
-    parser.add_argument('--output', help='Output file path (optional)')
-    parser.add_argument('--quiet', action='store_true', help='Disable progress display')
-    
+    parser = argparse.ArgumentParser(description="알고리즘 문제 생성기")
+    parser.add_argument("-t", "--type", type=str, required=True, choices=ALGORITHM_TYPES,
+                        help="생성할 문제의 알고리즘 유형")
+    parser.add_argument("-d", "--difficulty", type=str, required=True, choices=DIFFICULTY_LEVELS,
+                        help="생성할 문제의 난이도")
+    parser.add_argument("-o", "--output", type=str, help="생성된 문제를 저장할 JSON 파일 경로")
+    parser.add_argument("-q", "--quiet", action="store_true", help="진행 상황 메시지 숨김")
+
     args = parser.parse_args()
-    
-    # Check for API key
-    api_key = args.api_key or os.environ.get("GOOGLE_AI_API_KEY")
+
+    api_key = os.getenv("GOOGLE_AI_API_KEY")
     if not api_key:
-        print("Error: No API key provided. Use --api_key or set GOOGLE_AI_API_KEY environment variable.")
-        return
-    
-    # Interactive mode if arguments are missing
-    algorithm_type = args.algorithm_type
-    if not algorithm_type:
-        print("Available algorithm types:")
-        for i, alg in enumerate(ALGORITHM_TYPES, 1):
-            print(f"{i}. {alg}")
-        choice = int(input("Enter your choice (number): "))
-        algorithm_type = ALGORITHM_TYPES[choice-1]
-    
-    difficulty = args.difficulty
-    if not difficulty:
-        print("Difficulty levels:")
-        for i, diff in enumerate(DIFFICULTY_LEVELS, 1):
-            print(f"{i}. {diff}")
-        choice = int(input("Enter your choice (number): "))
-        difficulty = DIFFICULTY_LEVELS[choice-1]
-    
-    # Generate the problem
-    print(f"Generating {difficulty} level problem for {algorithm_type}...")
-    result = generate_problem(api_key, algorithm_type, difficulty, verbose=(not args.quiet))
-    
+        print("오류: GOOGLE_AI_API_KEY 환경 변수가 설정되지 않았습니다.")
+        sys.exit(1)
+
+    result = generate_problem(api_key, args.type, args.difficulty, verbose=not args.quiet)
+
     if "error" in result:
-        print(f"Error: {result['error']}")
-        return
-    
-    # Output result
-    if args.output:
-        with open(args.output, 'w', encoding='utf-8') as f:
-            if args.output.endswith('.json'):
-                json.dump(result, f, ensure_ascii=False, indent=2)
-            else:
-                f.write(result["generated_problem"])
-        print(f"Problem saved to {args.output}")
+        print(f"\n문제 생성 실패: {result['error']}")
     else:
-        print("\n" + "="*50 + "\n")
-        print(result["generated_problem"])
+        print("\n문제 생성 완료!")
+        # 결과 출력 또는 파일 저장
+        generated_json = result.get("generated_problem_json")
+        if generated_json:
+            if args.output:
+                try:
+                    output_path = Path(args.output)
+                    output_path.parent.mkdir(parents=True, exist_ok=True) # Ensure directory exists
+                    with open(output_path, "w", encoding="utf-8") as f:
+                        json.dump(generated_json, f, ensure_ascii=False, indent=2)
+                    print(f"생성된 문제가 {args.output} 파일에 저장되었습니다.")
+                except Exception as e:
+                    print(f"파일 저장 오류: {e}")
+                    print("\n생성된 문제 JSON:")
+                    print(json.dumps(generated_json, ensure_ascii=False, indent=2)) # 오류 시 콘솔 출력
+            else:
+                # 파일 경로 미지정 시 콘솔에 출력
+                print("\n생성된 문제 JSON:")
+                print(json.dumps(generated_json, ensure_ascii=False, indent=2))
+        else:
+             print("결과에 생성된 문제 JSON이 없습니다.")
+             print("전체 결과:", result) # 디버깅용
+
 
 if __name__ == "__main__":
     main()
