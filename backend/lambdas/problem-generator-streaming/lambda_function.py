@@ -64,8 +64,10 @@ async def handler(event, context):
     request_body = {}
     request_id = context.aws_request_id
     api_key = os.environ.get("GOOGLE_AI_API_KEY") # Lambda 환경 변수에서 API 키 가져오기
+    print(f"[{request_id}] [DEBUG-STEP] Handler started.") # DEBUG LOG 1
 
     try:
+        print(f"[{request_id}] [DEBUG-STEP] Inside try block.") # DEBUG LOG 2
         # 사전 확인: ProblemGenerator 임포트 성공 여부
         if ProblemGenerator is None:
              raise RuntimeError("Failed to import ProblemGenerator module. Check paths and dependencies.")
@@ -103,12 +105,15 @@ async def handler(event, context):
 
 
         # --- ProblemGenerator 인스턴스 생성 ---
+        print(f"[{request_id}] [DEBUG-STEP] Before creating ProblemGenerator instance.") # DEBUG LOG 3
         if not api_key:
              raise ValueError("API Key (GOOGLE_AI_API_KEY) is not configured in Lambda environment.")
         # verbose=False 로 설정하여 Lambda 로그를 간결하게 유지 가능
         generator = ProblemGenerator(api_key=api_key, verbose=False)
+        print(f"[{request_id}] [DEBUG-STEP] ProblemGenerator instance created.") # DEBUG LOG 4
 
         # --- 문제 생성 스트리밍 호출 ---
+        print(f"[{request_id}] [DEBUG-STEP] Before calling generate_problem_stream.") # DEBUG LOG 5
         # generate_problem_stream은 성공 시 문제 객체 리스트를 반환, 실패 시 예외 발생
         final_problems = await generator.generate_problem_stream(
             algorithm_type=algorithm_type,
@@ -117,6 +122,7 @@ async def handler(event, context):
             format_stream_message_func=format_stream_message,
             verbose=False # Lambda 환경에서는 False 권장
         )
+        print(f"[{request_id}] [DEBUG-STEP] After calling generate_problem_stream (Success). Final problems: {final_problems}") # DEBUG LOG 6
 
         # --- 최종 결과 전송 ---
         response_stream.write(format_stream_message("result", final_problems).encode('utf-8'))
@@ -126,6 +132,7 @@ async def handler(event, context):
         print(f"[{request_id}] Request processed successfully.")
 
     except Exception as e:
+        print(f"[{request_id}] [DEBUG-STEP] Inside except block.") # DEBUG LOG 7
         print(f"[{request_id}] Error processing request: {traceback.format_exc()}")
         error_message = f"오류 발생: {str(e)}"
         try:
