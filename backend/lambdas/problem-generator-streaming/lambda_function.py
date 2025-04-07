@@ -152,16 +152,17 @@ async def async_handler(event, context):
     #     'body': json.dumps({'message': 'Streaming process completed asynchronously.'})
     # } # Remove or comment out this return
 
-# 새로운 동기 래퍼 핸들러
-def handler(event, context):
-    """Lambda 런타임이 호출할 동기 핸들러. asyncio.run()을 사용하여 비동기 로직 실행."""
+# 새로운 동기 래퍼 핸들러 -> 비동기 핸들러로 변경
+async def handler(event, context):
+    """Lambda 런타임이 호출할 비동기 핸들러. async_handler를 직접 await합니다."""
     request_id = context.aws_request_id
-    print(f"[{request_id}] Synchronous handler invoked.")
+    print(f"[{request_id}] Asynchronous handler invoked.") # 메시지 업데이트
 
     try:
-        # 비동기 핸들러 실행
-        asyncio.run(async_handler(event, context))
-        print(f"[{request_id}] asyncio.run(async_handler) completed.")
+        # 비동기 핸들러 직접 실행
+        # asyncio.run() 제거하고 await 사용
+        await async_handler(event, context)
+        print(f"[{request_id}] await async_handler completed.") # 메시지 업데이트
 
         # Lambda/API Gateway 프록시 통합에 대한 기본 성공 응답 반환
         # 스트리밍은 async_handler 내부에서 처리됨
@@ -170,8 +171,8 @@ def handler(event, context):
             'body': json.dumps({'message': 'Request received, streaming process initiated.'})
         }
     except Exception as e:
-        # asyncio.run 또는 async_handler 실행 중 발생한 예외 처리
-        print(f"[{request_id}] Error in synchronous handler: {traceback.format_exc()}")
+        # async_handler 실행 중 발생한 예외 처리
+        print(f"[{request_id}] Error in async handler: {traceback.format_exc()}") # 메시지 업데이트
         # API Gateway에 오류 응답 반환
         return {
             'statusCode': 500,
