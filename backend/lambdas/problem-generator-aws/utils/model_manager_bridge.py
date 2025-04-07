@@ -67,11 +67,18 @@ def generate_problem(api_key, algorithm_type, difficulty, verbose=True):
     """알고리즘 문제 생성을 위한 외부 스크립트 호출 (분리된 프로세스)."""
     # api_key = get_api_key(api_key) # 제거
 
+    # --- 입력 값 검증 --- 
     if not algorithm_type or not difficulty:
         raise ValueError("'algorithm_type' and 'difficulty' are required.")
 
+    # difficulty 검증 (기존 로직)
     if difficulty not in DIFFICULTY_LEVELS:
         raise ValueError(f"Invalid difficulty: {difficulty}. Must be one of {DIFFICULTY_LEVELS}")
+    
+    # algorithm_type 검증 추가
+    if algorithm_type not in ALGORITHM_TYPES:
+        raise ValueError(f"Invalid algorithm_type: {algorithm_type}. Must be one of {ALGORITHM_TYPES}")
+    # --- 검증 끝 ---
 
     # generator.py 스크립트의 절대 경로 찾기
     generator_script_path = (Path(__file__).parent.parent.parent / 
@@ -83,10 +90,11 @@ def generate_problem(api_key, algorithm_type, difficulty, verbose=True):
     python_executable = sys.executable
 
     # 실행할 명령어 구성 (API 키는 환경 변수로 전달됨)
+    # 입력 값이 검증되었으므로 안전하게 사용 가능
     command = [
         python_executable, str(generator_script_path),
-        '--type', algorithm_type,
-        '--difficulty', difficulty,
+        '--type', algorithm_type, # 검증된 값 사용
+        '--difficulty', difficulty, # 검증된 값 사용
         '--quiet' # 자식 프로세스의 print 출력을 억제
     ]
 
