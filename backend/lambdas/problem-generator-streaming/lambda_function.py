@@ -58,16 +58,16 @@ def find_algorithm_type(prompt: str) -> Union[str, None]:
     return None # 매칭 실패 시
 
 # --- Lambda 핸들러 ---
-async def handler(event, context):
-    """ AWS Lambda 스트리밍 응답 핸들러 """
+async def async_handler(event, context):
+    """ 실제 비동기 로직을 수행하는 핸들러 """
     response_stream = context.get_response_stream()
     request_body = {}
     request_id = context.aws_request_id
     api_key = os.environ.get("GOOGLE_AI_API_KEY") # Lambda 환경 변수에서 API 키 가져오기
-    print(f"[{request_id}] [DEBUG-STEP] Handler started.") # DEBUG LOG 1
+    print(f"[{request_id}] [DEBUG-STEP] Async handler started.") # DEBUG LOG 1
 
     try:
-        print(f"[{request_id}] [DEBUG-STEP] Inside try block.") # DEBUG LOG 2
+        print(f"[{request_id}] [DEBUG-STEP] Inside async try block.") # DEBUG LOG 2
         # 사전 확인: ProblemGenerator 임포트 성공 여부
         if ProblemGenerator is None:
              raise RuntimeError("Failed to import ProblemGenerator module. Check paths and dependencies.")
@@ -132,7 +132,7 @@ async def handler(event, context):
         print(f"[{request_id}] Request processed successfully.")
 
     except Exception as e:
-        print(f"[{request_id}] [DEBUG-STEP] Inside except block.") # DEBUG LOG 7
+        print(f"[{request_id}] [DEBUG-STEP] Inside async except block.") # DEBUG LOG 7
         print(f"[{request_id}] Error processing request: {traceback.format_exc()}")
         error_message = f"오류 발생: {str(e)}"
         try:
@@ -146,9 +146,34 @@ async def handler(event, context):
         response_stream.close()
         print(f"[{request_id}] Response stream closed.")
 
-    # 스트리밍이 완료된 후 또는 오류 발생 후, Lambda 런타임에 반환할 기본 응답
-    # API Gateway 프록시 통합은 일반적으로 이 형식을 기대함
-    return {
-        'statusCode': 200,
-        'body': json.dumps({'message': 'Streaming process initiated or completed.'})
-    } 
+    # 이 비동기 핸들러는 스트리밍으로 데이터를 보내므로, 명시적인 반환값이 필요 없음 (동기 래퍼가 반환함)
+    # return {
+    #     'statusCode': 200,
+    #     'body': json.dumps({'message': 'Streaming process completed asynchronously.'})
+    # } # Remove or comment out this return
+
+# 새로운 동기 래퍼 핸들러
+def handler(event, context):
+    """Lambda 런타임이 호출할 동기 핸들러. asyncio.run()을 사용하여 비동기 로직 실행."""
+    request_id = context.aws_request_id
+    print(f"[{request_id}] Synchronous handler invoked.")
+
+    try:
+        # 비동기 핸들러 실행
+        asyncio.run(async_handler(event, context))
+        print(f"[{request_id}] asyncio.run(async_handler) completed.")
+
+        # Lambda/API Gateway 프록시 통합에 대한 기본 성공 응답 반환
+        # 스트리밍은 async_handler 내부에서 처리됨
+        return {
+            'statusCode': 200,
+            'body': json.dumps({'message': 'Request received, streaming process initiated.'})
+        }
+    except Exception as e:
+        # asyncio.run 또는 async_handler 실행 중 발생한 예외 처리
+        print(f"[{request_id}] Error in synchronous handler: {traceback.format_exc()}")
+        # API Gateway에 오류 응답 반환
+        return {
+            'statusCode': 500,
+            'body': json.dumps({'error': f'Internal server error: {str(e)}'})
+        } 
