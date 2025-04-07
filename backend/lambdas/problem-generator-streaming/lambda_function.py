@@ -65,7 +65,7 @@ async def handler(event, context):
     response_stream = context.get_response_stream()
     request_body = {}
     request_id = context.aws_request_id
-    api_key = os.environ.get("GOOGLE_AI_API_KEY") # Lambda 환경 변수에서 API 키 가져오기
+    # api_key = os.environ.get("GOOGLE_AI_API_KEY") # Lambda 환경 변수에서 API 키 가져오기 - 제거
 
     try:
         # 사전 확인: ProblemGenerator 임포트 성공 여부
@@ -104,10 +104,11 @@ async def handler(event, context):
              await asyncio.sleep(0.1)
 
         # --- ProblemGenerator 인스턴스 생성 ---
-        if not api_key:
-             raise ValueError("API Key (GOOGLE_AI_API_KEY) is not configured in Lambda environment.")
+        # if not api_key: # 제거
+        #      raise ValueError("API Key (GOOGLE_AI_API_KEY) is not configured in Lambda environment.")
         # verbose=False 로 설정하여 Lambda 로그를 간결하게 유지 가능
-        generator = ProblemGenerator(api_key=api_key, verbose=False)
+        # api_key 인자를 명시적으로 전달하지 않아 ProblemGenerator 내부에서 환경 변수를 확인하도록 함
+        generator = ProblemGenerator(verbose=False)
 
         # --- 문제 생성 스트리밍 호출 ---
         # generate_problem_stream은 성공 시 문제 객체 리스트를 반환, 실패 시 예외 발생
