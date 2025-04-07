@@ -1,8 +1,8 @@
-# Use a standard Python 3.9 slim image
-FROM python:3.9-slim
+# Use AWS official Python 3.9 base image for Lambda
+FROM public.ecr.aws/lambda/python:3.9
 
 # Set working directory explicitly
-WORKDIR /var/task
+WORKDIR ${LAMBDA_TASK_ROOT}
 
 # --- 필요한 소스 코드 복사 (빌드 컨텍스트: problem-generator-streaming/ 기준) ---
 # 현재 함수 코드 및 requirements
@@ -13,8 +13,8 @@ COPY problem_generator_temp/ ./problem_generator/
 # -------------------------------------------------------------
 
 # Install the specified packages from the copied requirements.txt
-# TODO: Check if problem_generator needs its own requirements installed
-RUN pip install --no-cache-dir -r requirements.txt awslambdaric
+# The base image might already include awslambdaric, if not, add it to requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Set the ENTRYPOINT to use the Lambda Runtime Interface Client
-ENTRYPOINT [ "/usr/local/bin/python", "-m", "awslambdaric", "lambda_function.handler" ] 
+# Set the CMD to execute your handler function
+CMD [ "lambda_function.handler" ] 
