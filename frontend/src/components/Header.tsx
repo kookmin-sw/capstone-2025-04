@@ -5,6 +5,13 @@ import React from "react";
 import Image from "next/image";
 import { useAuthenticator } from "@aws-amplify/ui-react"; // Import the hook
 
+import { fetchAuthSession } from "aws-amplify/auth";
+const session = await fetchAuthSession({ forceRefresh: false });
+const idToken = session.tokens?.idToken;
+
+console.log("Session:", session); // Log the session to the console
+console.log("ID Token:", idToken); // Log the ID token to the console
+
 const Header: React.FC = () => {
   // Get authentication status and user details from the hook
   const { user, signOut, route } = useAuthenticator((context) => [
