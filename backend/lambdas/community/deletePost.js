@@ -80,7 +80,7 @@ exports.handler = async (event) => {
         if (transactItems.length > 25) {
             return {
                 statusCode: 400,
-                body: JSON.stringify({ message: "댓글 수가 너무 많아 한 번에 삭제할 수 없습니다. (최대 24개까지 지원)" }),
+                body: JSON.stringify({ message: "댓글 수가 너무 많아 한 번에 삭제할 수 없습니다. (최대 25개까지 지원)" }),
             };
         }
 
