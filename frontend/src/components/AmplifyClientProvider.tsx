@@ -4,7 +4,6 @@
 import React, { useEffect, useState } from "react";
 import { configureAmplify } from "@/utils/configureAmplify";
 import { Authenticator } from "@aws-amplify/ui-react";
-import "@aws-amplify/ui-react/styles.css";
 
 const AmplifyClientProvider = ({ children }: { children: React.ReactNode }) => {
   const [isConfigured, setIsConfigured] = useState(false);
