@@ -5,20 +5,20 @@ import Footer from "@/components/Footer";
 // import styles from "@/styles/community.module.css";
 import CommunityDetail from "./CommunityDetail"; // 클라이언트 컴포넌트를 불러옴
 
-// 정적 경로 생성용 더미 데이터
-const staticPosts = [{ id: 1 }, { id: 2 }, { id: 3 }, { id: 4 }, { id: 5 }];
+export const dynamicParams = false; // Add this line
 
-// 정적 경로 생성 함수
+// For static export with dynamic routes handled client-side,
+// generateStaticParams should exist but return an empty array.
 export async function generateStaticParams() {
-  return staticPosts.map((post) => ({
-    id: post.id.toString(),
-  }));
+  // Return an empty array because we don't know the post IDs at build time.
+  // The actual data fetching happens client-side in CommunityDetail.tsx.
+  return [];
 }
 
-type PageParams = Promise<{ id: string }>;
-
-const CommunityDetailPage = async ({ params }: { params: PageParams }) => {
-  const { id } = await params; // params.id는 string 타입
+// This page now acts as a simple layout wrapper for the client component
+// It doesn't need to be async or handle params directly
+const CommunityDetailPage = ({ params }: { params: { id: string } }) => {
+  const { id } = params; // Get id from params provided by Next.js router
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
       <Head>
