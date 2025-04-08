@@ -4,7 +4,7 @@ import Head from "next/head";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 // import Link from "next/link"; // Removed unused import
-import { useRouter, useParams } from "next/navigation"; // Use useParams to get ID
+import { useRouter, useSearchParams } from "next/navigation"; // Use useSearchParams instead
 import { useAuthenticator } from "@aws-amplify/ui-react";
 import { toast } from "sonner";
 import { getPostById, updatePost, PostDetail } from "@/api/communityApi";
@@ -13,8 +13,8 @@ import { getPostById, updatePost, PostDetail } from "@/api/communityApi";
 // Component containing form logic and state
 const EditPageContent: React.FC = () => {
   const router = useRouter();
-  const params = useParams();
-  const id = params.id as string; // Get postId from URL
+  const searchParams = useSearchParams();
+  const id = searchParams.get("id"); // Get postId from query parameter ?id=
 
   const { user, route } = useAuthenticator((context) => [
     context.user,
@@ -33,7 +33,13 @@ const EditPageContent: React.FC = () => {
 
   // Fetch existing post data
   const fetchPost = useCallback(async () => {
-    if (!id) return;
+    if (!id) {
+      // Handle case where ID is missing from URL query
+      setError("게시글 ID가 URL에 없습니다.");
+      toast.error("게시글 ID가 URL에 없습니다.");
+      setIsLoading(false);
+      return;
+    }
     setIsLoading(true);
     setError(null);
     setIsAuthorized(false); // Reset authorization state
@@ -64,7 +70,7 @@ const EditPageContent: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [id, isAuthenticated, currentUsername]); // Add dependencies
+  }, [id, isAuthenticated, currentUsername]); // Removed fetchPost from dependency array
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -76,7 +82,7 @@ const EditPageContent: React.FC = () => {
       toast.error("게시글을 수정하려면 로그인이 필요합니다.");
       // router.push('/auth/login'); // Redirect to login
     }
-  }, [id, isAuthenticated, fetchPost]); // Rerun if auth state changes
+  }, [id, isAuthenticated, fetchPost]); // Rerun if auth state or id changes
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -93,7 +99,7 @@ const EditPageContent: React.FC = () => {
     try {
       await updatePost(post.postId, { title, content });
       toast.success("게시글이 성공적으로 수정되었습니다.");
-      router.push(`/community/${post.postId}`); // Navigate back to detail page
+      router.push(`/community?id=${post.postId}`); // Use query parameter
     } catch (err) {
       console.error("Failed to update post:", err);
       toast.error(
@@ -106,7 +112,7 @@ const EditPageContent: React.FC = () => {
 
   const handleCancel = () => {
     if (post) {
-      router.push(`/community/${post.postId}`);
+      router.push(`/community?id=${post.postId}`); // Use query parameter
     } else {
       router.push("/community"); // Fallback if post ID isn't available
     }

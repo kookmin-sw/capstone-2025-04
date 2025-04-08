@@ -278,11 +278,12 @@ const CommunityDetail: React.FC<CommunityDetailProps> = ({ id }) => {
     <div className="max-w-5xl mx-auto p-8">
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-3xl font-bold text-gray-900">게시글</h1>
+        {/* Update Back link to always go to the list view */}
         <Link
           href="/community"
-          className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 bg-white hover:bg-gray-50 transition"
+          className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 bg-white hover:bg-gray-50 transition text-sm"
         >
-          뒤로가기
+          목록으로
         </Link>
       </div>
 
@@ -295,8 +296,12 @@ const CommunityDetail: React.FC<CommunityDetailProps> = ({ id }) => {
             {/* Edit/Delete Buttons for Author */}
             {isAuthor && (
               <div className="flex space-x-2 flex-shrink-0">
+                {/* Update Edit link to use query parameter */}
                 <Link
-                  href={`/community/${post.postId}/edit`}
+                  href={{
+                    pathname: "/community/edit",
+                    query: { id: post.postId },
+                  }} // Use object href
                   className="px-3 py-1 text-sm border border-gray-300 rounded-md text-gray-700 bg-white hover:bg-gray-50 transition"
                 >
                   수정

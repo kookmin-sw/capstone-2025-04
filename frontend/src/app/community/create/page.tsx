@@ -72,7 +72,7 @@ const CreatePageContent: React.FC = () => {
 
       // Navigate to the new post if postId is returned, otherwise to list
       if (response && response.postId) {
-        router.push(`/community/${response.postId}`);
+        router.push(`/community?id=${response.postId}`); // Use query parameter
       } else {
         router.push("/community");
       }
