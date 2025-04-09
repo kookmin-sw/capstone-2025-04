@@ -1,0 +1,20 @@
+# 환경 설정 파일
+.env
+
+# Python 가상환경 및 캐시
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+env/
+.venv/
+.env/
+
+# AWS 배포 파일
+*.zip
+deployment/
+package/
+
+# 로컬 테스트 생성 파일
+.coverage
+htmlcov/
