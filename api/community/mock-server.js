@@ -3,7 +3,7 @@ const cors = require("cors");
 const { v4: uuidv4 } = require("uuid");
 
 const app = express();
-const PORT = 3001;
+const PORT = 3001; // Keep community mock on 3001
 
 app.use(cors()); // Enable CORS for all origins
 app.use(express.json()); // Middleware to parse JSON bodies
@@ -26,7 +26,7 @@ const findCommentsForPost = (postId) =>
     (item) => item.PK === postId && item.SK.startsWith("COMMENT#")
   );
 
-const { jwtDecode } = require("jwt-decode"); // Import jwt-decode
+const { jwtDecode } = require("./node_modules/jwt-decode/build/cjs"); // Import jwt-decode
 
 // --- Mock Authentication Middleware ---
 const mockAuth = (req, res, next) => {
@@ -39,15 +39,17 @@ const mockAuth = (req, res, next) => {
       const decoded = jwtDecode(token);
       // Cognito typically puts username in 'username' or 'cognito:username' claim
       username = decoded.username || decoded["cognito:username"] || username;
-      console.log(`Mock Auth: Token decoded. User set to '${username}'.`);
+      console.log(
+        `[Community Mock Auth] Token decoded. User set to '${username}'.`
+      );
     } catch (error) {
       console.warn(
-        `WARN: Could not decode token: ${error.message}. Falling back to '${username}'.`
+        `[Community Mock Auth] WARN: Could not decode token: ${error.message}. Falling back to '${username}'.`
       );
     }
   } else {
     console.warn(
-      `WARN: No valid mock auth header found. Using default user '${username}'.`
+      `[Community Mock Auth] WARN: No valid mock auth header found. Using default user '${username}'.`
     );
     // In a real scenario, this should return 401
     // return res.status(401).json({ message: "인증 정보가 없습니다." });
@@ -87,7 +89,7 @@ app.post("/community", mockAuth, (req, res) => {
   };
 
   communityData.push(newPost);
-  console.log(`[Mock API] Post created: ${postId}`);
+  console.log(`[Community Mock API] Post created: ${postId}`);
 
   // Return data similar to backend response
   res.status(201).json({
@@ -116,7 +118,7 @@ app.get("/community", (req, res) => {
       commentCount: post.commentCount || 0,
       job_id: post.job_id || null,
     }));
-  console.log(`[Mock API] Fetched ${posts.length} posts.`);
+  console.log(`[Community Mock API] Fetched ${posts.length} posts.`);
   res.status(200).json(posts);
 });
 
@@ -129,7 +131,7 @@ app.get("/community/:postId", (req, res) => {
     return res.status(404).json({ message: "게시글을 찾을 수 없습니다." });
   }
 
-  console.log(`[Mock API] Fetched post detail: ${postId}`);
+  console.log(`[Community Mock API] Fetched post detail: ${postId}`);
   // Map to PostDetail format
   res.status(200).json({
     postId: post.postId,
@@ -175,7 +177,7 @@ app.patch("/community/:postId", mockAuth, (req, res) => {
   post.updatedAt = new Date().toISOString();
   communityData[postIndex] = post; // Update in the array
 
-  console.log(`[Mock API] Post updated: ${postId}`);
+  console.log(`[Community Mock API] Post updated: ${postId}`);
   res.status(200).json({
     message: "게시글이 성공적으로 수정되었습니다.",
     post: {
@@ -219,7 +221,7 @@ app.delete("/community/:postId", mockAuth, (req, res) => {
   const deletedCommentsCount = initialLength - communityData.length - 1; // -1 for the post itself
 
   console.log(
-    `[Mock API] Post deleted: ${postId} (and ${deletedCommentsCount} comments)`
+    `[Community Mock API] Post deleted: ${postId} (and ${deletedCommentsCount} comments)`
   );
   res.status(200).json({
     message: "게시글과 모든 댓글이 성공적으로 삭제되었습니다.",
@@ -259,7 +261,7 @@ app.post("/community/:postId/like", mockAuth, (req, res) => {
   communityData[postIndex] = post; // Update in the array
 
   console.log(
-    `[Mock API] Like toggled for post: ${postId} by ${userId}. Liked: ${isLikedNow}`
+    `[Community Mock API] Like toggled for post: ${postId} by ${userId}. Liked: ${isLikedNow}`
   );
   res.status(200).json({
     message,
@@ -305,7 +307,9 @@ app.post("/community/:postId/comment", mockAuth, (req, res) => {
   communityData[postIndex].commentCount =
     (communityData[postIndex].commentCount || 0) + 1;
 
-  console.log(`[Mock API] Comment created: ${commentId} on post ${postId}`);
+  console.log(
+    `[Community Mock API] Comment created: ${commentId} on post ${postId}`
+  );
   res.status(201).json({
     message: "댓글이 성공적으로 추가되었습니다.",
     postId,
@@ -333,7 +337,7 @@ app.get("/community/:postId/comment", (req, res) => {
   const commentCount = post ? post.commentCount || 0 : comments.length; // Use stored count if possible
 
   console.log(
-    `[Mock API] Fetched ${comments.length} comments for post: ${postId}`
+    `[Community Mock API] Fetched ${comments.length} comments for post: ${postId}`
   );
   res.status(200).json({ comments, commentCount });
 });
@@ -368,7 +372,9 @@ app.delete("/community/:postId/comment/:commentId", mockAuth, (req, res) => {
     );
   }
 
-  console.log(`[Mock API] Comment deleted: ${commentId} from post ${postId}`);
+  console.log(
+    `[Community Mock API] Comment deleted: ${commentId} from post ${postId}`
+  );
   res.status(200).json({ message: "댓글이 성공적으로 삭제되었습니다." });
 });
 
@@ -398,6 +404,6 @@ app.listen(PORT, () => {
       content: "첫 번째 댓글!",
       createdAt: new Date().toISOString(),
     });
-    console.log("Added initial seed data.");
+    console.log("Added initial seed data for Community API.");
   }
 });
