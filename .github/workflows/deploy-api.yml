@@ -1,0 +1,106 @@
+name: Deploy Community API Infrastructure
+
+on:
+  push:
+    branches:
+      - main # Or your primary deployment branch (e.g., master, production)
+    paths:
+      # Trigger when Lambda source code changes
+      - "backend/lambdas/community/**"
+      # Trigger when API infrastructure code changes
+      - "infrastructure/api/**"
+      # Trigger when this workflow file itself changes
+      - ".github/workflows/deploy-api.yml"
+  # Optional: Add pull_request trigger for planning on PRs
+  # pull_request:
+  #   paths:
+  #     - 'backend/lambdas/community/**'
+  #     - 'infrastructure/api/**'
+  #     - '.github/workflows/deploy-api.yml'
+
+# Permissions needed for AWS OIDC authentication and checking out code
+permissions:
+  id-token: write # Required for assuming IAM role via OIDC
+  contents: read # Required to checkout the repository code
+
+jobs:
+  deploy:
+    name: Terraform Plan & Apply (Community API)
+    runs-on: ubuntu-latest
+    # Optional: Link to a GitHub environment for secrets and protection rules
+    # environment: production
+
+    # Define environment variables for Terraform commands if needed
+    # env:
+    #   TF_VAR_some_variable: "value" # Example if you need to pass tfvars
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20" # Use a version compatible with your Lambda runtime and local dev
+
+      - name: Install Lambda Layer Dependencies
+        run: npm install --prefix infrastructure/api/layers/common-deps/nodejs
+        # This assumes npm install generates package-lock.json, which is excluded from the layer zip by layer.tf
+
+      - name: Configure AWS Credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          # Role ARN that GitHub Actions will assume.
+          # Needs permissions for: API Gateway, Lambda, DynamoDB, IAM (roles/policies), S3 (state), DynamoDB (state lock)
+          role-to-assume: ${{ secrets.AWS_IAM_ROLE_ARN_API }} # GitHub Secret: ARN of the deployment role
+          aws-region: ${{ secrets.AWS_REGION }} # GitHub Secret: e.g., ap-northeast-2
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        # Optionally specify Terraform version:
+        # with:
+        #   terraform_version: 1.x.x
+
+      - name: Terraform Init (API)
+        id: init
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
+            -backend-config="key=api/community/terraform.tfstate" \
+            -backend-config="region=${{ secrets.AWS_REGION }}" \
+            -backend-config="dynamodb_table=${{ secrets.TF_STATE_LOCK_TABLE }}" \
+            -backend-config="encrypt=true"
+        working-directory: ./infrastructure/api
+        # Required GitHub Secrets:
+        # TF_STATE_BUCKET: Name of the S3 bucket from backend-setup
+        # TF_STATE_LOCK_TABLE: Name of the DynamoDB table from backend-setup
+
+      - name: Terraform Validate
+        id: validate
+        run: terraform validate -no-color
+        working-directory: ./infrastructure/api
+
+      - name: Terraform Plan (API)
+        id: plan
+        run: terraform plan -no-color -out=tfplan
+        working-directory: ./infrastructure/api
+        # If running on pull_request, you might only run plan and exit here
+
+      # Optional: Add step to upload plan artifact for review on PRs
+
+      - name: Terraform Apply (API)
+        # Only run apply on pushes to the target branch (e.g., main)
+        # Add environment checks or manual approval steps if needed for production
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: terraform apply -auto-approve tfplan
+        working-directory: ./infrastructure/api
+
+      # Optional: Add step to output API Gateway URL after apply
+      # - name: Get API Gateway URL Output
+      #   if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+      #   id: get_output
+      #   run: echo "api_url=$(terraform output -raw api_gateway_invoke_url)" >> $GITHUB_OUTPUT
+      #   working-directory: ./infrastructure/api
+      # - name: Print API URL
+      #   if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+      #   run: echo "API Gateway URL: ${{ steps.get_output.outputs.api_url }}"
