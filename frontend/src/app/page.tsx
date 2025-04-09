@@ -1,4 +1,4 @@
-import Head from "next/head";
+import { Metadata } from "next";
 
 import Features from "@/components/Features";
 import ProblemExample from "@/components/ProblemExample";
@@ -6,19 +6,15 @@ import Banner from "@/components/Banner";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import Link from "next/link";
+// Metadata for the page
+export const metadata: Metadata = {
+  title: "ALPACO | Capstone Project 2025-04",
+  description: "ALPACO - Capstone project application",
+};
 
 export default function Home() {
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
-      <Head>
-        <title>ALPACO | Capstone Project 2025-04</title>
-        <meta
-          name="description"
-          content="ALPACO - Capstone project application"
-        />
-        <link rel="icon" href="/favicon.ico" />
-      </Head>
-
       <Header />
       <main className="flex-grow">
         <div className="w-full px-4 mx-auto max-w-7xl">

@@ -3,12 +3,18 @@
 
 import React, { useEffect, Suspense } from "react"; // Import Suspense
 import Image from "next/image";
-import Head from "next/head";
+import { Metadata } from "next";
 import { useRouter, useSearchParams } from "next/navigation"; // Import useSearchParams
 import SimpleHeader from "@/components/SimpleHeader"; // Corrected import path
 import Footer from "@/components/Footer"; // Corrected import path
 import { useAuthenticator } from "@aws-amplify/ui-react";
 import { signInWithRedirect } from "aws-amplify/auth";
+
+// Metadata for the page
+export const metadata: Metadata = {
+  title: "로그인 | ALPACO",
+  description: "ALPACO 로그인 페이지",
+};
 
 // Component to handle logic using hooks
 const LoginPageContentInternal = () => {
@@ -51,11 +57,6 @@ const LoginPageContentInternal = () => {
 
   return (
     <div className="flex flex-col min-h-screen bg-white">
-      <Head>
-        <title>로그인 | ALPACO</title>
-        <meta name="description" content="ALPACO 로그인 페이지" />
-      </Head>
-
       <SimpleHeader />
 
       <main className="flex-1 flex justify-center items-center">

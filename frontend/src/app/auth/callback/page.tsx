@@ -2,9 +2,16 @@
 "use client";
 
 import React, { useEffect, Suspense, useState } from "react";
+import { Metadata } from "next";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuthenticator } from "@aws-amplify/ui-react";
 import { configureAmplify } from "@/utils/configureAmplify"; // 👈 꼭 import!
+
+// Metadata for the page
+export const metadata: Metadata = {
+  title: "인증 처리 | ALPACO",
+  description: "사용자 인증을 처리하는 페이지입니다.",
+};
 
 const LoadingSpinner = () => (
   <div className="flex justify-center items-center min-h-screen">

@@ -1,10 +1,15 @@
 "use client";
 import React, { useState } from "react";
-import Head from "next/head";
+import { Metadata } from "next";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import Link from "next/link";
 
+// Metadata for the page
+export const metadata: Metadata = {
+  title: "내 저장소 | ALPACO",
+  description: "ALPACO 내 저장소",
+};
 // 가상의 저장된 코딩 테스트 데이터
 const savedTests = [
   {
@@ -44,11 +49,6 @@ const StoragePage: React.FC = () => {
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
-      <Head>
-        <title>내 저장소 | ALPACO</title>
-        <meta name="description" content="ALPACO 내 저장소" />
-      </Head>
-
       <Header />
 
       <main className="flex-grow">
@@ -244,7 +244,10 @@ const StoragePage: React.FC = () => {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <Link
-                            href={`/coding-test/progress?id=${test.id}&fromStorage=true`}
+                            href={{
+                              pathname: "/coding-test/solve",
+                              query: { id: test.id, fromStorage: true },
+                            }}
                             className="inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-md text-primary-hover bg-primary/10 hover:bg-primary/20 transition"
                           >
                             {test.status === "완료" ? (

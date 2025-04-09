@@ -1,39 +1,62 @@
 import React from "react";
-import Head from "next/head";
+import { Metadata } from "next";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import Link from "next/link";
 
-// 가상의 테스트 데이터
+// Metadata for the page
+export const metadata: Metadata = {
+  title: "코딩 테스트 선택 | ALPACO",
+  description: "코딩 테스트 선택 페이지",
+};
+// TODO: Replace with API call to fetch problem list when endpoint is available
+// import { getProblemList, ProblemSummary } from '@/api/codingTestApi';
+// const [testOptions, setTestOptions] = useState<ProblemSummary[]>([]);
+// useEffect(() => { fetch list... }, []);
+
+// 가상의 테스트 데이터 (API 구현 전까지 사용)
 const testOptions = [
   {
     id: 1,
-    title: "알고리즘 기초",
-    description: "배열, 문자열, 해시 등 기본적인 자료구조를 활용한 문제",
-    difficulty: "초급",
+    title: "두 수의 합",
+    description: "배열과 해시 테이블을 사용하여 target 합계를 찾는 문제",
+    difficulty: "Easy", // Use English difficulty to match mock server
   },
   {
     id: 2,
-    title: "다이나믹 프로그래밍",
-    description: "DP를 이용한 최적화 문제 풀이",
-    difficulty: "중급",
+    title: "배열에서 가장 큰 수 찾기",
+    description: "주어진 배열에서 가장 큰 요소를 찾는 기본 문제",
+    difficulty: "Easy",
   },
   {
     id: 3,
-    title: "그래프 탐색",
-    description: "BFS, DFS를 활용한 그래프 문제",
-    difficulty: "중급",
+    title: "피보나치 수열 (DP)",
+    description: "다이나믹 프로그래밍을 이용한 피보나치 수열 계산",
+    difficulty: "Medium",
+  },
+  {
+    id: 4,
+    title: "문자열 뒤집기",
+    description: "주어진 문자열을 뒤집는 기본 문자열 처리 문제",
+    difficulty: "Easy",
+  },
+  {
+    id: 5,
+    title: "이진 탐색",
+    description: "정렬된 배열에서 특정 값을 효율적으로 찾는 문제",
+    difficulty: "Medium",
+  },
+  {
+    id: 6,
+    title: "최단 경로 (Dijkstra)",
+    description: "가중치 그래프에서 시작 노드로부터의 최단 경로 찾기",
+    difficulty: "Hard",
   },
 ];
 
 const CodingTestSelectionPage: React.FC = () => {
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
-      <Head>
-        <title>코딩 테스트 선택 | ALPACO</title>
-        <meta name="description" content="코딩 테스트 선택 페이지" />
-      </Head>
-
       <Header />
 
       <main className="flex-grow">
@@ -76,10 +99,10 @@ const CodingTestSelectionPage: React.FC = () => {
                   </h2>
                   <span
                     className={`px-2 py-1 text-xs font-medium rounded-full ${
-                      test.difficulty === "초급"
+                      test.difficulty === "Easy"
                         ? "bg-green-100 text-green-800"
-                        : test.difficulty === "중급"
-                        ? "bg-primary/10 text-primary-hover"
+                        : test.difficulty === "Medium"
+                        ? "bg-yellow-100 text-yellow-800" // Changed Medium color for consistency
                         : "bg-red-100 text-red-800"
                     }`}
                   >
@@ -88,7 +111,10 @@ const CodingTestSelectionPage: React.FC = () => {
                 </div>
                 <p className="text-gray-600 mb-6 text-sm">{test.description}</p>
                 <Link
-                  href={`/coding-test/progress?id=${test.id}`}
+                  href={{
+                    pathname: "/coding-test/solve",
+                    query: { id: test.id },
+                  }}
                   className="inline-block w-full text-center px-4 py-2 bg-primary text-white font-medium rounded-md hover:bg-primary-hover transition mt-auto"
                 >
                   시작하기

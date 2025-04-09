@@ -1,18 +1,27 @@
 "use client";
 import React, { useState, useEffect, Suspense } from "react";
-import Head from "next/head";
+import { Metadata } from "next";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useAuthenticator } from "@aws-amplify/ui-react";
+import { toast } from "sonner";
+import { createPost } from "@/api/communityApi";
 import CodeEditor from "@/components/CodeEditor";
+
+// Metadata for the page
+export const metadata: Metadata = {
+  title: "게시글 작성 | ALPACO 커뮤니티",
+  description: "ALPACO 커뮤니티 게시글 작성",
+};
 
 // New component containing all form logic and state
 const CreatePageContent: React.FC = () => {
   const router = useRouter();
   const searchParams = useSearchParams();
   const fromTest = searchParams.get("fromTest");
-  const id = searchParams.get("id");
+  const testId = searchParams.get("id"); // Rename to avoid conflict if API returns 'id'
 
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
@@ -21,22 +30,66 @@ const CreatePageContent: React.FC = () => {
     "python" | "javascript" | "java" | "cpp"
   >("python");
   const [includeCode, setIncludeCode] = useState(!!fromTest);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const { authStatus } = useAuthenticator((context) => [context.authStatus]);
+  const isAuthenticated = authStatus === "authenticated";
 
   useEffect(() => {
     // If coming from a test, set initial values
-    if (fromTest && id) {
+    if (fromTest && testId) {
       setTitle(`[문제 풀이] 배열에서 가장 큰 수 찾기`);
       setContent(
         "이 문제는 배열에서 가장 큰 수를 찾는 문제였습니다. 다음과 같은 접근 방식으로 해결했습니다..."
       );
       // Code content can also be set here if needed
     }
-  }, [fromTest, id]);
+  }, [fromTest, testId]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Implement post submission logic
-    router.push("/community");
+    if (!isAuthenticated) {
+      toast.error("게시글을 작성하려면 로그인이 필요합니다.");
+      return;
+    }
+    if (!title.trim() || !content.trim()) {
+      toast.warning("제목과 내용을 모두 입력해주세요.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      // Prepare payload, include job_id if relevant
+      const payload: { title: string; content: string; job_id?: string } = {
+        title,
+        content,
+      };
+      if (fromTest && testId) {
+        // Assuming testId can be used as job_id, adjust if needed
+        payload.job_id = testId;
+      }
+      // TODO: If code is included, append it to the content or handle separately
+      // if (includeCode && code) {
+      //   payload.content += `\n\n\`\`\`${language}\n${code}\n\`\`\``;
+      // }
+
+      const response = await createPost(payload);
+      toast.success("게시글이 성공적으로 등록되었습니다.");
+
+      // Navigate to the new post if postId is returned, otherwise to list
+      if (response && response.postId) {
+        router.push(`/community?id=${response.postId}`); // Use query parameter
+      } else {
+        router.push("/community");
+      }
+    } catch (err) {
+      console.error("Failed to create post:", err);
+      toast.error(
+        err instanceof Error ? err.message : "게시글 등록 중 오류 발생"
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleCancel = () => {
@@ -162,9 +215,10 @@ const CreatePageContent: React.FC = () => {
           </button>
           <button
             type="submit"
-            className="px-6 py-2 bg-primary text-white rounded-md hover:bg-primary-hover transition"
+            disabled={isSubmitting || !title.trim() || !content.trim()}
+            className="px-6 py-2 bg-primary text-white rounded-md hover:bg-primary-hover transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            게시글 등록
+            {isSubmitting ? "등록 중..." : "게시글 등록"}
           </button>
         </div>
       </form>
@@ -176,11 +230,6 @@ const CreatePageContent: React.FC = () => {
 const CommunityCreatePage: React.FC = () => {
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
-      <Head>
-        <title>게시글 작성 | ALPACO 커뮤니티</title>
-        <meta name="description" content="ALPACO 커뮤니티 게시글 작성" />
-      </Head>
-
       <Header />
 
       <main className="flex-grow">

@@ -13,10 +13,10 @@ if __name__ == "__main__":
     # 입력 처리
     n = int(input())
     numbers = list(map(int, input().split()))
-    
+
     # 솔루션 함수 호출
     result = solution(numbers)
-    
+
     # 결과 출력
     print(result)
 `,
@@ -30,7 +30,7 @@ function processInput(input) {
   const lines = input.trim().split('\\n');
   const n = parseInt(lines[0]);
   const numbers = lines[1].split(' ').map(Number);
-  
+
   return solution(numbers);
 }
 
@@ -40,7 +40,7 @@ if (typeof process !== 'undefined') {
   process.stdin.on('data', (chunk) => {
     input += chunk.toString();
   });
-  
+
   process.stdin.on('end', () => {
     const result = processInput(input);
     console.log(result);
@@ -52,23 +52,23 @@ if (typeof process !== 'undefined') {
 public class Solution {
     public static void main(String[] args) {
         Scanner scanner = new Scanner(System.in);
-        
+
         // 입력 처리
         int n = scanner.nextInt();
         int[] numbers = new int[n];
         for (int i = 0; i < n; i++) {
             numbers[i] = scanner.nextInt();
         }
-        
+
         // 솔루션 함수 호출
         int result = solution(numbers);
-        
+
         // 결과 출력
         System.out.println(result);
-        
+
         scanner.close();
     }
-    
+
     public static int solution(int[] inputData) {
         // 여기에 코드를 작성하세요
         return 0;
@@ -89,18 +89,18 @@ int main() {
     // 입력 처리
     int n;
     cin >> n;
-    
+
     vector<int> numbers(n);
     for (int i = 0; i < n; i++) {
         cin >> numbers[i];
     }
-    
+
     // 솔루션 함수 호출
     int result = solution(numbers);
-    
+
     // 결과 출력
     cout << result << endl;
-    
+
     return 0;
 }
 `,
@@ -111,6 +111,7 @@ type CodeEditorProps = {
   onChange?: (value: string) => void;
   initialCode?: string | null;
   readOnly?: boolean;
+  theme?: "light" | "dark"; // Add theme prop
 };
 
 export default function CodeEditor({
@@ -118,56 +119,51 @@ export default function CodeEditor({
   onChange,
   initialCode = null,
   readOnly = false,
+  theme = "light", // Default to light theme
 }: CodeEditorProps) {
   const [code, setCode] = useState(
     initialCode || CODE_TEMPLATES[language] || ""
   );
 
   useEffect(() => {
-    if (!initialCode) {
+    // Update code only if initialCode is not provided (use template)
+    // Or if the language changes and we were using the template
+    if (!initialCode || code === CODE_TEMPLATES[language]) {
       setCode(CODE_TEMPLATES[language] || "");
     }
-  }, [language, initialCode]);
+    // If initialCode IS provided, we assume it's controlled externally or set once
+  }, [language, initialCode]); // Rerun when language or initialCode changes
 
   const handleEditorChange = (value: string | undefined) => {
-    setCode(value || "");
+    const newValue = value || "";
+    setCode(newValue);
     if (onChange) {
-      onChange(value || "");
+      onChange(newValue);
     }
   };
 
   return (
-    <div className="flex flex-col rounded-lg overflow-hidden shadow-md">
-      <div className="flex justify-between items-center px-4 p-3 bg-[#1e1e1e] border-b border-white/10">
-        <span className="text-white text-sm font-medium">
-          Code Editor - {language.toUpperCase()}
-        </span>
-        <div className="flex gap-2">
-          {/* Optional language selector can go here */}
-        </div>
-      </div>
-
-      <div className="h-[50vh] border border-gray-300">
+    // Make the root div take full height and flex column
+    <div className="flex flex-col h-full w-full">
+      {/* Make this div grow to fill available space, add rounding and overflow hidden */}
+      <div className="flex-grow border border-gray-300 rounded-md overflow-hidden">
         <Editor
+          // Ensure editor takes 100% height of its container
           height="100%"
           language={language === "cpp" ? "cpp" : language}
           value={code}
           onChange={handleEditorChange}
-          theme="vs-dark"
+          // Set Monaco theme based on prop
+          theme={theme === "dark" ? "vs-dark" : "vs-light"}
+          // Removed duplicate theme prop, the one below handles it dynamically
           options={{
             minimap: { enabled: false },
             fontSize: 14,
             readOnly: readOnly,
             scrollBeyondLastLine: false,
-            automaticLayout: true,
+            automaticLayout: true, // Important for resizing
           }}
         />
-      </div>
-
-      <div className="flex justify-end px-4 p-3 bg-gray-50 border-t border-gray-300">
-        <button className="bg-primary text-white border-none rounded px-4 py-2 text-sm font-medium cursor-pointer flex items-center gap-2 transition-colors duration-200 hover:bg-primary-hover">
-          실행
-        </button>
       </div>
     </div>
   );
