@@ -26,7 +26,7 @@ const findCommentsForPost = (postId) =>
     (item) => item.PK === postId && item.SK.startsWith("COMMENT#")
   );
 
-const { jwtDecode } = require("./node_modules/jwt-decode/build/cjs"); // Import jwt-decode
+const { jwtDecode } = require("jwt-decode"); // Import jwt-decode
 
 // --- Mock Authentication Middleware ---
 const mockAuth = (req, res, next) => {
