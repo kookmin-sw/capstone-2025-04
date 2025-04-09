@@ -2,7 +2,10 @@
 # Add libraries needed to run user code and measure resources
 
 # Example: For measuring memory usage (Linux only)
-# psutil
+psutil
 
 # If using specific libraries for sandboxing or process management:
-# e.g., resource 
+# e.g., resource
+
+# For uploading results to S3
+boto3 

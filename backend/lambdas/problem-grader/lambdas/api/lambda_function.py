@@ -3,10 +3,19 @@ import os
 import boto3
 from botocore.exceptions import ClientError
 import uuid
+import time
+import traceback
 
 # Environment variables
 PROBLEMS_TABLE_NAME = os.environ.get('PROBLEMS_TABLE_NAME', 'Problems')
 GRADER_STATE_MACHINE_ARN = os.environ.get('GRADER_STATE_MACHINE_ARN')
+# Fargate & S3 related environment variables (passed to Step Functions)
+CODE_RUNNER_TASK_DEFINITION_ARN = os.environ.get('CODE_RUNNER_TASK_DEFINITION_ARN')
+ECS_CLUSTER_NAME = os.environ.get('ECS_CLUSTER_NAME')
+SUBNET_IDS = os.environ.get('SUBNET_IDS', '')
+SECURITY_GROUP_IDS = os.environ.get('SECURITY_GROUP_IDS', '')
+S3_BUCKET_NAME = os.environ.get('S3_BUCKET_NAME') # Bucket for Fargate results
+S3_KEY_PREFIX = os.environ.get('S3_KEY_PREFIX', 'grader-results') # Prefix for Fargate results
 
 dynamodb_client = boto3.client('dynamodb')
 stepfunctions_client = boto3.client('stepfunctions')
@@ -14,6 +23,7 @@ stepfunctions_client = boto3.client('stepfunctions')
 def lambda_handler(event, context):
     """Handles API Gateway/Lambda Function URL requests to start grading."""
     print(f"Received event: {json.dumps(event)}")
+    request_timestamp_ms = str(int(time.time() * 1000)) # Record submission time
 
     try:
         # 1. Parse request body
@@ -74,12 +84,34 @@ def lambda_handler(event, context):
             'testcases': testcases,
             'timeLimit': time_limit,
             'memoryLimit': memory_limit,
-            # Pass necessary Fargate details (can be fetched from env vars or discovered)
-            'taskDefinitionArn': os.environ.get('CODE_RUNNER_TASK_DEFINITION_ARN'),
-            'clusterName': os.environ.get('ECS_CLUSTER_NAME'),
-            'subnets': os.environ.get('SUBNET_IDS', '').split(','),
-            'securityGroups': os.environ.get('SECURITY_GROUP_IDS', '').split(',')
+            'submittedAt': request_timestamp_ms, # Pass submission time
+            # Pass necessary Fargate details
+            'taskDefinitionArn': CODE_RUNNER_TASK_DEFINITION_ARN,
+            'clusterName': ECS_CLUSTER_NAME,
+            'subnets': SUBNET_IDS.split(',') if SUBNET_IDS else [],
+            'securityGroups': SECURITY_GROUP_IDS.split(',') if SECURITY_GROUP_IDS else [],
+            # Pass S3 details for results
+            's3BucketName': S3_BUCKET_NAME,
+            's3KeyPrefix': S3_KEY_PREFIX
         }
+
+        # Input validation for required environment variables
+        required_vars = [
+            GRADER_STATE_MACHINE_ARN,
+            CODE_RUNNER_TASK_DEFINITION_ARN,
+            ECS_CLUSTER_NAME,
+            SUBNET_IDS,
+            SECURITY_GROUP_IDS,
+            S3_BUCKET_NAME
+        ]
+        if not all(required_vars):
+            missing = [name for name, var in zip(['GRADER_STATE_MACHINE_ARN', 'CODE_RUNNER_TASK_DEFINITION_ARN', 'ECS_CLUSTER_NAME', 'SUBNET_IDS', 'SECURITY_GROUP_IDS', 'S3_BUCKET_NAME'], required_vars) if not var]
+            error_msg = f"Missing required environment variable(s): {', '.join(missing)}. Cannot start grading."
+            print(f"Error: {error_msg}")
+            return {
+                'statusCode': 500,
+                'body': json.dumps({'error': error_msg})
+            }
 
         # 4. Start Step Functions execution
         if not GRADER_STATE_MACHINE_ARN:
