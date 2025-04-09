@@ -6,7 +6,7 @@ from botocore.exceptions import ClientError
 load_dotenv()
 
 # 환경 설정
-IS_LOCAL = os.environ.get('IS_LOCAL', 'false').lower() == 'true'
+IS_LOCAL = os.environ.get('IS_LOCAL', 'false') == 'true'
 LOCALSTACK_HOSTNAME = os.environ.get('LOCALSTACK_HOSTNAME', 'localhost')
 LOCALSTACK_PORT = os.environ.get('LOCALSTACK_PORT', '4566')
 

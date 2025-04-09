@@ -34,79 +34,103 @@ RESULT_BUCKET = os.environ.get('RESULT_BUCKET', 'problem-generator-results')
 RESULT_PREFIX = os.environ.get('RESULT_PREFIX', 'results/')
 
 def handler(event, context):
-    """
-    SQS로부터 받은 문제 생성 요청을 처리하는 Lambda 핸들러
-    """
+    """Lambda 함수 핸들러: Batch Job 이벤트 처리"""
+    # api_key = os.environ.get("GOOGLE_AI_API_KEY") # 제거
+    s3_client = boto3.client('s3')
+    sqs_client = boto3.client('sqs')
+    job_queue_url = os.environ.get('JOB_QUEUE_URL')
+
+    # if not api_key: # 제거
+    #     print("Error: GOOGLE_AI_API_KEY environment variable is not set.")
+    #     return {'statusCode': 500, 'body': json.dumps({'error': 'API key is not configured'})}
+
+    if not job_queue_url:
+        print("Error: JOB_QUEUE_URL environment variable is not set.")
+        # 실패 처리 로직 (예: CW Alarm)
+        return {'statusCode': 500, 'body': json.dumps({'error': 'SQS queue URL is not configured'})}
+
     print(f"Received event: {json.dumps(event)}")
-    
-    for record in event['Records']:
-        receipt_handle = record['receiptHandle']
+
+    # Batch 작업 배열의 경우 jobs 키 확인
+    if 'jobs' in event:
+        # 실제로는 하나의 작업만 처리한다고 가정 (Batch Job 배열 크기 1)
+        job_data = event['jobs'][0]
+        job_id = job_data.get('jobId')
+        parameters = job_data.get('parameters', {})
+        result_bucket_name = parameters.get('result_bucket_name')
+        result_object_key = parameters.get('result_object_key')
+        algorithm_type = parameters.get('algorithm_type')
+        difficulty = parameters.get('difficulty')
+    else:
+        # SQS 메시지에서 데이터 추출 (CloudWatch Event를 통한 재시도 시)
+        if 'Records' not in event:
+            print("Error: Invalid event format. Expected 'jobs' key for Batch or 'Records' for SQS.")
+            return {'statusCode': 400, 'body': json.dumps({'error': 'Invalid event format'})}
         
         try:
-            # 메시지 본문 파싱
-            if isinstance(record['body'], str):
-                body = json.loads(record['body'])
-            else:
-                body = record.get('body', {})
-            
-            job_id = body.get('job_id')
-            algorithm_type = body.get('algorithm_type')
-            difficulty = body.get('difficulty')
-            result_object_key = body.get('result_object_key')
-            
-            if not all([job_id, algorithm_type, difficulty, result_object_key]):
-                print(f"Missing required fields in message body: {body}")
-                # 메시지 삭제는 하지 않고 오류 로깅만 (데드 레터 큐로 가도록)
-                continue
+            sqs_body = json.loads(event['Records'][0]['body'])
+            job_id = sqs_body.get('job_id') # 이전 시도의 Job ID 사용
+            result_bucket_name = sqs_body.get('result_bucket_name')
+            result_object_key = sqs_body.get('result_object_key')
+            algorithm_type = sqs_body.get('algorithm_type')
+            difficulty = sqs_body.get('difficulty')
+        except (json.JSONDecodeError, KeyError, IndexError) as e:
+            print(f"Error parsing SQS message body: {e}")
+            return {'statusCode': 400, 'body': json.dumps({'error': 'Failed to parse SQS message'})}
 
-            # DynamoDB 상태를 PROCESSING으로 업데이트
-            update_job_status(job_id, 'PROCESSING')
+    # 필수 파라미터 검증
+    if not all([job_id, result_bucket_name, result_object_key, algorithm_type, difficulty]):
+        error_msg = "Missing required parameters in job data or SQS message"
+        print(f"Error: {error_msg}")
+        # 실패 처리: 상태 업데이트 또는 알림 (여기서는 로깅만)
+        update_job_status(job_id, "FAILED", error_message=error_msg)
+        return {'statusCode': 400, 'body': json.dumps({'error': error_msg})}
 
-            print(f"Processing job: {job_id} for {algorithm_type} ({difficulty})")
-            
-            # API 키 가져오기 (환경 변수 우선)
-            api_key = get_api_key()
-            
-            # 문제 생성 로직 호출
-            problem_result = generate_problem(api_key, algorithm_type, difficulty, verbose=True)
-            
-            # 결과 S3에 업로드
-            result_url = upload_to_s3(problem_result, object_key=result_object_key)
-            print(f"Problem for job {job_id} saved to S3: {result_url}")
+    print(f"Processing job: {job_id} for {algorithm_type} ({difficulty})")
+    update_job_status(job_id, "RUNNING")
 
-            # DynamoDB 상태를 COMPLETED로 업데이트
-            update_job_status(job_id, 'COMPLETED', result_url=result_url)
-            
-            # 성공적으로 처리된 메시지 삭제
-            delete_message_from_sqs(receipt_handle)
-            print(f"Message with receipt handle {receipt_handle} deleted from SQS.")
+    try:
+        # 문제 생성 로직 호출 (model_manager_bridge 사용)
+        # api_key 인자 제거
+        problem_result = generate_problem(
+            api_key=None, # None 전달 또는 제거
+            algorithm_type=algorithm_type, 
+            difficulty=difficulty, 
+            verbose=True # 상세 로그 활성화
+        )
 
-        except Exception as e:
-            print(f"Error processing message: {str(e)}")
-            # 오류 발생 시 job_id 가 있는지 확인 후 DynamoDB 상태 FAILED로 업데이트
-            try:
-                # 오류 발생 시 본문을 다시 로드 시도 (job_id 추출 목적)
-                if isinstance(record.get('body'), str):
-                    error_body = json.loads(record['body'])
-                else:
-                    error_body = record.get('body', {})
-                error_job_id = error_body.get('job_id')
-                if error_job_id:
-                    update_job_status(error_job_id, 'FAILED', error_message=str(e))
-                else:
-                    print("Could not extract job_id from failed message to update status.")
-            except Exception as inner_e:
-                print(f"Failed to update job status to FAILED: {inner_e}")
-            
-            # 메시지 삭제는 하지 않음 (데드 레터 큐로 이동)
-            # continue 를 사용하거나, Lambda가 자동으로 재시도하도록 둠 (설정에 따라)
-            # 여기서는 명시적으로 오류를 발생시켜 Lambda 재시도를 유도할 수 있음
-            # raise e
-    
-    return {
-        'statusCode': 200,
-        'body': json.dumps('Processing complete')
-    }
+        # 결과 확인 및 S3 업로드
+        if not problem_result or problem_result.get("error"):
+            error_details = problem_result.get("error", "Unknown error during problem generation")
+            print(f"Job {job_id} failed: {error_details}")
+            update_job_status(job_id, "FAILED", error_message=error_details)
+            # 실패 시 재시도 로직 (SQS DLQ 활용)
+            # 여기서는 Lambda 실패로 처리 (Batch가 재시도 구성 가능)
+            raise Exception(f"Problem generation failed: {error_details}")
+
+        print(f"Job {job_id} completed successfully. Uploading result to S3...")
+        s3_client.put_object(
+            Bucket=result_bucket_name,
+            Key=result_object_key,
+            Body=json.dumps(problem_result, ensure_ascii=False, indent=2),
+            ContentType='application/json'
+        )
+
+        print(f"Successfully uploaded result for job {job_id} to s3://{result_bucket_name}/{result_object_key}")
+        update_job_status(job_id, "SUCCEEDED")
+
+        return {
+            'statusCode': 200,
+            'body': json.dumps({'message': 'Job processed successfully', 'jobId': job_id})
+        }
+
+    except Exception as e:
+        print(f"Error processing job {job_id}: {traceback.format_exc()}")
+        error_message = f"Error processing job: {str(e)}"
+        update_job_status(job_id, "FAILED", error_message=error_message)
+        # 실패 시 Lambda 자체 재시도 또는 Batch/SQS 재시도 메커니즘에 의존
+        # 필요시 SQS DLQ로 메시지 전송 로직 추가
+        raise e # Lambda가 실패로 처리하도록 예외 다시 발생
 
 def process_job(job_data):
     """

@@ -41,18 +41,6 @@ ALGORITHM_TYPES = [
 ]
 DIFFICULTY_LEVELS = ["튜토리얼", "쉬움", "보통", "어려움"]
 
-# API 키 관리 함수
-def get_api_key(api_key=None):
-    """API 키를 가져옵니다. 우선순위: 인자로 전달된 키 > 환경 변수"""
-    if api_key:
-        return api_key
-    
-    api_key = os.environ.get("GOOGLE_AI_API_KEY")
-    if not api_key:
-        raise ValueError("No API key provided. Set GOOGLE_AI_API_KEY environment variable or pass it as an argument.")
-    
-    return api_key
-
 # problem-generator 모듈이 있는지 확인
 def check_problem_generator():
     """problem-generator 모듈이 존재하고 접근 가능한지 확인합니다."""
@@ -76,127 +64,126 @@ def check_problem_generator():
 
 # generator.py의 generate_problem 함수를 subprocess를 통해 호출
 def generate_problem(api_key, algorithm_type, difficulty, verbose=True):
-    """
-    problem-generator의 generate_problem 함수를 subprocess를 통해 호출하여 문제를 생성합니다.
+    """알고리즘 문제 생성을 위한 외부 스크립트 호출 (분리된 프로세스)."""
+    # api_key = get_api_key(api_key) # 제거
+
+    # --- 입력 값 검증 --- 
+    if not algorithm_type or not difficulty:
+        raise ValueError("'algorithm_type' and 'difficulty' are required.")
+
+    # difficulty 검증 (기존 로직)
+    if difficulty not in DIFFICULTY_LEVELS:
+        raise ValueError(f"Invalid difficulty: {difficulty}. Must be one of {DIFFICULTY_LEVELS}")
     
-    Args:
-        api_key (str): Google AI API 키
-        algorithm_type (str): 알고리즘 유형 (예: '구현', '그래프')
-        difficulty (str): 난이도 수준 (예: '쉬움', '보통', '어려움')
-        verbose (bool): 상세 출력 여부
-    
-    Returns:
-        dict: 생성된 문제 정보를 담은 사전 (문제 설명, 정답 코드, 테스트 케이스 포함)
-    """
-    start_time = time.time()
-    
-    # API 키 확인
-    if not api_key:
-        raise ValueError("API key is required")
-    
-    # problem-generator 모듈 접근 가능 여부 확인
-    if not check_problem_generator():
-        raise ImportError("Cannot access problem-generator module")
-    
+    # algorithm_type 검증 추가
+    if algorithm_type not in ALGORITHM_TYPES:
+        raise ValueError(f"Invalid algorithm_type: {algorithm_type}. Must be one of {ALGORITHM_TYPES}")
+    # --- 검증 끝 ---
+
+    # generator.py 스크립트의 절대 경로 찾기
+    generator_script_path = (Path(__file__).parent.parent.parent / 
+                             'problem-generator' / 'generation' / 'generator.py')
+    if not generator_script_path.exists():
+        raise FileNotFoundError(f"Generator script not found at {generator_script_path}")
+
+    # 현재 Python 인터프리터 경로
+    python_executable = sys.executable
+
+    # 실행할 명령어 구성 (API 키는 환경 변수로 전달됨)
+    # 입력 값이 검증되었으므로 안전하게 사용 가능
+    command = [
+        python_executable, str(generator_script_path),
+        '--type', algorithm_type, # 검증된 값 사용
+        '--difficulty', difficulty, # 검증된 값 사용
+        '--quiet' # 자식 프로세스의 print 출력을 억제
+    ]
+
+    if verbose:
+        print(f"\n{algorithm_type} 유형의 {difficulty} 난이도 문제 생성을 시작합니다... (외부 프로세스 호출)\n")
+        print(f"Executing command: {' '.join(command)}")
+
     try:
-        # 임시 파일 생성 (결과 저장용)
-        with tempfile.NamedTemporaryFile(suffix='.json', delete=False, mode='w', encoding='utf-8') as temp_file:
-            temp_file_path = temp_file.name
-        
-        # generator.py 스크립트 경로
-        generator_script_path = GENERATION_PATH / 'generator.py'
-        
-        # 환경 변수 설정
-        env = os.environ.copy()
-        env['GOOGLE_AI_API_KEY'] = api_key
-        
-        # 명령어 구성
-        command = [
-            sys.executable,
-            str(generator_script_path),
-            '--type', algorithm_type,
-            '--difficulty', difficulty,
-            '--output', temp_file_path,
-        ]
-        
-        if not verbose:
-            command.append('--quiet')
-        
-        # 명령어 실행
+        # generator.py 스크립트를 별도 프로세스로 실행하고 출력을 캡처
+        # API 키는 환경 변수로 전달되므로 명시적으로 설정할 필요 없음 (상속됨)
+        # 만약 상속되지 않는 환경이라면, env 인자를 사용하여 전달해야 함:
+        # process_env = os.environ.copy()
+        # process_env["GOOGLE_AI_API_KEY"] = api_key
+        result = subprocess.run(command, capture_output=True, text=True, check=True, encoding='utf-8')
+
         if verbose:
-            print(f"\n{algorithm_type} 유형의 {difficulty} 난이도 문제 생성을 시작합니다...\n")
-        
-        process = subprocess.Popen(
-            command, 
-            env=env, 
-            stdout=subprocess.PIPE if not verbose else None, 
-            stderr=subprocess.PIPE if not verbose else None,
-            text=True
-        )
-        
-        # 프로세스 완료 대기
-        stdout, stderr = process.communicate()
-        
-        if process.returncode != 0:
-            error_msg = f"Problem generator process failed with code {process.returncode}"
-            if stderr:
-                error_msg += f": {stderr}"
-            raise RuntimeError(error_msg)
-        
-        # 결과 파일 읽기
+            print("External process output:")
+            print(result.stdout)
+            if result.stderr:
+                print("External process error output:")
+                print(result.stderr)
+
+        # 프로세스 출력에서 JSON 결과 파싱
         try:
-            with open(temp_file_path, 'r', encoding='utf-8') as f:
-                result = json.load(f)
+            output_data = json.loads(result.stdout)
+            if not isinstance(output_data, list) or not output_data:
+                raise json.JSONDecodeError("Expected a non-empty list as JSON output", result.stdout, 0)
+            # 성공 시 첫 번째 문제 객체 반환 (현재 구조상 하나만 생성됨)
+            return output_data[0]
         except json.JSONDecodeError as e:
-            raise ValueError(f"Failed to parse JSON from output file: {str(e)}")
-        except FileNotFoundError:
-            raise FileNotFoundError(f"Output file not found at {temp_file_path}")
-        finally:
-            # 임시 파일 삭제
-            try:
-                os.unlink(temp_file_path)
-            except:
-                pass
-        
-        # 처리 시간 기록
-        end_time = time.time()
-        result["generation_time"] = end_time - start_time
-        
-        # 결과가 JSON 구조인지 확인하고, 그렇지 않다면 적절한 구조로 변환
-        if not isinstance(result.get("generated_problem"), dict):
-            # 문자열 결과는 full_text 필드에 저장하고 JSON 구조로 변환
-            original_problem = result.get("generated_problem", "")
-            result["generated_problem"] = {
-                "title": f"{algorithm_type} {difficulty} 문제",
+            print(f"Error decoding JSON from subprocess output: {e}")
+            print(f"Subprocess stdout: {result.stdout}")
+            # 임시 에러 처리: 빈 딕셔너리 대신 구조화된 에러 반환 또는 예외 발생
+            return {
+                "error": "Failed to parse problem generation result",
+                "details": str(e),
+                "raw_output": result.stdout,
                 "algorithm_type": algorithm_type,
-                "difficulty": difficulty,
-                "full_text": original_problem
+                "difficulty": difficulty
             }
-        
-        # 서브프로세스 실행 결과 포함
-        if stdout:
-            result["subprocess_stdout"] = stdout.strip()
-        if stderr:
-            result["subprocess_stderr"] = stderr.strip()
-        
-        if verbose:
-            print(f"완료! (소요 시간: {end_time - start_time:.1f}초)")
-        
-        return result
-        
-    except Exception as e:
-        print(f"problem-generator 모듈 호출 중 오류 발생: {str(e)}")
-        traceback.print_exc()
-        
-        # 오류가 발생하면 최소한의 정보를 담은 결과 반환
+
+    except subprocess.CalledProcessError as e:
+        print(f"Error running generator script: {e}")
+        print(f"Return code: {e.returncode}")
+        print(f"Stdout: {e.stdout}")
+        print(f"Stderr: {e.stderr}")
+        # 에러 발생 시 구조화된 정보 반환
         return {
+            "error": "Problem generation script failed",
+            "details": str(e),
+            "return_code": e.returncode,
+            "stdout": e.stdout,
+            "stderr": e.stderr,
             "algorithm_type": algorithm_type,
-            "difficulty": difficulty,
-            "error": str(e),
-            "generated_problem": {
-                "title": f"{algorithm_type} {difficulty} 문제",
-                "algorithm_type": algorithm_type,
-                "difficulty": difficulty,
-                "full_text": f"문제 생성 중 오류 발생: {str(e)}"
-            }
+            "difficulty": difficulty
         }
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")
+        # 기타 예외 처리
+        return {
+            "error": "An unexpected error occurred during problem generation",
+            "details": str(e),
+            "algorithm_type": algorithm_type,
+            "difficulty": difficulty
+        }
+
+# Example usage (for local testing)
+if __name__ == "__main__":
+    # .env 파일 로드 (이 스크립트 위치 기준 또는 환경 변수 사용)
+    load_dotenv()
+
+    parser = argparse.ArgumentParser(description="Generate an algorithm problem via external script.")
+    parser.add_argument("-t", "--type", required=True, help="Algorithm type (e.g., '구현', '그래프')")
+    parser.add_argument("-d", "--difficulty", required=True, help="Difficulty level ('튜토리얼', '쉬움', '보통', '어려움')")
+    # parser.add_argument("--api_key", help="Google AI API Key (optional, uses env var if not provided)")
+    parser.add_argument("--verbose", action="store_true", help="Enable verbose output")
+    args = parser.parse_args()
+
+    try:
+        # generate_problem 호출 시 api_key 인자 제거
+        result_problem = generate_problem(
+            api_key=None, # 명시적으로 None 전달 또는 인자 제거
+            algorithm_type=args.type, 
+            difficulty=args.difficulty, 
+            verbose=args.verbose
+        )
+        print("\n--- Generated Problem Data ---")
+        print(json.dumps(result_problem, indent=2, ensure_ascii=False))
+    except ValueError as e:
+        print(f"Error: {e}")
+    except FileNotFoundError as e:
+        print(f"Error: {e}")
