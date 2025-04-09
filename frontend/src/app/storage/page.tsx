@@ -244,7 +244,10 @@ const StoragePage: React.FC = () => {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <Link
-                            href={`/coding-test/progress?id=${test.id}&fromStorage=true`}
+                            href={{
+                              pathname: "/coding-test/solve",
+                              query: { id: test.id, fromStorage: true },
+                            }}
                             className="inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-md text-primary-hover bg-primary/10 hover:bg-primary/20 transition"
                           >
                             {test.status === "완료" ? (

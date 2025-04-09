@@ -46,7 +46,10 @@ const CodingTestResultContent: React.FC = () => {
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-3xl font-bold text-gray-900">채점 결과</h1>
         <Link
-          href={`/coding-test/progress?id=${id}`}
+          href={{
+            pathname: "/coding-test/solve",
+            query: { id: id },
+          }}
           className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md bg-white hover:bg-gray-50 transition"
         >
           <svg
