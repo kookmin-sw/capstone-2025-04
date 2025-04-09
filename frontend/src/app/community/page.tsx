@@ -1,7 +1,7 @@
 "use client"; // Convert to Client Component
 
 import React, { useState, useEffect, Suspense } from "react"; // Add Suspense
-import Head from "next/head";
+import { Metadata } from "next";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import Link from "next/link";
@@ -9,6 +9,12 @@ import { useSearchParams } from "next/navigation"; // Import useSearchParams
 import { getPosts, PostSummary } from "@/api/communityApi"; // Import API function and type
 // Import the detail component from its new location
 import CommunityDetail from "@/components/community/CommunityDetail";
+
+// Metadata for the page
+export const metadata: Metadata = {
+  title: "커뮤니티 | ALPACO",
+  description: "ALPACO 커뮤니티 페이지",
+};
 
 // Remove static dummy data
 
@@ -175,13 +181,6 @@ const CommunityContent: React.FC = () => {
 const CommunityPage: React.FC = () => {
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
-      {/* Head component might need adjustment if title depends on list/detail view */}
-      <Head>
-        {/* Consider dynamically setting title based on 'id' presence */}
-        <title>커뮤니티 | ALPACO</title>
-        <meta name="description" content="ALPACO 커뮤니티 페이지" />
-      </Head>
-
       <Header />
 
       <main className="flex-grow">

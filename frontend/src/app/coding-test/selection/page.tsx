@@ -1,9 +1,14 @@
 import React from "react";
-import Head from "next/head";
+import { Metadata } from "next";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import Link from "next/link";
 
+// Metadata for the page
+export const metadata: Metadata = {
+  title: "코딩 테스트 선택 | ALPACO",
+  description: "코딩 테스트 선택 페이지",
+};
 // TODO: Replace with API call to fetch problem list when endpoint is available
 // import { getProblemList, ProblemSummary } from '@/api/codingTestApi';
 // const [testOptions, setTestOptions] = useState<ProblemSummary[]>([]);
@@ -52,11 +57,6 @@ const testOptions = [
 const CodingTestSelectionPage: React.FC = () => {
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
-      <Head>
-        <title>코딩 테스트 선택 | ALPACO</title>
-        <meta name="description" content="코딩 테스트 선택 페이지" />
-      </Head>
-
       <Header />
 
       <main className="flex-grow">

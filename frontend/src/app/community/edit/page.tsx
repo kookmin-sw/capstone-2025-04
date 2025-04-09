@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useEffect, Suspense, useCallback } from "react";
-import Head from "next/head";
+import { Metadata } from "next";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 // import Link from "next/link"; // Removed unused import
@@ -9,6 +9,12 @@ import { useAuthenticator } from "@aws-amplify/ui-react";
 import { toast } from "sonner";
 import { getPostById, updatePost, PostDetail } from "@/api/communityApi";
 // import CodeEditor from "@/components/CodeEditor"; // Add if code editing is needed
+
+// Metadata for the page
+export const metadata: Metadata = {
+  title: "게시글 수정 | ALPACO 커뮤니티",
+  description: "ALPACO 커뮤니티 게시글 수정",
+};
 
 // Component containing form logic and state
 const EditPageContent: React.FC = () => {
@@ -228,11 +234,6 @@ const EditPageContent: React.FC = () => {
 const CommunityEditPage: React.FC = () => {
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
-      <Head>
-        <title>게시글 수정 | ALPACO 커뮤니티</title>
-        <meta name="description" content="ALPACO 커뮤니티 게시글 수정" />
-      </Head>
-
       <Header />
 
       <main className="flex-grow">

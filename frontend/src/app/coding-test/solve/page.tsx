@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useEffect, Suspense, ChangeEvent } from "react";
-import Head from "next/head";
+import { Metadata } from "next";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import CodeEditor from "@/components/CodeEditor";
@@ -14,6 +14,12 @@ import {
   ProblemExample,
 } from "@/api/codingTestApi";
 import { toast } from "sonner";
+
+// Metadata for the page
+export const metadata: Metadata = {
+  title: "문제 풀이 | ALPACO",
+  description: "코딩 테스트 문제 풀이 페이지",
+};
 
 // --- Main Content Component ---
 const CodingTestContent: React.FC = () => {
@@ -541,10 +547,6 @@ const CodingTestSolvePage: React.FC = () => {
   return (
     // Apply dark class to the root based on HTML element class
     <div className="min-h-screen flex flex-col bg-gray-50">
-      <Head>
-        <title>코딩 테스트 진행 중 | ALPACO</title>
-        <meta name="description" content="코딩 테스트 진행 페이지" />
-      </Head>
       <Header /> {/* Assuming Header adapts to dark mode */}
       <main className="flex-grow flex flex-col">
         <Suspense

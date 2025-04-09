@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useEffect, Suspense } from "react";
-import Head from "next/head";
+import { Metadata } from "next";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import Link from "next/link";
@@ -9,6 +9,12 @@ import { useAuthenticator } from "@aws-amplify/ui-react";
 import { toast } from "sonner";
 import { createPost } from "@/api/communityApi";
 import CodeEditor from "@/components/CodeEditor";
+
+// Metadata for the page
+export const metadata: Metadata = {
+  title: "게시글 작성 | ALPACO 커뮤니티",
+  description: "ALPACO 커뮤니티 게시글 작성",
+};
 
 // New component containing all form logic and state
 const CreatePageContent: React.FC = () => {
@@ -224,11 +230,6 @@ const CreatePageContent: React.FC = () => {
 const CommunityCreatePage: React.FC = () => {
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
-      <Head>
-        <title>게시글 작성 | ALPACO 커뮤니티</title>
-        <meta name="description" content="ALPACO 커뮤니티 게시글 작성" />
-      </Head>
-
       <Header />
 
       <main className="flex-grow">

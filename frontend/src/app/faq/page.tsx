@@ -1,10 +1,15 @@
 "use client";
 import React, { useState } from "react";
-import Head from "next/head";
+import { Metadata } from "next";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import Link from "next/link";
 
+// Metadata for the page
+export const metadata: Metadata = {
+  title: "FAQ / 문의 | ALPACO",
+  description: "ALPACO FAQ 및 문의 페이지",
+};
 // FAQ 항목 타입 정의
 type FAQItem = {
   question: string;
@@ -48,11 +53,6 @@ const FAQPage: React.FC = () => {
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
-      <Head>
-        <title>FAQ / 문의 | ALPACO</title>
-        <meta name="description" content="ALPACO FAQ 및 문의 페이지" />
-      </Head>
-
       <Header />
 
       <main className="flex-grow">
