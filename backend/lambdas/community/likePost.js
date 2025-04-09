@@ -1,12 +1,16 @@
-const AWS = require("aws-sdk");
-const dynamoDB = new AWS.DynamoDB.DocumentClient();
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { DynamoDBDocumentClient , GetCommand, UpdateCommand} from "@aws-sdk/lib-dynamodb";
 
-exports.handler = async (event) => {
+// 클라이언트 설정
+const client = new DynamoDBClient({});
+const dynamoDB = DynamoDBDocumentClient.from(client);
+
+export const handler = async (event) => {
     try {
-        const { postId } = event.pathParameters; // 요청 URL에서 postId 추출
+        const { postId } = event.pathParameters || {}; // 요청 URL에서 postId 추출
 
         // API Gateway JWT Authorizer에서 전달된 유저 정보 가져오기
-        const claims = event.requestContext.authorizer.claims;
+        const claims = event?.requestContext?.authorizer?.claims;
         if (!claims || !claims.username) {
             return {
                 statusCode: 401,
@@ -17,15 +21,15 @@ exports.handler = async (event) => {
         const userId = claims.username;  // JWT에서 추출한 유저 이름
 
         // 현재 게시글 데이터 가져오기
-        const getPostParams = {
+        const getCommand = new GetCommand({
             TableName: "Community",
             Key: { 
                 PK: postId,   // 게시글 ID
                 SK: "POST"  // 게시글은 SK를 고정값으로 설정
             },
-        };
+        });
 
-        const postResult = await dynamoDB.get(getPostParams).promise(); // JSON 응답 객체
+        const postResult = await dynamoDB.send(getCommand); // JSON 응답 객체
         const post = postResult.Item; // DB에서 가져온 게시글 데이터, 변수에 담아서 재사용성을 높임 !!
 
         if (!post) {
@@ -38,15 +42,9 @@ exports.handler = async (event) => {
         const likedUsers = new Set(post.likedUsers || []); // 좋아요를 누른 유저 목록, Set으로 변환하여 중복 제거, 없으면 빈 배열로 초기화
         const isLiked = likedUsers.has(userId); // 현재 유저가 이미 좋아요 눌렀는지 확인
 
-        if (isLiked) {
-            // 좋아요 취소 (likedUsers에서 제거, likesCount 감소)
-            likedUsers.delete(userId);
-        } else {
-            // 좋아요 추가 (likedUsers에 추가, likesCount 증가)
-            likedUsers.add(userId);
-        }
-
-        const updateParams = {
+        isLiked ? likedUsers.delete(userId) : likedUsers.add(userId); // 좋아요 상태에 따라 추가 또는 삭제
+        
+        const updateCommand = new UpdateCommand({ 
             TableName: "Community",
             Key: { 
                 PK: postId,
@@ -57,9 +55,9 @@ exports.handler = async (event) => {
                 ":users": Array.from(likedUsers), // Set을 배열로 변환하여 저장
                 ":count": likedUsers.size, // 좋아요 수 업데이트
             },
-        };
-        
-        await dynamoDB.update(updateParams).promise();
+        });
+
+        await dynamoDB.send(updateCommand);
 
         return {
             statusCode: 200,
