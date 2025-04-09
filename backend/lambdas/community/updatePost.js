@@ -1,12 +1,16 @@
-const AWS = require("aws-sdk");
-const dynamoDB = new AWS.DynamoDB.DocumentClient();
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { DynamoDBDocumentClient, GetCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 
-exports.handler = async (event) => {
+// 클라이언트 설정
+const client = new DynamoDBClient({});
+const dynamoDB = DynamoDBDocumentClient.from(client);
+
+export const handler = async (event) => {
     try {
-        const { postId } = event.pathParameters; // 요청 URL에서 postId 추출
+        const { postId } = event.pathParameters || {}; // 요청 URL에서 postId 추출
 
         // 본문에서 수정할 데이터 추출
-        const body = JSON.parse(event.body);
+        const body = JSON.parse(event.body || "{}"); // 클라이언트 요청 데이터 파싱
         const { title, content } = body;
 
         // title, content가 없으면 에러 반환
@@ -18,7 +22,7 @@ exports.handler = async (event) => {
         }
         
         // API Gateway JWT Authorizer에서 전달된 유저 정보 가져오기
-        const claims = event.requestContext.authorizer.claims;
+        const claims = event?.requestContext?.authorizer?.claims;
         if (!claims || !claims.username) {
             return {
                 statusCode: 401,
@@ -28,16 +32,16 @@ exports.handler = async (event) => {
 
         const author = claims.username; // JWT에서 추출한 유저 이름
 
-        // 게시글 존재 여부 확인
-        const getPostParams = {
+         // 게시글 존재 여부 확인
+         const getCommand = new GetCommand({
             TableName: "Community",
-            Key: { 
+            Key: {
                 PK: postId,
-                SK: "POST", 
+                SK: "POST",
             },
-        };
+        });
 
-        const postResult = await dynamoDB.get(getPostParams).promise(); // JSON 응답 객체
+        const postResult = await dynamoDB.send(getCommand); // JSON 응답 객체
         const post = postResult.Item; // DB에서 가져온 게시글 데이터, 변수에 담아서 재사용성을 높임 !!
 
         if (!post) {
@@ -56,22 +60,22 @@ exports.handler = async (event) => {
         }
 
         // 게시글 수정
-        const updateParams = {
+        const updateCommand = new UpdateCommand({
             TableName: "Community",
-            Key: { 
+            Key: {
                 PK: postId,
-                SK: "POST", 
+                SK: "POST",
             },
             UpdateExpression: "SET title = :title, content = :content, updatedAt = :updatedAt",
             ExpressionAttributeValues: {
-              ":title": title,
-              ":content": content,
-              ":updatedAt": new Date().toISOString(),
+                ":title": title,
+                ":content": content,
+                ":updatedAt": new Date().toISOString(),
             },
             ReturnValues: "ALL_NEW", // 수정 후 전체 데이터 반환
-        };
+        });
 
-        const updateResult = await dynamoDB.update(updateParams).promise();
+        const updateResult = await dynamoDB.send(updateCommand);
         const updatedPost = updateResult.Attributes;
 
         return {
