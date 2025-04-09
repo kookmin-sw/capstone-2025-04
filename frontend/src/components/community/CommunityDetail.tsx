@@ -23,11 +23,11 @@ interface CommunityDetailProps {
 }
 const CommunityDetail: React.FC<CommunityDetailProps> = ({ id }) => {
   const router = useRouter();
-  const { user, route } = useAuthenticator((context) => [
+  const { user, authStatus } = useAuthenticator((context) => [
     context.user,
-    context.route,
+    context.authStatus,
   ]);
-  const isAuthenticated = route === "authenticated";
+  const isAuthenticated = authStatus === "authenticated";
   const currentUsername = user?.username; // Or use signInDetails?.loginId depending on config
 
   const [post, setPost] = useState<PostDetail | null>(null);

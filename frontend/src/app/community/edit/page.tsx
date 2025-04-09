@@ -16,11 +16,11 @@ const EditPageContent: React.FC = () => {
   const searchParams = useSearchParams();
   const id = searchParams.get("id"); // Get postId from query parameter ?id=
 
-  const { user, route } = useAuthenticator((context) => [
+  const { user, authStatus } = useAuthenticator((context) => [
     context.user,
-    context.route,
+    context.authStatus,
   ]);
-  const isAuthenticated = route === "authenticated";
+  const isAuthenticated = authStatus === "authenticated";
   const currentUsername = user?.username;
 
   const [post, setPost] = useState<PostDetail | null>(null);

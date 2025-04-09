@@ -26,8 +26,8 @@ const CreatePageContent: React.FC = () => {
   const [includeCode, setIncludeCode] = useState(!!fromTest);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const { route } = useAuthenticator((context) => [context.route]);
-  const isAuthenticated = route === "authenticated";
+  const { authStatus } = useAuthenticator((context) => [context.authStatus]);
+  const isAuthenticated = authStatus === "authenticated";
 
   useEffect(() => {
     // If coming from a test, set initial values
