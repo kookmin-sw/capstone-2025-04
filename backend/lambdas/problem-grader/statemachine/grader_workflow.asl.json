@@ -1,0 +1,150 @@
+{
+  "Comment": "사용자 코드 제출 채점 워크플로우 (Fargate 사용)",
+  "StartAt": "Prepare Fargate Inputs",
+  "States": {
+    "Prepare Fargate Inputs": {
+      "Type": "Pass",
+      "Comment": "Step Functions Map 상태에서 각 Fargate 작업에 공통적으로 필요한 파라미터(작업 정의, 클러스터, 네트워크 설정 등)를 준비합니다.",
+      "ResultPath": "$.fargateInputs",
+      "Parameters": {
+        "taskDefinitionArn.$": "$.taskDefinitionArn",
+        "clusterName.$": "$.clusterName",
+        "subnets.$": "$.subnets",
+        "securityGroups.$": "$.securityGroups",
+        "containerOverrides": [
+          {
+            "name": "code-runner-container",
+            "environment": [
+              { "name": "USER_CODE", "value.$": "$.code" },
+              { "name": "LANGUAGE", "value.$": "$.language" },
+              {
+                "name": "TIME_LIMIT",
+                "value.$": "States.Format('{}', $.timeLimit)"
+              },
+              {
+                "name": "MEMORY_LIMIT",
+                "value.$": "States.Format('{}', $.memoryLimit)"
+              }
+            ]
+          }
+        ]
+      },
+      "Next": "Map Over Testcases"
+    },
+    "Map Over Testcases": {
+      "Type": "Map",
+      "Comment": "입력된 테스트 케이스 배열을 순회하며 각 테스트 케이스에 대해 Fargate 작업을 병렬로 실행합니다.",
+      "InputPath": "$",
+      "ItemsPath": "$.testcases",
+      "MaxConcurrency": 10,
+      "ResultPath": "$.taskResults",
+      "ResultSelector": {
+        "originalInput.$": "$.originalInput",
+        "taskResults.$": "$"
+      },
+      "Parameters": {
+        "fargateParams.$": "$.fargateInputs",
+        "testcase.$": "$$.Map.Item.Value",
+        "originalInput.$": "$"
+      },
+      "Iterator": {
+        "Comment": "각 테스트 케이스에 대한 Fargate 작업 실행 및 결과 처리 로직",
+        "StartAt": "Run Code on Fargate",
+        "States": {
+          "Run Code on Fargate": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::ecs:runTask.sync",
+            "Comment": "Fargate 작업을 동기적으로 실행하고 완료될 때까지 기다립니다.",
+            "Parameters": {
+              "LaunchType": "FARGATE",
+              "Cluster.$": "$.fargateParams.clusterName",
+              "TaskDefinition.$": "$.fargateParams.taskDefinitionArn",
+              "NetworkConfiguration": {
+                "AwsvpcConfiguration": {
+                  "Subnets.$": "$.fargateParams.subnets",
+                  "SecurityGroups.$": "$.fargateParams.securityGroups",
+                  "AssignPublicIp": "ENABLED"
+                }
+              },
+              "Overrides": {
+                "ContainerOverrides": [
+                  {
+                    "Name": "code-runner-container",
+                    "Environment": [
+                      {
+                        "name": "USER_CODE",
+                        "value.$": "$.originalInput.code"
+                      },
+                      {
+                        "name": "LANGUAGE",
+                        "value.$": "$.originalInput.language"
+                      },
+                      {
+                        "name": "TIME_LIMIT",
+                        "value.$": "States.Format('{}', $.originalInput.timeLimit)"
+                      },
+                      {
+                        "name": "MEMORY_LIMIT",
+                        "value.$": "States.Format('{}', $.originalInput.memoryLimit)"
+                      },
+                      { "name": "INPUT_DATA", "value.$": "$.testcase.input" },
+                      {
+                        "name": "EXPECTED_OUTPUT",
+                        "value.$": "$.testcase.output"
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            "ResultSelector": {
+              "Comment": "Fargate 작업의 결과(컨테이너 로그 또는 출력)를 파싱하여 필요한 정보를 추출합니다. 실제 구현은 로깅 설정에 따라 달라집니다.",
+              "status": "Placeholder - Extract Status",
+              "stdout": "Placeholder - Extract Stdout",
+              "stderr": "Placeholder - Extract Stderr",
+              "executionTime": "Placeholder - Extract Time",
+              "memoryUsage": "Placeholder - Extract Memory",
+              "expectedOutput.$": "$.testcase.output",
+              "inputData.$": "$.testcase.input"
+            },
+            "OutputPath": "$",
+            "Catch": [
+              {
+                "ErrorEquals": ["States.ALL"],
+                "ResultPath": "$.errorInfo",
+                "Comment": "Fargate 작업 실행 중 발생한 모든 오류를 처리합니다.",
+                "Next": "Handle Fargate Error"
+              }
+            ],
+            "End": true
+          },
+          "Handle Fargate Error": {
+            "Type": "Pass",
+            "Comment": "Fargate 작업 실패 시 오류 정보를 포함한 결과를 반환합니다.",
+            "Parameters": {
+              "status": "FargateTaskFailed",
+              "error.$": "$.errorInfo",
+              "expectedOutput.$": "$.testcase.output",
+              "inputData.$": "$.testcase.input"
+            },
+            "OutputPath": "$",
+            "End": true
+          }
+        }
+      },
+      "Next": "Process Results"
+    },
+    "Process Results": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Comment": "모든 Fargate 작업 결과를 취합하여 최종 채점 결과를 계산하고 저장하는 Lambda 함수를 호출합니다.",
+      "Parameters": {
+        "FunctionName": "arn:aws:lambda:REGION:ACCOUNT_ID:function:YourResultProcessorFunctionName",
+        "Payload.$": "$"
+      },
+      "ResultPath": "$.gradingResult",
+      "OutputPath": "$.gradingResult.Payload",
+      "End": true
+    }
+  }
+}

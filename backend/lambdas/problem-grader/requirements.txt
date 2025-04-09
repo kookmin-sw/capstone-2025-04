@@ -1,0 +1,2 @@
+# Root requirements if needed, e.g., for deployment tools or shared utilities.
+# Often left empty if dependencies are managed within subdirectories (lambdas, fargate). 
