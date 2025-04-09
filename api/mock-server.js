@@ -26,24 +26,34 @@ const findCommentsForPost = (postId) =>
     (item) => item.PK === postId && item.SK.startsWith("COMMENT#")
   );
 
+const { jwtDecode } = require("jwt-decode"); // Import jwt-decode
+
 // --- Mock Authentication Middleware ---
 const mockAuth = (req, res, next) => {
   const authHeader = req.headers.authorization;
-  // Very basic check: just see if the header exists and starts with Bearer
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    // For simplicity in mock, let's assign a default user if no auth
-    // In a real scenario, this should return 401
-    console.warn(
-      "WARN: No valid mock auth header found. Using default user 'mockUser'."
-    );
-    req.user = { username: "mockUser" };
-    // return res.status(401).json({ message: "인증 정보가 없습니다." });
+  let username = "mockUser"; // Default user
+
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    const token = authHeader.split(" ")[1];
+    try {
+      const decoded = jwtDecode(token);
+      // Cognito typically puts username in 'username' or 'cognito:username' claim
+      username = decoded.username || decoded["cognito:username"] || username;
+      console.log(`Mock Auth: Token decoded. User set to '${username}'.`);
+    } catch (error) {
+      console.warn(
+        `WARN: Could not decode token: ${error.message}. Falling back to '${username}'.`
+      );
+    }
   } else {
-    // Extract a mock username (e.g., from a dummy token)
-    // Here, we'll just assume any token belongs to 'mockUser'
-    req.user = { username: "mockUser" };
-    console.log(`Mock Auth: User '${req.user.username}' authenticated.`);
+    console.warn(
+      `WARN: No valid mock auth header found. Using default user '${username}'.`
+    );
+    // In a real scenario, this should return 401
+    // return res.status(401).json({ message: "인증 정보가 없습니다." });
   }
+
+  req.user = { username: username }; // Attach user info to request
   next();
 };
 
