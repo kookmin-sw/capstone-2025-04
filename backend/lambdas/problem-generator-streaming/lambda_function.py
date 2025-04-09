@@ -4,7 +4,10 @@ import asyncio
 import os
 import sys
 import traceback
+import uuid # For generating problemId
 from pathlib import Path
+import boto3 # Added for DynamoDB access
+from botocore.exceptions import ClientError # Added for DynamoDB error handling
 
 # --- 경로 설정: problem-generator 모듈 임포트를 위해 ---
 # 이 Lambda 함수 파일의 위치를 기준으로 problem-generator 디렉토리 경로 계산
@@ -34,6 +37,11 @@ except ImportError as e:
     # 임시 기본값 - generation.generator에서 실제 값을 가져오므로 주석 처리 또는 제거 가능
     # DIFFICULTY_LEVELS = ["Easy", "Medium", "Hard"] # 임시 기본값
 
+# --- DynamoDB 설정 ---
+# 환경 변수에서 테이블 이름 가져오기, 없으면 기본값 'Problems' 사용
+PROBLEMS_TABLE_NAME = os.environ.get('PROBLEMS_TABLE_NAME', 'Problems')
+dynamodb_client = None
+
 # --- 헬퍼 함수 ---
 def format_stream_message(msg_type: str, payload: any) -> str:
     """스트리밍 메시지를 JSON Lines 형식으로 포맷합니다."""
@@ -58,6 +66,43 @@ def find_algorithm_type(prompt: str) -> str | None:
             if keyword in prompt_lower:
                 return alg_type # 매칭되는 첫 번째 유형 반환
     return None # 매칭 실패 시
+
+# --- DynamoDB 저장 함수 ---
+def save_problem_to_dynamodb(problem_data: dict):
+    """생성된 문제 데이터를 DynamoDB에 저장합니다."""
+    global dynamodb_client
+    if dynamodb_client is None:
+        dynamodb_client = boto3.client('dynamodb')
+
+    problem_id = str(uuid.uuid4())
+    item_to_save = {
+        'problemId': {'S': problem_id},
+        # 여기에 problem_data의 다른 필드들을 DynamoDB 형식에 맞게 추가해야 합니다.
+        # 예시: (실제 ProblemGenerator 반환값 구조에 맞게 수정 필요)
+        'title': {'S': problem_data.get('title', 'N/A')},
+        'description': {'S': problem_data.get('description', '')},
+        # testcases는 JSON 문자열 또는 DynamoDB List/Map 형태로 저장 가능
+        'testcases': {'S': json.dumps(problem_data.get('testcases', []))},
+        'difficulty': {'S': problem_data.get('difficulty', 'Medium')},
+        'algorithmType': {'S': problem_data.get('algorithmType', 'Implementation')},
+        # 생성 시간 등 메타데이터 추가 가능
+        'createdAt': {'S': str(asyncio.get_event_loop().time())} # Simple timestamp
+    }
+
+    try:
+        dynamodb_client.put_item(
+            TableName=PROBLEMS_TABLE_NAME,
+            Item=item_to_save
+        )
+        print(f"Successfully saved problem {problem_id} to DynamoDB.")
+        return problem_id # 저장된 ID 반환
+    except ClientError as e:
+        print(f"Error saving problem to DynamoDB: {e.response['Error']['Message']}")
+        # 오류 발생 시 어떻게 처리할지 결정 (예: None 반환, 예외 다시 발생 등)
+        return None
+    except Exception as e:
+        print(f"Unexpected error saving to DynamoDB: {e}")
+        return None
 
 # --- Lambda 핸들러 ---
 async def handler(event, context):
@@ -112,7 +157,7 @@ async def handler(event, context):
 
         # --- 문제 생성 스트리밍 호출 ---
         # generate_problem_stream은 성공 시 문제 객체 리스트를 반환, 실패 시 예외 발생
-        final_problems = await generator.generate_problem_stream(
+        generated_problems_list = await generator.generate_problem_stream(
             algorithm_type=algorithm_type,
             difficulty=difficulty,
             response_stream=response_stream,
@@ -120,12 +165,32 @@ async def handler(event, context):
             verbose=False # Lambda 환경에서는 False 권장
         )
 
-        # --- 최종 결과 전송 ---
-        response_stream.write(format_stream_message("result", final_problems).encode('utf-8'))
+        # --- 생성된 문제 DB 저장 및 ID 추가 ---
+        saved_problems_with_id = []
+        if isinstance(generated_problems_list, list):
+            for problem_data in generated_problems_list:
+                # 각 문제에 difficulty, algorithmType 정보 추가 (ProblemGenerator가 반환하지 않을 경우)
+                if 'difficulty' not in problem_data:
+                    problem_data['difficulty'] = difficulty
+                if 'algorithmType' not in problem_data:
+                    problem_data['algorithmType'] = algorithm_type
+
+                problem_id = save_problem_to_dynamodb(problem_data)
+                if problem_id:
+                    problem_data['problemId'] = problem_id # 스트리밍 결과에도 ID 추가
+                saved_problems_with_id.append(problem_data)
+        else:
+            # 예상치 못한 반환 타입 처리 (오류 또는 단일 객체 등)
+            print(f"Warning: generate_problem_stream returned unexpected type: {type(generated_problems_list)}")
+            # 필요시 이 경우에 대한 처리 로직 추가
+            saved_problems_with_id = generated_problems_list # 임시로 그대로 사용
+
+        # --- 최종 결과 전송 (ID 포함된 데이터) ---
+        response_stream.write(format_stream_message("result", saved_problems_with_id).encode('utf-8'))
 
         # --- 최종 상태 ---
-        response_stream.write(format_stream_message("status", "✅ 생성 완료!").encode('utf-8'))
-        print(f"[{request_id}] Request processed successfully.")
+        response_stream.write(format_stream_message("status", "✅ 생성 완료 및 저장됨!").encode('utf-8'))
+        print(f"[{request_id}] Request processed and problems saved successfully.")
 
     except ValueError as ve:
         print(f"[{request_id}] Error processing request: {traceback.format_exc()}")
