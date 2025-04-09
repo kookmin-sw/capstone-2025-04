@@ -2,7 +2,7 @@
 
 ## 1. 개요
 
-사용자가 제출한 소스 코드를 기반으로 코딩 문제의 정답 여부 및 효율성을 채점하는 시스템을 구축한다. AWS Fargate/ECS를 활용하여 안전하고 확장 가능한 코드 실행 환경을 마련하고, AWS Step Functions를 통해 전체 채점 워크플로우를 관리한다.
+사용자가 제출한 소스 코드를 기반으로 코딩 문제의 정답 여부 및 효율성을 채점하는 시스템을 구축한다. AWS Fargate/ECS를 활용하여 안전하고 확장 가능한 코드 실행 환경을 마련하고, AWS Step Functions를 통해 전체 채점 워크플로우를 관리한다. 이 시스템은 **`@problem-generator-streaming`** 서비스가 생성하여 DynamoDB에 저장한 문제 데이터를 기반으로 동작한다.
 
 ## 2. 시스템 목표
 
@@ -25,10 +25,10 @@
        |                      +------------------------+           |  (3) 결과 취합
        |                      | Problems Table         |           |  (4) 결과 처리 Lambda 호출
        |                      | (DynamoDB)             |           v
-+------+-------+              +------------------------+      +---------------------------+
-|   Client     |<--------------------------------------------| result-processor          |---+
-+--------------+   채점 결과 저장/알림 (비동기)                | (Lambda)                  |   |
-       ^                                                     +---------------------------+   |
++------+-------+              | (Populated by          |      +---------------------------+
+|   Client     |<-------------| @problem-generator-    |<----| result-processor          |---+
++--------------+ 채점 결과    |  streaming)            |      | (Lambda)                  |   |
+       ^ 저장/알림 (비동기)    +------------------------+      +---------------------------+   |
        |-------------------------------------------------------------+                      |
                                                                      | 저장 (채점 결과)         | 조회 (테스트 케이스 결과)
                                                                      v                      |
@@ -47,7 +47,7 @@
 
 1.  클라이언트가 API를 통해 채점 요청 (문제 ID, 사용자 코드, 언어 등) 전송.
 2.  `problem-grader-api` Lambda 함수가 요청 수신 및 검증.
-3.  `problem-grader-api` Lambda는 DynamoDB의 `Problems` 테이블에서 문제 정보(테스트 케이스, 제약 조건 등) 조회. (`@problem-generator-aws`가 저장한 데이터 활용)
+3.  `problem-grader-api` Lambda는 DynamoDB의 `Problems` 테이블에서 문제 정보(테스트 케이스, 제약 조건 등) 조회. (**`@problem-generator-streaming`** 서비스가 저장한 데이터 활용)
 4.  Lambda는 Step Functions 워크플로우를 시작시키며 필요한 데이터 전달.
 5.  Step Functions는 각 테스트 케이스에 대해 병렬로 `code-runner` Fargate Task 실행 요청.
 6.  `code-runner` Fargate Task는 전달받은 코드와 테스트 케이스 입력을 사용해 안전한 환경에서 코드를 실행하고 결과(stdout, stderr, 시간, 메모리 등) 반환.
@@ -61,8 +61,8 @@
 - **`problem-grader-api` (Lambda):**
   - 역할: 채점 요청 수신, 기본 유효성 검사, 문제 정보 조회, Step Functions 워크플로우 트리거.
 - **`Problems` Table (DynamoDB):**
-  - 역할: 문제 정보 저장 (`@problem-generator-aws`와 연동).
-  - 스키마 예시: `problemId` (PK), `testcases` (List: {input, expectedOutput}), `timeLimit`, `memoryLimit`, ...
+  - 역할: 문제 정보 저장 (**`@problem-generator-streaming` 서비스가 이 테이블에 데이터를 저장함**).
+  - 스키마 예시: `problemId` (PK), `testcases` (List 또는 String), `timeLimit`, `memoryLimit`, `title`, `description`, ... (정확한 스키마는 `@problem-generator-streaming` 구현 확인 필요)
 - **Step Functions 워크플로우:**
   - 역할: 전체 채점 과정 조율 (Fargate Task 병렬 실행, 결과 취합, 오류 처리, 결과 처리).
   - 주요 상태: Map State (병렬 처리), Task State (Fargate, Lambda 호출).
@@ -81,7 +81,7 @@
 ## 5. 개발 단계 (요약)
 
 1.  `problem-grader` 폴더 구조 생성 및 기본 설정 (`requirements.txt`, IaC 설정 파일 등).
-2.  DynamoDB 테이블 (`Problems`, `Submissions`) 스키마 확정 및 IaC 코드로 정의. (@problem-generator-aws 의 스키마 확인 필요)
+2.  DynamoDB 테이블 (`Problems`, `Submissions`) 스키마 확정 및 IaC 코드로 정의. (**`@problem-generator-streaming`에서 사용하는 `Problems` 테이블 스키마 확인 필수**)
 3.  `code-runner` Fargate Task용 Docker 이미지 개발 (Python 런타임, 실행 스크립트 포함).
 4.  `code-runner` Fargate Task 정의 (IaC).
 5.  Step Functions 워크플로우 정의 (IaC).
@@ -97,4 +97,4 @@
 - **비용:** Fargate Task 실행 시간/횟수, Lambda 호출, Step Functions 상태 전환, DynamoDB 사용량 기반 비용 발생 예측 및 최적화.
 - **언어 지원:** 초기 Python 지원 후, 다른 언어 추가 시 `code-runner` Docker 이미지 및 실행 로직 업데이트 필요.
 - **타임아웃:** Step Functions는 긴 작업 실행에 적합. Fargate Task 자체의 시간 제한 설정 필요.
-- **데이터 연동:** `@problem-generator-aws`의 `Problems` 테이블 스키마 및 접근 권한 확인 필수.
+- **데이터 연동:** **`@problem-generator-streaming`** 서비스가 사용하는 `Problems` 테이블 스키마 및 접근 권한 확인 필수.
