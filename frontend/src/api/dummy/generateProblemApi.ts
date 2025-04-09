@@ -30,7 +30,7 @@ const delay = (ms: number): Promise<void> =>
  * @returns An AsyncGenerator yielding StreamMessage objects.
  */
 export async function* streamGenerationStatusDummyAPI(
-  params: GenerateProblemParams,
+  params: GenerateProblemParams
 ): AsyncGenerator<StreamMessage, void, undefined> {
   console.log("Dummy Streaming API called with params:", params);
 
@@ -67,14 +67,14 @@ export async function* streamGenerationStatusDummyAPI(
       params.difficulty === "Easy"
         ? "기본적인 테스트 케이스"
         : params.difficulty === "Medium"
-          ? "다양한 엣지 케이스를 포함한"
-          : "매우 복잡하고 큰 규모의"
+        ? "다양한 엣지 케이스를 포함한"
+        : "매우 복잡하고 큰 규모의"
     } 테스트 케이스를 통과해야 합니다.\n\n**제약 조건:**\n- 시간 복잡도: ${
       params.difficulty === "Easy"
         ? "O(N log N)"
         : params.difficulty === "Medium"
-          ? "O(N)"
-          : "O(log N) 또는 O(1)"
+        ? "O(N)"
+        : "O(log N) 또는 O(1)"
     }\n- 공간 복잡도: O(N)\n\n**입력 예시:**\n...\n\n**출력 예시:**\n...\n\n*이것은 더미 생성 문제입니다.*`;
 
     const words = baseDescription.split(/(\s+)/); // Split by space, keeping spaces
@@ -103,11 +103,11 @@ export async function* streamGenerationStatusDummyAPI(
     const dummyProblems: GeneratedProblem[] = [
       {
         // Generate a somewhat stable ID based on input for potential session consistency
-        id: Math.abs(hashCode(params.prompt + params.difficulty + "1") % 10000),
-        title: `${params.difficulty} 난이도 생성 문제: ${params.prompt.substring(
-          0,
-          20,
-        )}...`,
+        // Generate a random ID between 1 and 6
+        id: Math.floor(Math.random() * 6) + 1,
+        title: `${
+          params.difficulty
+        } 난이도 생성 문제: ${params.prompt.substring(0, 20)}...`,
         description: fullSimulatedResponse, // Use the streamed content
         difficulty: params.difficulty,
       },
@@ -119,12 +119,19 @@ export async function* streamGenerationStatusDummyAPI(
         Math.floor(Math.random() * 3)
       ] as "Easy" | "Medium" | "Hard";
       dummyProblems.push({
-        id: Math.abs(hashCode(params.prompt + secondDifficulty + "2") % 10000),
+        // Generate a different random ID between 1 and 6 for the second problem
+        // Simple approach: generate another random ID. Could potentially be the same as the first.
+        id: Math.floor(Math.random() * 6) + 1,
         title: `${secondDifficulty} 난이도 관련 문제: ${params.prompt.substring(
           5,
-          15,
+          15
         )} 응용`,
-        description: `두 번째 생성된 더미 문제입니다. '${params.prompt}'에서 파생된 개념을 사용합니다. 난이도: ${secondDifficulty}\n\n${fullSimulatedResponse.substring(0, 100)}... (추가 내용)`,
+        description: `두 번째 생성된 더미 문제입니다. '${
+          params.prompt
+        }'에서 파생된 개념을 사용합니다. 난이도: ${secondDifficulty}\n\n${fullSimulatedResponse.substring(
+          0,
+          100
+        )}... (추가 내용)`,
         difficulty: secondDifficulty,
       });
     }
@@ -146,16 +153,7 @@ export async function* streamGenerationStatusDummyAPI(
   }
 }
 
-// Simple hash function for dummy ID generation (optional)
-function hashCode(str: string): number {
-  let hash = 0;
-  for (let i = 0, len = str.length; i < len; i++) {
-    const chr = str.charCodeAt(i);
-    hash = (hash << 5) - hash + chr;
-    hash |= 0; // Convert to 32bit integer
-  }
-  return hash;
-}
+// hashCode function removed as it's no longer used.
 
 // --- Keep the old non-streaming dummy API for potential comparison or fallback ---
 /**
@@ -163,7 +161,7 @@ function hashCode(str: string): number {
  * Simulates calling a backend API to generate coding problems (non-streaming).
  */
 export const generateProblemsDummyAPI_NonStreaming = async (
-  params: GenerateProblemParams,
+  params: GenerateProblemParams
 ): Promise<GeneratedProblem[]> => {
   console.log("Dummy Non-Streaming API called with params:", params);
   await delay(1500 + Math.random() * 1000);
@@ -172,9 +170,13 @@ export const generateProblemsDummyAPI_NonStreaming = async (
       id: Math.floor(1000 + Math.random() * 9000),
       title: `${params.difficulty} 난이도 문제: ${params.prompt.substring(
         0,
-        15,
+        15
       )}...`,
-      description: `요청하신 '${params.prompt}'와 관련된 문제입니다. 시간 복잡도는 O(N)입니다. (ID: ${Math.random().toString(36).substring(7)})`,
+      description: `요청하신 '${
+        params.prompt
+      }'와 관련된 문제입니다. 시간 복잡도는 O(N)입니다. (ID: ${Math.random()
+        .toString(36)
+        .substring(7)})`,
       difficulty: params.difficulty,
     },
   ];
@@ -186,9 +188,11 @@ export const generateProblemsDummyAPI_NonStreaming = async (
       id: Math.floor(1000 + Math.random() * 9000),
       title: `${secondDifficulty} 난이도 관련 문제: ${params.prompt.substring(
         5,
-        15,
+        15
       )} 응용`,
-      description: `두 번째 생성된 문제입니다. 공간 복잡도 최적화가 중요합니다. (ID: ${Math.random().toString(36).substring(7)})`,
+      description: `두 번째 생성된 문제입니다. 공간 복잡도 최적화가 중요합니다. (ID: ${Math.random()
+        .toString(36)
+        .substring(7)})`,
       difficulty: secondDifficulty,
     });
   }
