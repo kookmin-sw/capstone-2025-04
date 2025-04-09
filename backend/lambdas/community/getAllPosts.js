@@ -28,7 +28,7 @@ exports.handler = async (event) => {
             createdAt: item.createdAt,
             likesCount: item.likesCount || 0,
             commentCount: item.commentCount || 0,
-            job_id: item.job_id || null,
+            problemId: item.problemId || null,
         }));
 
         return {
