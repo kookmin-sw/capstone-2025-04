@@ -1,5 +1,5 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { DynamoDBDocumentClient, QueryCommand } from "@aws-sdk/lib-dynamodb";
+import { DynamoDBDocumentClient, GetCommand } from "@aws-sdk/lib-dynamodb";
 
 // 클라이언트 설정
 const client = new DynamoDBClient({});
@@ -19,7 +19,7 @@ exports.handler = async (event) => {
             },
         };
 
-        const result = await dynamoDB.send(new GetCommand(getParams));
+        const result = await dynamoDB.send(new GetCommand(postParams));
         const post = result.Item;
 
         if (!post) {
