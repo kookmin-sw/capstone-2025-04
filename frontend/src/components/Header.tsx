@@ -28,7 +28,7 @@ const Header: React.FC = () => {
         <div className="flex flex-row items-center text-primary transition-transform duration-200 hover:scale-105">
           <Link href="/" className="flex flex-row items-center gap-2">
             <AlpacoLogo width={50} height={50} />
-            <AlpacoWordLogo height={50} />
+            <AlpacoWordLogo height={40} />
           </Link>
         </div>
         <nav className="flex gap-6 items-center">
