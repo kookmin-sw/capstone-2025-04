@@ -6,7 +6,7 @@ const client = new DynamoDBClient({});
 const dynamoDB = DynamoDBDocumentClient.from(client);
 
 // 로그인 없이 모든 유저 사용 가능
-exports.handler = async (event) => {
+export const handler = async (event) => {
     try {
         const params = {
             TableName: "Community",

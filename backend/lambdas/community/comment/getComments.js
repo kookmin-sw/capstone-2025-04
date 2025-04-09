@@ -19,7 +19,7 @@ export const handler = async (event) => {
         ScanIndexForward: false, // 최신 댓글부터 정렬
     };
     try {
-        const { Items = [] } = await docClient.send(new QueryCommand(queryParams)); // DynamoDB 쿼리 실행
+        const { Items = [] } = await dynamoDB.send(new QueryCommand(queryParams)); // DynamoDB 쿼리 실행
 
         const comments = Items.map(({ content, author, createdAt, SK }) => ({ // 댓글 데이터 가공
             commentId: SK.replace("COMMENT#", ""), // SK에서 댓글 ID 추출
