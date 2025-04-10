@@ -1,9 +1,9 @@
 import { fetchAuthSession } from "aws-amplify/auth";
 
 // Base URL for your API Gateway stage
-// TODO: Replace with your actual API Gateway Invoke URL (ideally from environment variables)
-const API_BASE_URL = "http://localhost:3001"; // Point to mock server for local testing
-// process.env.NEXT_PUBLIC_API_BASE_URL || "YOUR_API_GATEWAY_INVOKE_URL"; // Original line
+// Use environment variable for the API base URL, with a fallback for local development
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_COMMUNITY_API_BASE_URL || "http://localhost:3001"; // Fallback to localhost if env var is not set
 
 // --- Type Definitions ---
 
