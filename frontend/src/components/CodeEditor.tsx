@@ -132,6 +132,7 @@ export default function CodeEditor({
       setCode(CODE_TEMPLATES[language] || "");
     }
     // If initialCode IS provided, we assume it's controlled externally or set once
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [language, initialCode]); // Rerun when language or initialCode changes
 
   const handleEditorChange = (value: string | undefined) => {

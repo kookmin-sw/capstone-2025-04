@@ -3,18 +3,12 @@
 
 import React, { useEffect, Suspense } from "react"; // Import Suspense
 import Image from "next/image";
-import { Metadata } from "next";
+import Head from "next/head"; // Head import 추가
 import { useRouter, useSearchParams } from "next/navigation"; // Import useSearchParams
 import SimpleHeader from "@/components/SimpleHeader"; // Corrected import path
 import Footer from "@/components/Footer"; // Corrected import path
 import { useAuthenticator } from "@aws-amplify/ui-react";
 import { signInWithRedirect } from "aws-amplify/auth";
-
-// Metadata for the page
-export const metadata: Metadata = {
-  title: "로그인 | ALPACO",
-  description: "ALPACO 로그인 페이지",
-};
 
 // Component to handle logic using hooks
 const LoginPageContentInternal = () => {
@@ -106,11 +100,17 @@ const LoginPageContentInternal = () => {
 // Main component wrapping content in Suspense for useSearchParams
 const LoginPage = () => {
   return (
-    <Suspense fallback={<div>Loading Login...</div>}>
-      {" "}
-      {/* Add a basic fallback */}
-      <LoginPageContentInternal />
-    </Suspense>
+    <>
+      <Head>
+        <title>로그인 | ALPACO</title>
+        <meta name="description" content="ALPACO 로그인 페이지" />
+      </Head>
+      <Suspense fallback={<div>Loading Login...</div>}>
+        {" "}
+        {/* Add a basic fallback */}
+        <LoginPageContentInternal />
+      </Suspense>
+    </>
   );
 };
 

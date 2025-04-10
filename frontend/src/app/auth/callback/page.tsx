@@ -2,16 +2,10 @@
 "use client";
 
 import React, { useEffect, Suspense, useState } from "react";
-import { Metadata } from "next";
+import Head from "next/head";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuthenticator } from "@aws-amplify/ui-react";
 import { configureAmplify } from "@/utils/configureAmplify"; // 👈 꼭 import!
-
-// Metadata for the page
-export const metadata: Metadata = {
-  title: "인증 처리 | ALPACO",
-  description: "사용자 인증을 처리하는 페이지입니다.",
-};
 
 const LoadingSpinner = () => (
   <div className="flex justify-center items-center min-h-screen">
@@ -76,9 +70,18 @@ const CallbackContentInternal = () => {
 
 const CallbackPage = () => {
   return (
-    <Suspense fallback={<LoadingSpinner />}>
-      <CallbackContentInternal />
-    </Suspense>
+    <>
+      <Head>
+        <title>인증 처리 | ALPACO</title>
+        <meta
+          name="description"
+          content="사용자 인증을 처리하는 페이지입니다."
+        />
+      </Head>
+      <Suspense fallback={<LoadingSpinner />}>
+        <CallbackContentInternal />
+      </Suspense>
+    </>
   );
 };
 

@@ -1,16 +1,10 @@
 "use client";
 import React, { Suspense } from "react";
-import { Metadata } from "next";
+import Head from "next/head";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-
-// Metadata for the page
-export const metadata: Metadata = {
-  title: "코딩 테스트 결과 | ALPACO",
-  description: "코딩 테스트 결과 페이지",
-};
 
 // Extract the content that uses useSearchParams into its own component
 const CodingTestResultContent: React.FC = () => {
@@ -190,17 +184,23 @@ const CodingTestResultContent: React.FC = () => {
 // Main page component wrapping the content in Suspense
 const CodingTestResultPage: React.FC = () => {
   return (
-    <div className="min-h-screen flex flex-col bg-gray-50">
-      <Header />
+    <>
+      <Head>
+        <title>코딩 테스트 결과 | ALPACO</title>
+        <meta name="description" content="코딩 테스트 결과 페이지" />
+      </Head>
+      <div className="min-h-screen flex flex-col bg-gray-50">
+        <Header />
 
-      <main className="flex-grow">
-        <Suspense fallback={<div>Loading...</div>}>
-          <CodingTestResultContent />
-        </Suspense>
-      </main>
+        <main className="flex-grow">
+          <Suspense fallback={<div>Loading...</div>}>
+            <CodingTestResultContent />
+          </Suspense>
+        </main>
 
-      <Footer />
-    </div>
+        <Footer />
+      </div>
+    </>
   );
 };
 

@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useEffect, Suspense, ChangeEvent } from "react";
-import { Metadata } from "next";
+import Head from "next/head";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import CodeEditor from "@/components/CodeEditor";
@@ -14,12 +14,6 @@ import {
   ProblemExample,
 } from "@/api/codingTestApi";
 import { toast } from "sonner";
-
-// Metadata for the page
-export const metadata: Metadata = {
-  title: "문제 풀이 | ALPACO",
-  description: "코딩 테스트 문제 풀이 페이지",
-};
 
 // --- Main Content Component ---
 const CodingTestContent: React.FC = () => {
@@ -542,25 +536,36 @@ const RightSidebar: React.FC = () => {
   );
 };
 
-// --- Main Page Component ---
+// Main component wrapping the content in Suspense
 const CodingTestSolvePage: React.FC = () => {
   return (
-    // Apply dark class to the root based on HTML element class
-    <div className="min-h-screen flex flex-col bg-gray-50">
-      <Header /> {/* Assuming Header adapts to dark mode */}
-      <main className="flex-grow flex flex-col">
-        <Suspense
-          fallback={
-            <div className="p-6 text-center flex-grow flex items-center justify-center text-gray-500">
-              Loading Problem...
-            </div>
-          }
-        >
-          <CodingTestContent />
-        </Suspense>
-      </main>
-      <Footer />
-    </div>
+    <>
+      <Head>
+        <title>문제 풀이 | ALPACO</title>
+        <meta name="description" content="코딩 테스트 문제 풀이 페이지" />
+      </Head>
+      <div className="flex flex-col h-screen">
+        {" "}
+        {/* Ensure full screen height */}
+        <Header />
+        {/* Wrap content in Suspense for useSearchParams */}
+        <main className="flex-grow overflow-hidden">
+          <Suspense
+            fallback={
+              <div className="flex justify-center items-center flex-grow">
+                <div className="text-center">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+                  <p className="text-gray-500">로딩 중...</p>
+                </div>
+              </div>
+            }
+          >
+            <CodingTestContent />
+          </Suspense>
+        </main>
+        <Footer />
+      </div>
+    </>
   );
 };
 
