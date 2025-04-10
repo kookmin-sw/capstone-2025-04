@@ -33,25 +33,23 @@ jobs:
       - name: Debug OIDC Token
         run: |
           echo "Attempting to decode OIDC token..."
-          # 아래 명령은 bash, jq, base64 필요 (ubuntu-latest 러너에는 기본 포함)
           oidc_token=$(curl -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL" | jq -r '.value')
           if [ -z "$oidc_token" ]; then
             echo "Failed to retrieve OIDC token"
             exit 1
           fi
           echo "OIDC Token retrieved, decoding payload..."
-          payload=$(echo "$oidc_token" | cut -d. -f2 | base64 --decode)
-          if [ $? -ne 0 ]; then
+          payload=$(echo "$oidc_token" | jq -R 'split(".")[1] | @base64d' -r)
+          if [ $? -ne 0 ] || [ -z "$payload" ]; then
             echo "Failed to decode token payload"
             exit 1
           fi
           echo "Decoded Payload:"
           echo "$payload" | jq .
-          # 특히 'sub' 필드 값을 확인하세요!
           echo "Subject Claim (sub): $(echo "$payload" | jq -r '.sub')"
         env:
-          ACTIONS_ID_TOKEN_REQUEST_TOKEN: ${{ secrets.ACTIONS_ID_TOKEN_REQUEST_TOKEN }} # OIDC 토큰 요청용 임시 토큰
-          ACTIONS_ID_TOKEN_REQUEST_URL: ${{ runner.environment.ACTIONS_ID_TOKEN_REQUEST_URL }} # OIDC 토큰 요청 URL
+          ACTIONS_ID_TOKEN_REQUEST_TOKEN: ${{ secrets.ACTIONS_ID_TOKEN_REQUEST_TOKEN }}
+          ACTIONS_ID_TOKEN_REQUEST_URL: ${{ runner.environment.ACTIONS_ID_TOKEN_REQUEST_URL }}
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
