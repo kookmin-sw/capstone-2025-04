@@ -218,7 +218,12 @@ export const getPosts = async (): Promise<PostSummary[]> => {
       "Content-Type": "application/json",
     },
   });
-  return handleApiResponse(response);
+  // Use unknown type for the initial result as handleApiResponse can return various types
+  const result: unknown = await handleApiResponse(response);
+  // Log the result to see what the API actually returned
+  console.log("API response result in getPosts:", result);
+  // Ensure the result is always an array, return empty array otherwise
+  return Array.isArray(result) ? result : [];
 };
 
 /**

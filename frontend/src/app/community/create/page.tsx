@@ -54,18 +54,21 @@ const CreatePageContent: React.FC = () => {
     setIsSubmitting(true);
     try {
       // Prepare payload, include job_id if relevant
-      const payload: { title: string; content: string; job_id?: string } = {
+      const payload: { title: string; content: string; problemId?: string } = {
         title,
         content,
       };
       if (fromTest && testId) {
         // Assuming testId can be used as job_id, adjust if needed
-        payload.job_id = testId;
+        payload.problemId = testId;
       }
       // TODO: If code is included, append it to the content or handle separately
       // if (includeCode && code) {
       //   payload.content += `\n\n\`\`\`${language}\n${code}\n\`\`\``;
       // }
+
+      // Log the payload just before sending
+      console.log("Sending payload to createPost:", payload);
 
       const response = await createPost(payload);
       toast.success("게시글이 성공적으로 등록되었습니다.");
