@@ -4,14 +4,8 @@ import Link from "next/link";
 import React from "react";
 import { useAuthenticator } from "@aws-amplify/ui-react"; // Import the hook
 
-import { fetchAuthSession } from "aws-amplify/auth";
 import AlpacoLogo from "./AlpacoLogo";
 import AlpacoWordLogo from "./AlpacoWordLogo";
-const session = await fetchAuthSession({ forceRefresh: false });
-const idToken = session.tokens?.idToken;
-
-console.log("Session:", session); // Log the session to the console
-console.log("ID Token:", idToken); // Log the ID token to the console
 
 const Header: React.FC = () => {
   // Optimize: Select only the states needed by the Header
