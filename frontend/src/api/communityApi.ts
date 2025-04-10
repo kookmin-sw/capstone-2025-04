@@ -49,7 +49,7 @@ export interface GetCommentsResponse {
 export interface CreatePostPayload {
   title: string;
   content: string;
-  job_id?: string;
+  problemId?: string;
 }
 
 // For POST /community response
@@ -60,7 +60,7 @@ export interface CreatePostResponse {
   title: string;
   content: string;
   createdAt: string;
-  job_id?: string;
+  problemId?: string;
 }
 
 // For PATCH /community/{postId}
@@ -125,16 +125,30 @@ class ApiError extends Error {
 
 const handleApiResponse = async (response: Response) => {
   if (!response.ok) {
+    // Use unknown instead of any
     let errorMessage = `API Error: ${response.status} ${response.statusText}`;
     let errorData;
     try {
-      errorData = await response.json();
+      // Clone before reading body in case we need it again
+      const errorResponseClone = response.clone();
+      errorData = await errorResponseClone.json();
       if (errorData && errorData.message) {
         errorMessage = errorData.message; // Use backend error message if available
       }
     } catch (e) {
-      // Log the error if JSON parsing fails, but continue
-      console.warn("Could not parse error response body as JSON:", e);
+      try {
+        // If JSON parsing fails, try reading the original response body as text
+        const errorText = await response.text();
+        errorMessage = errorText || errorMessage; // Use text if available
+        errorData = errorText; // Store the raw text as data
+        console.warn(
+          "Could not parse error response body as JSON, read as text:",
+          e
+        );
+      } catch (textErr) {
+        // If reading text also fails, just use the status text
+        console.warn("Could not read error response body as text:", textErr);
+      }
     }
     console.error(
       `API Error ${response.status}:`,
@@ -149,7 +163,46 @@ const handleApiResponse = async (response: Response) => {
   ) {
     return undefined; // Or return a specific success indicator if needed
   }
-  return response.json();
+
+  // Try parsing as JSON first (standard approach)
+  try {
+    // Clone the response because the body can only be consumed once.
+    const successResponseClone = response.clone();
+    return await successResponseClone.json();
+  } catch (jsonError) {
+    console.warn(
+      "Failed to parse response body as JSON, attempting to read as text and parse manually.",
+      jsonError
+    );
+    // If response.json() fails, try reading the original response body as text and parse manually.
+    try {
+      const textBody = await response.text(); // Use the original response
+      if (textBody) {
+        try {
+          return JSON.parse(textBody); // Manually parse the string
+        } catch (parseError) {
+          console.error(
+            "Failed to manually parse text body as JSON:",
+            parseError
+          );
+          // Throw specific error if manual parsing fails after text read
+          throw new ApiError(
+            "Failed to parse API response text as JSON",
+            response.status,
+            textBody // Include the text body in error data
+          );
+        }
+      } else {
+        // Handle cases where the text body is empty but status is not 204 etc.
+        console.warn("Response body is empty despite success status.");
+        return undefined;
+      }
+    } catch (textError) {
+      console.error("Failed to read response body as text:", textError);
+      // If reading text fails, throw a more generic error
+      throw new ApiError("Failed to read API response body", response.status);
+    }
+  }
 };
 
 // --- API Functions ---
