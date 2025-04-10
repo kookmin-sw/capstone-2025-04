@@ -1,15 +1,10 @@
 "use client";
 import React, { useState } from "react";
-import { Metadata } from "next";
+import Head from "next/head";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import Link from "next/link";
 
-// Metadata for the page
-export const metadata: Metadata = {
-  title: "FAQ / 문의 | ALPACO",
-  description: "ALPACO FAQ 및 문의 페이지",
-};
 // FAQ 항목 타입 정의
 type FAQItem = {
   question: string;
@@ -52,145 +47,151 @@ const FAQPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-gray-50">
-      <Header />
+    <>
+      <Head>
+        <title>FAQ / 문의 | ALPACO</title>
+        <meta name="description" content="ALPACO FAQ 및 문의 페이지" />
+      </Head>
+      <div className="min-h-screen flex flex-col bg-gray-50">
+        <Header />
 
-      <main className="flex-grow">
-        <div className="max-w-5xl mx-auto p-8">
-          <div className="flex justify-between items-center mb-8">
-            <h1 className="text-3xl font-bold text-gray-900">
-              자주 묻는 질문 (FAQ)
-            </h1>
-            <Link
-              href="/"
-              className="px-4 py-2 border border-gray-300 rounded-md transition hover:bg-gray-100"
-            >
-              홈으로
-            </Link>
-          </div>
-
-          <div className="space-y-4">
-            {faqItems.map((item, index) => (
-              <div
-                key={index}
-                className="bg-white rounded-lg shadow-sm overflow-hidden"
+        <main className="flex-grow">
+          <div className="max-w-5xl mx-auto p-8">
+            <div className="flex justify-between items-center mb-8">
+              <h1 className="text-3xl font-bold text-gray-900">
+                자주 묻는 질문 (FAQ)
+              </h1>
+              <Link
+                href="/"
+                className="px-4 py-2 border border-gray-300 rounded-md transition hover:bg-gray-100"
               >
-                <button
-                  onClick={() => toggleFAQ(index)}
-                  className="w-full px-6 py-4 text-left flex justify-between items-center hover:bg-gray-50 transition"
+                홈으로
+              </Link>
+            </div>
+
+            <div className="space-y-4">
+              {faqItems.map((item, index) => (
+                <div
+                  key={index}
+                  className="bg-white rounded-lg shadow-sm overflow-hidden"
                 >
-                  <span className="font-medium text-gray-900">
-                    {item.question}
-                  </span>
-                  <svg
-                    className={`w-5 h-5 text-gray-500 transition-transform ${
-                      activeIndex === index ? "rotate-180" : ""
-                    }`}
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                    xmlns="http://www.w3.org/2000/svg"
+                  <button
+                    onClick={() => toggleFAQ(index)}
+                    className="w-full px-6 py-4 text-left flex justify-between items-center hover:bg-gray-50 transition"
                   >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M19 9l-7 7-7-7"
-                    />
-                  </svg>
-                </button>
-                {activeIndex === index && (
-                  <div className="px-6 py-4 bg-gray-50 text-gray-600">
-                    <p>{item.answer}</p>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
+                    <span className="font-medium text-gray-900">
+                      {item.question}
+                    </span>
+                    <svg
+                      className={`w-5 h-5 text-gray-500 transition-transform ${
+                        activeIndex === index ? "rotate-180" : ""
+                      }`}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                      xmlns="http://www.w3.org/2000/svg"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M19 9l-7 7-7-7"
+                      />
+                    </svg>
+                  </button>
+                  {activeIndex === index && (
+                    <div className="px-6 py-4 bg-gray-50 text-gray-600">
+                      <p>{item.answer}</p>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
 
-          <div className="mt-12 bg-white rounded-lg shadow-sm p-8">
-            <h2 className="text-2xl font-semibold mb-6 text-gray-900">
-              문의하기
-            </h2>
-            <form>
-              <div className="mb-4">
-                <label
-                  htmlFor="name"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  이름
-                </label>
-                <input
-                  type="text"
-                  id="name"
-                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
-                  placeholder="이름을 입력하세요"
-                  required
-                />
-              </div>
-              <div className="mb-4">
-                <label
-                  htmlFor="email"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  이메일
-                </label>
-                <input
-                  type="email"
-                  id="email"
-                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
-                  placeholder="이메일을 입력하세요"
-                  required
-                />
-              </div>
-              <div className="mb-4">
-                <label
-                  htmlFor="subject"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  문의 주제
-                </label>
-                <select
-                  id="subject"
-                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
-                >
-                  <option value="">주제를 선택하세요</option>
-                  <option value="service">서비스 이용 문의</option>
-                  <option value="technical">기술적 문제</option>
-                  <option value="billing">결제 관련 문의</option>
-                  <option value="other">기타</option>
-                </select>
-              </div>
-              <div className="mb-4">
-                <label
-                  htmlFor="message"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  문의 내용
-                </label>
-                <textarea
-                  id="message"
-                  rows={6}
-                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
-                  placeholder="문의 내용을 상세히 적어주세요"
-                  required
-                ></textarea>
-              </div>
-              <div>
-                <button
-                  type="submit"
-                  className="px-6 py-3 bg-primary text-white font-medium rounded-md hover:bg-primary-hover transition"
-                >
-                  문의 제출하기
-                </button>
-              </div>
-            </form>
+            <div className="mt-12 bg-white rounded-lg shadow-sm p-8">
+              <h2 className="text-2xl font-semibold mb-6 text-gray-900">
+                문의하기
+              </h2>
+              <form>
+                <div className="mb-4">
+                  <label
+                    htmlFor="name"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
+                    이름
+                  </label>
+                  <input
+                    type="text"
+                    id="name"
+                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                    placeholder="이름을 입력하세요"
+                    required
+                  />
+                </div>
+                <div className="mb-4">
+                  <label
+                    htmlFor="email"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
+                    이메일
+                  </label>
+                  <input
+                    type="email"
+                    id="email"
+                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                    placeholder="이메일을 입력하세요"
+                    required
+                  />
+                </div>
+                <div className="mb-4">
+                  <label
+                    htmlFor="subject"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
+                    문의 주제
+                  </label>
+                  <select
+                    id="subject"
+                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                  >
+                    <option value="">주제를 선택하세요</option>
+                    <option value="service">서비스 이용 문의</option>
+                    <option value="technical">기술적 문제</option>
+                    <option value="billing">결제 관련 문의</option>
+                    <option value="other">기타</option>
+                  </select>
+                </div>
+                <div className="mb-4">
+                  <label
+                    htmlFor="message"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
+                    문의 내용
+                  </label>
+                  <textarea
+                    id="message"
+                    rows={6}
+                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                    placeholder="문의 내용을 상세히 적어주세요"
+                    required
+                  ></textarea>
+                </div>
+                <div>
+                  <button
+                    type="submit"
+                    className="px-6 py-3 bg-primary text-white font-medium rounded-md hover:bg-primary-hover transition"
+                  >
+                    문의 제출하기
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
-        </div>
-      </main>
+        </main>
 
-      <Footer />
-    </div>
+        <Footer />
+      </div>
+    </>
   );
 };
 

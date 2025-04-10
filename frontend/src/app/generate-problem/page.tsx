@@ -1,14 +1,8 @@
 import React, { Suspense } from "react";
+import Head from "next/head";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import GenerateProblemClient from "./GenerateProblemClient"; // We'll create this next
-import { Metadata } from "next";
-
-// Metadata for the page
-export const metadata: Metadata = {
-  title: "문제 생성 | ALPACO",
-  description: "LLM 기반 코딩 문제 생성 페이지",
-};
 
 // Loading component for Suspense fallback
 const LoadingSpinner = () => (
@@ -22,24 +16,30 @@ const LoadingSpinner = () => (
 
 const GenerateProblemPage: React.FC = () => {
   return (
-    <div className="min-h-screen flex flex-col bg-gray-50">
-      <Header />
+    <>
+      <Head>
+        <title>문제 생성 | ALPACO</title>
+        <meta name="description" content="LLM 기반 코딩 문제 생성 페이지" />
+      </Head>
+      <div className="min-h-screen flex flex-col bg-gray-50">
+        <Header />
 
-      <main className="flex-grow">
-        <div className="max-w-5xl mx-auto p-8">
-          <div className="flex items-center mb-8">
-            <h1 className="text-3xl font-bold text-gray-900">
-              어떤 알고리즘 문제를 원하시나요?
-            </h1>
+        <main className="flex-grow">
+          <div className="max-w-5xl mx-auto p-8">
+            <div className="flex items-center mb-8">
+              <h1 className="text-3xl font-bold text-gray-900">
+                어떤 알고리즘 문제를 원하시나요?
+              </h1>
+            </div>
+            <Suspense fallback={<LoadingSpinner />}>
+              <GenerateProblemClient />
+            </Suspense>
           </div>
-          <Suspense fallback={<LoadingSpinner />}>
-            <GenerateProblemClient />
-          </Suspense>
-        </div>
-      </main>
+        </main>
 
-      <Footer />
-    </div>
+        <Footer />
+      </div>
+    </>
   );
 };
 

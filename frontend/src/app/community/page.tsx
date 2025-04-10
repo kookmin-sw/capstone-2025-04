@@ -1,7 +1,7 @@
 "use client"; // Convert to Client Component
 
 import React, { useState, useEffect, Suspense } from "react"; // Add Suspense
-import { Metadata } from "next";
+import Head from "next/head"; // Head import 추가
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import Link from "next/link";
@@ -10,11 +10,11 @@ import { getPosts, PostSummary } from "@/api/communityApi"; // Import API functi
 // Import the detail component from its new location
 import CommunityDetail from "@/components/community/CommunityDetail";
 
-// Metadata for the page
-export const metadata: Metadata = {
-  title: "커뮤니티 | ALPACO",
-  description: "ALPACO 커뮤니티 페이지",
-};
+// Metadata export 제거됨
+// export const metadata: Metadata = {
+//   title: "커뮤니티 | ALPACO",
+//   description: "ALPACO 커뮤니티 페이지",
+// };
 
 // Remove static dummy data
 
@@ -180,24 +180,30 @@ const CommunityContent: React.FC = () => {
 // Main page component wraps the content in Suspense
 const CommunityPage: React.FC = () => {
   return (
-    <div className="min-h-screen flex flex-col bg-gray-50">
-      <Header />
+    <>
+      <Head>
+        <title>커뮤니티 | ALPACO</title>
+        <meta name="description" content="ALPACO 커뮤니티 페이지" />
+      </Head>
+      <div className="min-h-screen flex flex-col bg-gray-50">
+        <Header />
 
-      <main className="flex-grow">
-        {/* Wrap the content that uses useSearchParams in Suspense */}
-        <Suspense
-          fallback={
-            <div className="flex justify-center items-center min-h-[calc(100vh-200px)]">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-            </div>
-          }
-        >
-          <CommunityContent />
-        </Suspense>
-      </main>
+        <main className="flex-grow">
+          {/* Wrap the content that uses useSearchParams in Suspense */}
+          <Suspense
+            fallback={
+              <div className="flex justify-center items-center min-h-[calc(100vh-200px)]">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+              </div>
+            }
+          >
+            <CommunityContent />
+          </Suspense>
+        </main>
 
-      <Footer />
-    </div>
+        <Footer />
+      </div>
+    </>
   );
 };
 
