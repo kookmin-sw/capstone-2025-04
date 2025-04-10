@@ -7,7 +7,7 @@ interface AlpacoWordLogoProps {
 }
 
 const AlpacoWordLogo: React.FC<AlpacoWordLogoProps> = ({
-  color = "var(--primary-color)", // Or consider "currentColor"
+  color = "#00b8db",
   width = 200,
   height = 50,
 }) => (

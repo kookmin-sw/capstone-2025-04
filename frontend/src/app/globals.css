@@ -3,17 +3,7 @@
 @tailwind utilities;
 
 :root {
-  --primary-color: #00b8db;
-  --primary-color-rgb: 255, 205, 133;
-  --primary-hover: #fbbf24;
-  --secondary-color: #6b7280;
-  --background-color: #f9fafb;
-  --white: #ffffff;
-  --text-primary: #111827;
-  --text-secondary: #4b5563;
-  --border-color: #b0b2b5;
-  --error-color: #ef4444;
-  --success-color: #10b981;
+  /* Remove all custom CSS variables */
 }
 
 html,
@@ -22,8 +12,7 @@ body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Oxygen,
     Ubuntu, Cantarell, Fira Sans, Droid Sans, Helvetica Neue, sans-serif;
-  background-color: var(--background-color);
-  color: var(--text-primary);
+  /* Remove background-color and color, rely on Tailwind defaults or body classes */
 }
 
 a {

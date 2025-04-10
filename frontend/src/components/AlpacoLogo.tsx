@@ -9,7 +9,7 @@ interface AlpacoLogoProps {
 
 const AlpacoLogo: React.FC<AlpacoLogoProps> = ({
   logoColor = "#FFFFFF", // 로고 모양 기본값을 흰색으로 가정
-  bgColor = "var(--primary-color)", // 배경색 기본값을 CSS 변수나 특정 색으로 지정
+  bgColor = "#00b8db",
   width = 100,
   height = 100,
 }) => (
