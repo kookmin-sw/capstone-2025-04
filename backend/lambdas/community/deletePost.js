@@ -1,12 +1,17 @@
-const AWS = require("aws-sdk");
-const dynamoDB = new AWS.DynamoDB.DocumentClient();
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { DynamoDBDocumentClient, GetCommand, QueryCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 
-exports.handler = async (event) => {
+// 클라이언트 설정
+const client = new DynamoDBClient({});
+const dynamoDB = DynamoDBDocumentClient.from(client);
+
+// 로그인 없이 모든 유저 사용 가능
+export const handler = async (event) => {
     try {
-        const { postId } = event.pathParameters; // 요청 URL에서 postId 가져오기
+        const { postId } = event.pathParameters || {}; // 요청 URL에서 postId 추출
 
         // API Gateway JWT Authorizer에서 전달된 유저 정보 가져오기
-        const claims = event.requestContext.authorizer.claims;
+        const claims = event?.requestContext?.authorizer?.claims;
         if (!claims || !claims.username) {
             return {
                 statusCode: 401,
@@ -17,16 +22,16 @@ exports.handler = async (event) => {
         const author = claims.username;
 
         // 게시글 존재 여부 확인
-        const getParams = {
+        const getCommand = new GetCommand({
             TableName: "Community",
             Key: {
                 PK: postId,
                 SK: "POST",
             },
-        };
+        });
 
-        const result = await dynamoDB.get(getParams).promise();
-        const post = result.Item;
+        const postResult = await dynamoDB.send(getCommand); // JSON 응답 객체
+        const post = postResult.Item; // DB에서 가져온 게시글 데이터, 변수에 담아서 재사용성을 높임 !!
 
         if (!post) {
             return {
@@ -43,23 +48,24 @@ exports.handler = async (event) => {
             };
         }
 
-        // 댓글 조회 (최대 24개까지만 지원. 그 이상이면 반복 처리 필요)
-        const commentQuery = await dynamoDB.query({
+        // 댓글 조회 (최대 24개까지만 지원(+게시글 삭제 1개). 그 이상이면 반복 처리 필요)
+        const commentQuery = new QueryCommand({
             TableName: "Community",
             KeyConditionExpression: "PK = :postId AND begins_with(SK, :prefix)",
             ExpressionAttributeValues: {
-                ":postId": postId,
-                ":prefix": "COMMENT#",
+              ":postId": postId,
+              ":prefix": "COMMENT#",
             },
-        }).promise();
+        });
 
-        const commentDeleteOps = commentQuery.Items.map((comment) => ({
+        const commentResult = await dynamoDB.send(commentQuery);
+        const commentDeleteOps = commentResult.Items.map((comment) => ({
             Delete: {
-                TableName: "Community",
-                Key: {
-                    PK: comment.PK,
-                    SK: comment.SK,
-                },
+              TableName: "Community",
+              Key: {
+                PK: comment.PK,
+                SK: comment.SK,
+              },
             },
         }));
 
@@ -80,13 +86,15 @@ exports.handler = async (event) => {
         if (transactItems.length > 25) {
             return {
                 statusCode: 400,
-                body: JSON.stringify({ message: "댓글 수가 너무 많아 한 번에 삭제할 수 없습니다. (최대 25개까지 지원)" }),
+                body: JSON.stringify({ message: "댓글 수가 너무 많아 한 번에 삭제할 수 없습니다. (댓글 최대 24개까지 지원)" }),
             };
         }
 
-        await dynamoDB.transactWrite({
+        const transactionCommand = new TransactWriteCommand({
             TransactItems: transactItems,
-        }).promise();
+        });
+
+        await dynamoDB.send(transactionCommand);
 
         return {
             statusCode: 200,
@@ -95,7 +103,6 @@ exports.handler = async (event) => {
                 deletedComments: commentDeleteOps.length,
             }),
         };
-
         
     } catch (error) {
         console.error("게시글 삭제 중 오류 발생:", error);

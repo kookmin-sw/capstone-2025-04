@@ -32,8 +32,8 @@ export const handler = async (event) => {
 
         const author = claims.username; // JWT에서 추출한 유저 이름
 
-         // 게시글 존재 여부 확인
-         const getCommand = new GetCommand({
+        // 게시글 존재 여부 확인
+        const getCommand = new GetCommand({
             TableName: "Community",
             Key: {
                 PK: postId,
