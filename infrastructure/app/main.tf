@@ -168,12 +168,8 @@ resource "aws_iam_role" "github_actions_deploy_role" {
         }
         Action = "sts:AssumeRoleWithWebIdentity"
         Condition = {
-          # 변경: StringLike 조건을 사용하여 master 및 release/* 브랜치 허용
-          "StringLike": {
-            "${var.github_oidc_provider_url}:sub": [
-              "repo:${var.github_repository}:ref:refs/heads/master",
-              "repo:${var.github_repository}:ref:refs/heads/release/*"
-            ]
+          "StringEquals": {
+            "${var.github_oidc_provider_url}:sub": "repo:${var.github_repository}:environment:${var.environment}"
           }
         }
       }
