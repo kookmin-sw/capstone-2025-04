@@ -1,0 +1,7 @@
+# infrastructure/cognito/cognito.s3.tfbackend
+
+bucket         = "alpaco-tfstate-bucket-kmu"
+key            = "cognito/terraform.tfstate" # Cognito용 Key
+region         = "ap-northeast-2"
+dynamodb_table = "alpaco-tfstate-lock-table"
+encrypt        = true

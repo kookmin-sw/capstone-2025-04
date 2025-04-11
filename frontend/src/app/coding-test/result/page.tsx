@@ -12,7 +12,13 @@ const CodingTestResultContent: React.FC = () => {
   const searchParams = useSearchParams();
   const id = searchParams.get("id");
 
-  // 가상의 테스트 결과 데이터
+  // TODO: Replace with API call to fetch submission result when endpoint is available
+  // const submissionId = searchParams.get("submissionId");
+  // import { getSubmissionResult, SubmissionResult } from '@/api/codingTestApi';
+  // const [testResult, setTestResult] = useState<SubmissionResult | null>(null);
+  // useEffect(() => { fetch result... }, [submissionId]);
+
+  // 가상의 테스트 결과 데이터 (API 구현 전까지 사용)
   const testResult = {
     success: true,
     score: 90,
@@ -46,7 +52,10 @@ const CodingTestResultContent: React.FC = () => {
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-3xl font-bold text-gray-900">채점 결과</h1>
         <Link
-          href={`/coding-test/progress?id=${id}`}
+          href={{
+            pathname: "/coding-test/solve",
+            query: { id: id },
+          }}
           className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md bg-white hover:bg-gray-50 transition"
         >
           <svg
@@ -120,33 +129,41 @@ const CodingTestResultContent: React.FC = () => {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {testResult.testCases.map((testCase) => (
-                <tr key={testCase.id}>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {testCase.id}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-500">
-                    {testCase.input}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-500">
-                    {testCase.expected}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-500">
-                    {testCase.actual}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm">
-                    <span
-                      className={
-                        testCase.result === "성공"
-                          ? "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800"
-                          : "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800"
-                      }
-                    >
-                      {testCase.result}
-                    </span>
-                  </td>
-                </tr>
-              ))}
+              {testResult.testCases.map(
+                (testCase: {
+                  id: number;
+                  input: string;
+                  expected: string;
+                  actual: string;
+                  result: string;
+                }) => (
+                  <tr key={testCase.id}>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {testCase.id}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-500">
+                      {testCase.input}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-500">
+                      {testCase.expected}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-500">
+                      {testCase.actual}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                      <span
+                        className={
+                          testCase.result === "성공"
+                            ? "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800"
+                            : "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800"
+                        }
+                      >
+                        {testCase.result}
+                      </span>
+                    </td>
+                  </tr>
+                )
+              )}
             </tbody>
           </table>
         </div>
@@ -167,22 +184,23 @@ const CodingTestResultContent: React.FC = () => {
 // Main page component wrapping the content in Suspense
 const CodingTestResultPage: React.FC = () => {
   return (
-    <div className="min-h-screen flex flex-col bg-gray-50">
+    <>
       <Head>
         <title>코딩 테스트 결과 | ALPACO</title>
         <meta name="description" content="코딩 테스트 결과 페이지" />
       </Head>
+      <div className="min-h-screen flex flex-col bg-gray-50">
+        <Header />
 
-      <Header />
+        <main className="flex-grow">
+          <Suspense fallback={<div>Loading...</div>}>
+            <CodingTestResultContent />
+          </Suspense>
+        </main>
 
-      <main className="flex-grow">
-        <Suspense fallback={<div>Loading...</div>}>
-          <CodingTestResultContent />
-        </Suspense>
-      </main>
-
-      <Footer />
-    </div>
+        <Footer />
+      </div>
+    </>
   );
 };
 

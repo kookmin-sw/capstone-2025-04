@@ -81,12 +81,14 @@ cdk-outputs.json
 *.tfstate.backup
 .terragrunt-cache/
 terraform.tfvars
+terraform.auto.tfvars
 terraform.tfvars.json
 .terraform.lock.hcl
 !infrastructure/
 !infrastructure/backend-setup/
-!infrastructure/backend-setup/terraform.tfstate 
+!infrastructure/backend-setup/terraform.tfstate
 # Keep the terraform state file for backend setup
+infrastructure/cognito/post_confirmation_lambda.zip
 
 # Keep .gitkeep files
 !.gitkeep
@@ -95,3 +97,5 @@ terraform.tfvars.json
 .next/
 .nuxt/
 .cache/
+
+infrastructure/api/lambda_zips/*.zip

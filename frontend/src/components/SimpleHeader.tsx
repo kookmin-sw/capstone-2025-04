@@ -1,28 +1,17 @@
 import React from "react";
 import Link from "next/link";
-import Image from "next/image";
+import AlpacoWordLogo from "./AlpacoWordLogo";
+import AlpacoLogo from "./AlpacoLogo";
 
 const SimpleHeader: React.FC = () => {
   return (
-    <header className="flex justify-start items-center p-4 w-full">
-      <Link href="/">
-        <div className="flex flex-row items-center gap-8">
-          <Image
-            src="/alpaco-logo.svg"
-            alt="ALPACO"
-            width={50}
-            height={50}
-            priority
-          />
-          <Image
-            src="/alpaco-word-logo.svg"
-            alt="ALPACO"
-            width={150}
-            height={50}
-            priority
-          />
-        </div>
-      </Link>
+    <header className="flex items-center justify-center p-4 w-full">
+      <div className="flex flex-row items-center text-primary transition-transform duration-200 hover:scale-105">
+        <Link href="/" className="flex flex-row items-center gap-2">
+          <AlpacoLogo width={50} height={50} />
+          <AlpacoWordLogo height={40} />
+        </Link>
+      </div>
     </header>
   );
 };
