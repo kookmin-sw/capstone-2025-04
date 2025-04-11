@@ -15,7 +15,7 @@ export interface PostSummary {
   createdAt: string;
   likesCount: number;
   commentCount: number;
-  problemId?: string | null; // Changed from job_id
+  problemId?: string | null; // Changed from problemId
 }
 
 // For GET /community/{postId} (Detail)
@@ -28,7 +28,7 @@ export interface PostDetail {
   updatedAt?: string | null;
   likesCount: number;
   likedUsers: string[];
-  problemId?: string | null; // Changed from job_id
+  problemId?: string | null; // Changed from problemId
   // commentCount is not directly on the post detail in the spec, fetched separately
 }
 

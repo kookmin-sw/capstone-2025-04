@@ -294,8 +294,8 @@ aws s3 mb s3://${S3_BUCKET_NAME:-problem-generator-results}
 ```bash
 aws dynamodb create-table \
     --table-name ${DYNAMODB_TABLE_NAME:-problem-job-status} \
-    --attribute-definitions AttributeName=job_id,AttributeType=S \
-    --key-schema AttributeName=job_id,KeyType=HASH \
+    --attribute-definitions AttributeName=problemId,AttributeType=S \
+    --key-schema AttributeName=problemId,KeyType=HASH \
     --provisioned-throughput ReadCapacityUnits=1,WriteCapacityUnits=1
 ```
 
@@ -333,7 +333,7 @@ AWS 콘솔에서 API Gateway를 설정하고 요청 처리 Lambda를 연결하�
 
 ```json
 {
-  "job_id": "550e8400-e29b-41d4-a716-446655440000",
+  "problemId": "550e8400-e29b-41d4-a716-446655440000",
   "status": "QUEUED",
   "algorithm_type": "그래프",
   "difficulty": "보통",
@@ -345,7 +345,7 @@ AWS 콘솔에서 API Gateway를 설정하고 요청 처리 Lambda를 연결하�
 ### 결과 확인
 
 생성이 완료되면 `result_url`에서 결과를 확인할 수 있습니다. S3에서 파일을 다운로드하여 내용을 확인하세요.
-또한, DynamoDB 테이블에서 `job_id`를 사용하여 작업의 최종 상태(`COMPLETED` 또는 `FAILED`)와 결과 URL 또는 오류 메시지를 확인할 수 있습니다.
+또한, DynamoDB 테이블에서 `problemId`를 사용하여 작업의 최종 상태(`COMPLETED` 또는 `FAILED`)와 결과 URL 또는 오류 메시지를 확인할 수 있습니다.
 
 ## AWS 서비스 명세
 
@@ -359,7 +359,7 @@ DynamoDB는 작업 상태 추적을 위해 사용되며, 다음과 같은 테이
 
 | 속성                     | 유형              | 설명                                              |
 | ------------------------ | ----------------- | ------------------------------------------------- |
-| `job_id`                 | String (기본 키)  | 작업의 고유 식별자 (UUID)                         |
+| `problemId`              | String (기본 키)  | 작업의 고유 식별자 (UUID)                         |
 | `status`                 | String            | 작업 상태 (QUEUED, PROCESSING, COMPLETED, FAILED) |
 | `algorithm_type`         | String            | 문제 생성에 사용된 알고리즘 유형                  |
 | `difficulty`             | String            | 문제 난이도 (쉬움, 보통, 어려움)                  |
@@ -377,31 +377,31 @@ DynamoDB는 작업 상태 추적을 위해 사용되며, 다음과 같은 테이
 
 **사용 패턴:**
 
-1. **초기화**: 작업 요청 시 `add_job_status(job_id, algorithm_type, difficulty)` 호출
+1. **초기화**: 작업 요청 시 `add_job_status(problemId, algorithm_type, difficulty)` 호출
 
    ```python
    # 새 작업 상태 생성 예제
-   job_id = str(uuid.uuid4())
-   add_job_status(job_id, "그래프", "보통")
+   problemId = str(uuid.uuid4())
+   add_job_status(problemId, "그래프", "보통")
    ```
 
-2. **상태 업데이트**: 처리 과정에 따라 `update_job_status(job_id, new_status, result_url=None, error_message=None)` 호출
+2. **상태 업데이트**: 처리 과정에 따라 `update_job_status(problemId, new_status, result_url=None, error_message=None)` 호출
 
    ```python
    # 처리 시작 시
-   update_job_status(job_id, "PROCESSING")
+   update_job_status(problemId, "PROCESSING")
 
    # 성공적 완료 시
-   update_job_status(job_id, "COMPLETED", result_url="https://bucket-name.s3.amazonaws.com/key")
+   update_job_status(problemId, "COMPLETED", result_url="https://bucket-name.s3.amazonaws.com/key")
 
    # 오류 발생 시
-   update_job_status(job_id, "FAILED", error_message="Error message here")
+   update_job_status(problemId, "FAILED", error_message="Error message here")
    ```
 
-3. **상태 조회**: `get_job_status(job_id)` 호출로 현재 상태 확인
+3. **상태 조회**: `get_job_status(problemId)` 호출로 현재 상태 확인
    ```python
    # 상태 조회 예제
-   status = get_job_status(job_id)
+   status = get_job_status(problemId)
    print(f"Current status: {status['status']}")
    ```
 
@@ -413,7 +413,7 @@ S3는 생성된 문제를 JSON 형식으로 저장하는 데 사용됩니다:
 
 **객체 구조:**
 
-- **키 형식**: `results/{job_id}.json`
+- **키 형식**: `results/{problemId}.json`
 - **콘텐츠 타입**: `application/json`
 
 **JSON 구조:**
@@ -452,7 +452,7 @@ S3는 생성된 문제를 JSON 형식으로 저장하는 데 사용됩니다:
 
    ```python
    # 문제 JSON 업로드 예제
-   object_key = f"results/{job_id}.json"
+   object_key = f"results/{problemId}.json"
    result_url = upload_to_s3(problem_result, object_key, 'application/json')
    ```
 
@@ -460,7 +460,7 @@ S3는 생성된 문제를 JSON 형식으로 저장하는 데 사용됩니다:
 
    ```python
    # S3 URL 생성 예제
-   object_key = f"results/{job_id}.json"
+   object_key = f"results/{problemId}.json"
    url = generate_s3_url(object_key)
    ```
 

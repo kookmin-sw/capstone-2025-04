@@ -97,8 +97,8 @@ const CommunityList: React.FC = () => {
                 <div className="flex items-center h-8">
                   {/* TODO: Add category/tag if available from API */}
                   <span className="bg-gray-100 text-xs font-medium text-gray-600 px-1.5 py-0.5 rounded-full whitespace-nowrap min-w-12 text-center mr-2 flex-shrink-0 my-auto">
-                    {post.job_id ? "문제연관" : "자유"}{" "}
-                    {/* Example based on job_id */}
+                    {post.problemId ? "문제연관" : "자유"}{" "}
+                    {/* Example based on problemId */}
                   </span>
                   <h2 className="text-base font-medium text-gray-900 hover:text-primary transition-colors line-clamp-1 mr-2 flex-grow my-auto">
                     {post.title}

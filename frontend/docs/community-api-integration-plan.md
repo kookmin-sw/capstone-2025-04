@@ -40,7 +40,7 @@
   - Implement Delete Button (Comment): Conditionally render based on auth & authorship. Delete calls `api.deleteComment(id, commentId)` with confirmation.
   - Remove dummy `getPost` function.
 - **Create Page (`/community/create/page.tsx`):**
-  - Implement `handleSubmit`: Check auth, call `api.createPost({ title, content, job_id: ... })`, navigate on success.
+  - Implement `handleSubmit`: Check auth, call `api.createPost({ title, content, problemId: ... })`, navigate on success.
 - **Edit Page (`/community/[id]/edit/page.tsx` - New):**
   - Create this page.
   - Fetch existing post data using `api.getPostById(id)` in `useEffect`.

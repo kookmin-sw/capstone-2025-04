@@ -63,7 +63,7 @@ const mockAuth = (req, res, next) => {
 
 // 1. [POST] /community - Create Post
 app.post("/community", mockAuth, (req, res) => {
-  const { title, content, job_id } = req.body;
+  const { title, content, problemId } = req.body;
   const author = req.user.username; // Get from mockAuth
 
   if (!title || !content) {
@@ -85,7 +85,7 @@ app.post("/community", mockAuth, (req, res) => {
     likesCount: 0,
     likedUsers: [],
     commentCount: 0,
-    ...(job_id && { job_id }),
+    ...(problemId && { problemId }),
   };
 
   communityData.push(newPost);
@@ -99,7 +99,7 @@ app.post("/community", mockAuth, (req, res) => {
     title,
     content,
     createdAt,
-    ...(job_id && { job_id }),
+    ...(problemId && { problemId }),
   });
 });
 
@@ -116,7 +116,7 @@ app.get("/community", (req, res) => {
       createdAt: post.createdAt,
       likesCount: post.likesCount || 0,
       commentCount: post.commentCount || 0,
-      job_id: post.job_id || null,
+      problemId: post.problemId || null,
     }));
   console.log(`[Community Mock API] Fetched ${posts.length} posts.`);
   res.status(200).json(posts);
@@ -142,7 +142,7 @@ app.get("/community/:postId", (req, res) => {
     updatedAt: post.updatedAt || null,
     likesCount: post.likesCount || 0,
     likedUsers: post.likedUsers || [],
-    job_id: post.job_id || null,
+    problemId: post.problemId || null,
   });
 });
 
@@ -191,7 +191,7 @@ app.patch("/community/:postId", mockAuth, (req, res) => {
       likesCount: post.likesCount,
       likedUsers: post.likedUsers,
       commentCount: post.commentCount,
-      job_id: post.job_id,
+      problemId: post.problemId,
     },
   });
 });
