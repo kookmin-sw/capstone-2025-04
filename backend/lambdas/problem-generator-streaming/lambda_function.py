@@ -1,4 +1,5 @@
 # lambda_function.py
+# Force update comment
 import json
 import asyncio
 import os
@@ -7,33 +8,26 @@ import traceback
 import uuid # For generating problemId
 from pathlib import Path
 import boto3 # Added for DynamoDB access
-from botocore.exceptions import ClientError # Added for DynamoDB error handling
+from botocore.exceptions import ClientError, GoneException # Added GoneException
 
-# --- 경로 설정: problem-generator 모듈 임포트를 위해 ---
-# 이 Lambda 함수 파일의 위치를 기준으로 problem-generator 디렉토리 경로 계산
-current_dir = Path(__file__).parent
-generator_lambda_dir = current_dir.parent.parent / 'lambdas' / 'problem-generator'
-if str(generator_lambda_dir) not in sys.path:
-    sys.path.insert(0, str(generator_lambda_dir))
+# --- 경로 설정 제거: Lambda Layer 사용으로 불필요 ---
+# current_dir = Path(__file__).parent
+# generator_lambda_dir = current_dir.parent.parent / 'lambdas' / 'problem-generator'
+# if str(generator_lambda_dir) not in sys.path:
+#     sys.path.insert(0, str(generator_lambda_dir))
 # --- 경로 설정 끝 ---
 
-# --- problem-generator 모듈 임포트 ---
+# --- problem-generator 모듈 임포트 (같은 디렉토리에 병합됨) ---
 try:
     # generator 모듈 및 필요한 상수 임포트
     from generation.generator import ProblemGenerator, ALGORITHM_TYPES, DIFFICULTY_LEVELS
-    # 환경 변수 로드를 위해 load_dotenv 임포트 (필요시)
-    from dotenv import load_dotenv
-    # .env 파일 로드 (Lambda 환경변수를 우선 사용)
-    generator_env_path = generator_lambda_dir / '.env'
-    if generator_env_path.exists():
-        load_dotenv(dotenv_path=generator_env_path)
-        print("Loaded .env from problem-generator")
 
 except ImportError as e:
-    print(f"Error importing from problem-generator: {e}")
+    print(f"Error importing required modules: {e}") # 오류 메시지 수정
     # 필요한 경우, 의존성 없이는 작동할 수 없으므로 핸들러에서 오류 처리
     ProblemGenerator = None # 임포트 실패 시 핸들러에서 확인용
     ALGORITHM_TYPES = []
+    DIFFICULTY_LEVELS = [] # DIFFICULT_LEVELS 상수 사용 확인 필요
     # 임시 기본값 - generation.generator에서 실제 값을 가져오므로 주석 처리 또는 제거 가능
     # DIFFICULTY_LEVELS = ["Easy", "Medium", "Hard"] # 임시 기본값
 
@@ -42,10 +36,53 @@ except ImportError as e:
 PROBLEMS_TABLE_NAME = os.environ.get('PROBLEMS_TABLE_NAME', 'Problems')
 dynamodb_client = None
 
+# --- API Gateway Management API 클라이언트 --- (Lazy initialization)
+apigateway_management_api = None
+
+# --- API Gateway Management API 클라이언트 가져오기/초기화 ---
+def get_apigateway_management_api(event):
+    """Initializes and returns the API Gateway Management API client."""
+    global apigateway_management_api
+    if apigateway_management_api is None:
+        # API Gateway의 endpoint URL은 event에서 동적으로 가져옵니다.
+        domain_name = event.get('requestContext', {}).get('domainName') # 기본값 추가
+        stage = event.get('requestContext', {}).get('stage') # 기본값 추가
+        if not domain_name or not stage:
+            # CloudWatch 로그에는 기록하되, 클라이언트에게 오류 전송은 어려움
+            print("ERROR: Could not determine API Gateway endpoint URL from event")
+            # 필요하다면 여기서 예외를 발생시켜 핸들러 레벨에서 처리
+            raise ValueError("Could not determine API Gateway endpoint URL from event")
+        endpoint_url = f"https://{domain_name}/{stage}"
+        print(f"Initializing ApiGatewayManagementApi client for endpoint: {endpoint_url}")
+        apigateway_management_api = boto3.client('apigatewaymanagementapi', endpoint_url=endpoint_url)
+    return apigateway_management_api
+
+# --- WebSocket 메시지 전송 함수 ---
+async def post_to_connection(connection_id: str, message: str, event: dict):
+    """Sends a message to a specific WebSocket connection."""
+    try:
+        api_client = get_apigateway_management_api(event) # 이벤트에서 클라이언트 가져오기
+        await asyncio.to_thread(
+            api_client.post_to_connection,
+            ConnectionId=connection_id,
+            Data=message.encode('utf-8') # 메시지를 바이트로 인코딩
+        )
+        # print(f"Successfully posted message to {connection_id}") # 너무 많으면 주석 처리
+    except GoneException:
+        print(f"Connection {connection_id} not found (GoneException). Client likely disconnected.")
+        # 연결이 끊어졌으므로 더 이상 이 connection_id로 메시지를 보내지 않음
+        # 필요하다면 연결 상태를 DB 등에서 업데이트
+    except ClientError as e:
+        print(f"Error posting message to {connection_id}: {e.response['Error']['Message']}")
+    except Exception as e:
+        print(f"Unexpected error posting message to {connection_id}: {e}")
+        print(traceback.format_exc())
+
 # --- 헬퍼 함수 ---
-def format_stream_message(msg_type: str, payload: any) -> str:
-    """스트리밍 메시지를 JSON Lines 형식으로 포맷합니다."""
-    return json.dumps({"type": msg_type, "payload": payload}) + "\n"
+def format_websocket_message(msg_type: str, payload: any) -> str:
+    """WebSocket 메시지를 JSON 문자열로 포맷합니다."""
+    # JSON Lines 대신 단일 JSON 객체로 변경
+    return json.dumps({"type": msg_type, "payload": payload})
 
 def find_algorithm_type(prompt: str) -> str | None:
     """간단한 키워드 매칭으로 프롬프트에서 알고리즘 유형을 찾습니다."""
@@ -104,113 +141,168 @@ def save_problem_to_dynamodb(problem_data: dict):
         print(f"Unexpected error saving to DynamoDB: {e}")
         return None
 
-# --- Lambda 핸들러 ---
+# --- 비동기 로직을 포함하는 기본 핸들러 ---
 async def handler(event, context):
-    """ AWS Lambda 스트리밍 응답 핸들러 """
-    response_stream = context.get_response_stream()
-    request_body = {}
+    print("--- Async handler entry (WebSocket) ---")
     request_id = context.aws_request_id
-    # api_key = os.environ.get("GOOGLE_AI_API_KEY") # Lambda 환경 변수에서 API 키 가져오기 - 제거
+    connection_id = event.get('requestContext', {}).get('connectionId')
+
+    if not connection_id:
+        print("ERROR: Connection ID not found in event. Not a WebSocket request?")
+        # WebSocket 호출이 아니면 오류 처리 (API GW 설정 오류 가능성)
+        # API Gateway 프록시 통합에 오류 응답 반환 시도 (호출 방식에 따라 효과 없을 수 있음)
+        return {'statusCode': 400, 'body': 'Connection ID missing.'}
 
     try:
-        # 사전 확인: ProblemGenerator 임포트 성공 여부
-        if ProblemGenerator is None:
-             raise RuntimeError("Failed to import ProblemGenerator module. Check paths and dependencies.")
+        # API 클라이언트 초기화 시도 (여기서 실패하면 아래 post_to_connection 호출 불가)
+        get_apigateway_management_api(event)
 
-        print(f"[{request_id}] Request received: {event.get('rawPath', '')}")
+        # ProblemGenerator 임포트 확인
+        if ProblemGenerator is None:
+            raise RuntimeError("Failed to import ProblemGenerator module.")
+
+        print(f"[{request_id}] Processing request for connection: {connection_id}")
         body_str = event.get("body", "{}")
         request_body = json.loads(body_str)
+
+        # API Gateway WebSocket 라우팅 방식에 따라 action 필드 확인
+        action = request_body.get('action')
+        if action != 'generateProblem':
+             print(f"Ignoring message with unknown action: {action}")
+             # 연결 자체는 성공했으므로 200 OK 반환
+             return {'statusCode': 200, 'body': f'Ignoring action: {action}'}
+
+        # 실제 요청 데이터 추출 (body 안에 있다고 가정)
         prompt_input = request_body.get("prompt")
-        difficulty_input = request_body.get("difficulty") # 예: "튜토리얼", "쉬움", "보통", "어려움"
+        difficulty_input = request_body.get("difficulty")
 
         if not prompt_input or not difficulty_input:
-            raise ValueError("Missing 'prompt' or 'difficulty' in request body")
+            await post_to_connection(connection_id, format_websocket_message("error", "요청 본문에 'prompt' 또는 'difficulty'가 누락되었습니다."), event)
+            return {'statusCode': 400, 'body': 'Missing prompt or difficulty.'}
 
-        # 난이도 값 검증
-        if difficulty_input not in DIFFICULTY_LEVELS:
-            raise ValueError(f"Invalid 'difficulty' value: {difficulty_input}. Must be one of {DIFFICULTY_LEVELS}")
-        difficulty = difficulty_input # 매핑 없이 직접 사용
+        # DIFFICULTY_LEVELS 임포트 여부 확인 및 유효성 검사
+        if not DIFFICULTY_LEVELS:
+             print("Warning: DIFFICULTY_LEVELS not loaded.")
+             # 임시 검증 없이 진행하거나, 기본값으로 검증
+             difficulty = difficulty_input # 일단 진행
+        elif difficulty_input not in DIFFICULTY_LEVELS:
+            await post_to_connection(connection_id, format_websocket_message("error", f"잘못된 'difficulty' 값입니다: {difficulty_input}. 유효한 값: {DIFFICULTY_LEVELS}"), event)
+            return {'statusCode': 400, 'body': f'Invalid difficulty: {difficulty_input}'}
+        else:
+            difficulty = difficulty_input
 
         print(f"[{request_id}] Parsed request - Prompt: {prompt_input}, Difficulty: {difficulty}")
 
-        # 상태 업데이트: 요청 분석 시작
-        response_stream.write(format_stream_message("status", f"요청 분석 시작: '{prompt_input}' ({difficulty})").encode('utf-8'))
+        # 상태 업데이트: 클라이언트에게 전송
+        await post_to_connection(connection_id, format_websocket_message("status", f"요청 분석 시작: '{prompt_input}' ({difficulty})"), event)
 
-        # --- 알고리즘 유형 추출 ---
+        # 알고리즘 유형 추출 및 전송
         algorithm_type = find_algorithm_type(prompt_input)
         if not algorithm_type:
-            # 임시: 유형을 찾지 못하면 기본값 사용 또는 오류 처리
-            algorithm_type = "구현" # 또는 다른 기본값
-            response_stream.write(format_stream_message("status", f"알고리즘 유형 자동 감지 실패. '{algorithm_type}' 유형으로 진행합니다.").encode('utf-8'))
-            await asyncio.sleep(0.1)
-            # raise ValueError(f"Could not determine algorithm type from prompt: '{prompt_input}'")
+            # ALGORITHM_TYPES 임포트 여부 확인
+            if ALGORITHM_TYPES:
+                algorithm_type = ALGORITHM_TYPES[0] # 첫 번째 유형을 기본값으로 사용 (예: "구현")
+            else:
+                 print("Warning: ALGORITHM_TYPES not loaded. Using default 'Implementation'.")
+                 algorithm_type = "구현" # 하드코딩된 기본값
+
+            await post_to_connection(connection_id, format_websocket_message("status", f"알고리즘 유형 자동 감지 실패. '{algorithm_type}' 유형으로 진행합니다."), event)
         else:
-             response_stream.write(format_stream_message("status", f"알고리즘 유형 감지됨: '{algorithm_type}'").encode('utf-8'))
-             await asyncio.sleep(0.1)
+            await post_to_connection(connection_id, format_websocket_message("status", f"알고리즘 유형 감지됨: '{algorithm_type}'"), event)
+        await asyncio.sleep(0.1) # UI 업데이트 시간 확보
 
-        # --- ProblemGenerator 인스턴스 생성 ---
-        # if not api_key: # 제거
-        #      raise ValueError("API Key (GOOGLE_AI_API_KEY) is not configured in Lambda environment.")
-        # verbose=False 로 설정하여 Lambda 로그를 간결하게 유지 가능
-        # api_key 인자를 명시적으로 전달하지 않아 ProblemGenerator 내부에서 환경 변수를 확인하도록 함
-        generator = ProblemGenerator(verbose=False)
+        # ProblemGenerator 인스턴스 생성
+        # Verbose 설정은 환경 변수나 고정값으로 설정 가능
+        generator = ProblemGenerator(verbose=os.environ.get('GENERATOR_VERBOSE', 'False').lower() == 'true')
 
-        # --- 문제 생성 스트리밍 호출 ---
-        # generate_problem_stream은 성공 시 문제 객체 리스트를 반환, 실패 시 예외 발생
+        # --- 문제 생성 호출 (스트리밍 방식 변경) ---
+        # 콜백 함수 정의
+        async def websocket_stream_callback(msg_type: str, payload: any):
+            """Callback function to send messages via WebSocket."""
+            await post_to_connection(connection_id, format_websocket_message(msg_type, payload), event)
+
         generated_problems_list = await generator.generate_problem_stream(
             algorithm_type=algorithm_type,
             difficulty=difficulty,
-            response_stream=response_stream,
-            format_stream_message_func=format_stream_message,
-            verbose=False # Lambda 환경에서는 False 권장
+            stream_callback=websocket_stream_callback, # 수정된 콜백 전달
+            verbose=generator.verbose # 생성자 verbose 설정 사용
         )
 
-        # --- 생성된 문제 DB 저장 및 ID 추가 ---
+        # 생성된 문제 DB 저장 및 ID 추가
         saved_problems_with_id = []
-        if isinstance(generated_problems_list, list):
+        if isinstance(generated_problems_list, list) and generated_problems_list: # 리스트이고 비어있지 않은 경우
             for problem_data in generated_problems_list:
-                # 각 문제에 difficulty, algorithmType 정보 추가 (ProblemGenerator가 반환하지 않을 경우)
-                if 'difficulty' not in problem_data:
-                    problem_data['difficulty'] = difficulty
-                if 'algorithmType' not in problem_data:
-                    problem_data['algorithmType'] = algorithm_type
+                 # 데이터 유효성 검사 추가 (예: 필요한 필드 존재 여부)
+                 if not isinstance(problem_data, dict) or 'title' not in problem_data:
+                      print(f"Warning: Skipping invalid problem data: {problem_data}")
+                      continue
 
-                problem_id = save_problem_to_dynamodb(problem_data)
-                if problem_id:
-                    problem_data['problemId'] = problem_id # 스트리밍 결과에도 ID 추가
-                saved_problems_with_id.append(problem_data)
-        else:
-            # 예상치 못한 반환 타입 처리 (오류 또는 단일 객체 등)
+                 if 'difficulty' not in problem_data: problem_data['difficulty'] = difficulty
+                 if 'algorithmType' not in problem_data: problem_data['algorithmType'] = algorithm_type
+                 problem_id = save_problem_to_dynamodb(problem_data) # 동기 함수 호출
+                 if problem_id:
+                     problem_data['problemId'] = problem_id
+                 else:
+                     # 저장 실패 시 클라이언트에게 알림 (선택 사항)
+                     await post_to_connection(connection_id, format_websocket_message("warning", f"문제 '{problem_data.get('title', 'N/A')}'를 데이터베이스에 저장하지 못했습니다."), event)
+                 saved_problems_with_id.append(problem_data)
+        elif generated_problems_list: # 리스트는 아니지만 비어있지 않은 경우 (예상치 못한 상황)
             print(f"Warning: generate_problem_stream returned unexpected type: {type(generated_problems_list)}")
-            # 필요시 이 경우에 대한 처리 로직 추가
-            saved_problems_with_id = generated_problems_list # 임시로 그대로 사용
+            # 이 경우 어떻게 처리할지 결정 (오류로 간주하거나, 그대로 전송 시도)
+            await post_to_connection(connection_id, format_websocket_message("error", "문제 생성 결과 형식이 예상과 다릅니다."), event)
+        else: # 빈 리스트가 반환된 경우 (생성 실패 또는 오류)
+             print(f"[{request_id}] No problems were generated or generation failed.")
+             # 이미 stream_callback을 통해 오류가 전송되었을 수 있음
+             # 여기서 추가적인 완료 메시지를 보내지 않거나, 실패 상태를 명시적으로 보낼 수 있음
 
-        # --- 최종 결과 전송 (ID 포함된 데이터) ---
-        response_stream.write(format_stream_message("result", saved_problems_with_id).encode('utf-8'))
+        # 최종 결과 전송 (성공적으로 저장된 문제만)
+        if saved_problems_with_id:
+            await post_to_connection(connection_id, format_websocket_message("result", saved_problems_with_id), event)
+            await post_to_connection(connection_id, format_websocket_message("status", "✅ 문제 생성 및 저장이 완료되었습니다!"), event)
+        else:
+             # 생성된 문제가 없거나 모두 저장 실패한 경우
+             # stream_callback에서 오류가 이미 전송되었을 가능성이 높음
+             await post_to_connection(connection_id, format_websocket_message("status", "⚠️ 문제 생성/저장 중 오류가 발생하여 완료된 문제가 없습니다."), event)
 
-        # --- 최종 상태 ---
-        response_stream.write(format_stream_message("status", "✅ 생성 완료 및 저장됨!").encode('utf-8'))
-        print(f"[{request_id}] Request processed and problems saved successfully.")
 
-    except ValueError as ve:
-        print(f"[{request_id}] Error processing request: {traceback.format_exc()}")
-        error_message = f"오류 발생: {str(ve)}"
-        try:
-            response_stream.write(format_stream_message("error", error_message).encode('utf-8'))
-            response_stream.write(format_stream_message("status", "❌ 오류 발생").encode('utf-8'))
-        except Exception as write_err:
-            print(f"[{request_id}] Failed to write error to stream: {write_err}")
+        print(f"[{request_id}] Request processed for connection {connection_id}.")
+        # API Gateway 프록시 통합 성공 응답
+        return {'statusCode': 200, 'body': 'Request processed successfully.'}
 
-    except Exception as e:
-        print(f"[{request_id}] Error processing request: {traceback.format_exc()}")
-        error_message = f"오류 발생: {str(e)}"
-        try:
-            response_stream.write(format_stream_message("error", error_message).encode('utf-8'))
-            response_stream.write(format_stream_message("status", "❌ 오류 발생").encode('utf-8'))
-        except Exception as write_err:
-            print(f"[{request_id}] Failed to write error to stream: {write_err}")
+    except ValueError as ve: # 입력값 오류 등
+        error_message = f"입력 오류: {str(ve)}"
+        print(f"[{request_id}] ValueError occurred: {error_message}")
+        print(traceback.format_exc())
+        # 오류 메시지 클라이언트에게 전송 시도 (연결이 살아있다면)
+        if connection_id:
+            await post_to_connection(connection_id, format_websocket_message("error", error_message), event)
+        # API Gateway 프록시 통합 오류 응답
+        return {'statusCode': 400, 'body': error_message}
+
+    except RuntimeError as re: # 모듈 임포트 실패 등
+        error_message = f"런타임 오류: {str(re)}"
+        print(f"[{request_id}] RuntimeError occurred: {error_message}")
+        print(traceback.format_exc())
+        if connection_id:
+             await post_to_connection(connection_id, format_websocket_message("error", error_message), event)
+        return {'statusCode': 500, 'body': error_message}
+
+    except Exception as e: # 그 외 예외
+        error_message = f"내부 서버 오류 발생" # 상세 오류는 클라이언트에게 노출하지 않음
+        print(f"[{request_id}] General Exception occurred: {type(e).__name__} - {str(e)}")
+        print(traceback.format_exc())
+        if connection_id:
+            await post_to_connection(connection_id, format_websocket_message("error", error_message), event)
+        # API Gateway 프록시 통합 오류 응답
+        return {'statusCode': 500, 'body': error_message}
 
     finally:
-        # --- 스트림 닫기 (필수) ---
-        response_stream.close()
-        print(f"[{request_id}] Response stream closed.") 
+        print("--- Async handler finished (WebSocket) ---")
+        # finally 블록에서는 return을 하지 않음
+
+# --- 이전 동기 핸들러 및 관련 로직 제거 또는 주석 처리 ---
+# async def async_logic(event, context):
+#    ... (내용은 async def handler로 이동됨) ...
+
+# def handler(event, context):
+#    ... (asyncio.run 호출 부분 제거) ... 

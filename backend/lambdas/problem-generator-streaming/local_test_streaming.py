@@ -97,7 +97,7 @@ async def run_test():
         # 요청 본문 (프론트엔드에서 보낼 내용)
         "body": json.dumps({
             "prompt": "깊이 우선 탐색 기본 문제 만들어줘", # 테스트할 프롬프트
-            "difficulty": "Medium"                # 테스트할 난이도
+            "difficulty": "보통"                # 테스트할 난이도
         }),
         "isBase64Encoded": False
     }

@@ -85,14 +85,10 @@ def lambda_handler(event, context):
             'timeLimit': time_limit,
             'memoryLimit': memory_limit,
             'submittedAt': request_timestamp_ms, # Pass submission time
-            # Pass necessary Fargate details
-            'taskDefinitionArn': CODE_RUNNER_TASK_DEFINITION_ARN,
-            'clusterName': ECS_CLUSTER_NAME,
-            'subnets': SUBNET_IDS.split(',') if SUBNET_IDS else [],
-            'securityGroups': SECURITY_GROUP_IDS.split(',') if SECURITY_GROUP_IDS else [],
-            # Pass S3 details for results
-            's3BucketName': S3_BUCKET_NAME,
-            's3KeyPrefix': S3_KEY_PREFIX
+            'vpcConfig': { # Pass VPC details within a nested object
+                'subnetIds': SUBNET_IDS.split(',') if SUBNET_IDS else [],
+                'securityGroupIds': SECURITY_GROUP_IDS.split(',') if SECURITY_GROUP_IDS else []
+            }
         }
 
         # Input validation for required environment variables

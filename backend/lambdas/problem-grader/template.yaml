@@ -1,0 +1,750 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Problem Generator Streaming (WebSocket) and Problem Grader application.
+
+Parameters:
+  ProblemsTableName:
+    Type: String
+    Description: DynamoDB table name for problems.
+    Default: Problems
+  SubmissionsTableName:
+    Type: String
+    Description: DynamoDB table name for submissions.
+    Default: Submissions
+  GraderS3BucketName:
+    Type: String
+    Description: S3 bucket name for Fargate task results. Needs to be globally unique.
+    Default: your-unique-grader-results-bucket # MUST BE UNIQUE
+  CodeRunnerImageUri:
+    Type: String
+    Description: Full URI of the code-runner Docker image in ECR.
+  EcsClusterName:
+    Type: String
+    Description: Name of the existing ECS Cluster for Fargate tasks.
+  VpcSubnetIds:
+    Type: CommaDelimitedList # Changed to CommaDelimitedList for easier input
+    Description: Comma-separated list of VPC Subnet IDs for Fargate tasks.
+  VpcSecurityGroupIds:
+    Type: CommaDelimitedList # Changed to CommaDelimitedList
+    Description: Comma-separated list of Security Group IDs for Fargate tasks.
+  # Add Parameter for GOOGLE_AI_API_KEY if needed, or use Secrets Manager
+  # GoogleAiApiKey:
+  #   Type: String
+  #   Description: Google AI API Key (Consider using Secrets Manager instead)
+  #   NoEcho: true
+
+Globals:
+  Function:
+    Timeout: 30
+    MemorySize: 256
+    Runtime: python3.12
+
+Resources:
+  # --- API Gateway WebSocket API ---
+  WebSocketApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: ProblemStreamingWebSocketApi
+      ProtocolType: WEBSOCKET
+      RouteSelectionExpression: "$request.body.action" # Use 'action' field in JSON message to route
+
+  # --- WebSocket Routes ---
+  ConnectRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref WebSocketApi
+      RouteKey: $connect
+      AuthorizationType: NONE
+      OperationName: ConnectRoute
+      Target: !Join
+        - /
+        - - integrations
+          - !Ref ConnectIntegration
+
+  DisconnectRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref WebSocketApi
+      RouteKey: $disconnect
+      AuthorizationType: NONE
+      OperationName: DisconnectRoute
+      Target: !Join
+        - /
+        - - integrations
+          - !Ref DisconnectIntegration
+
+  GenerateProblemRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref WebSocketApi
+      RouteKey: generateProblem # Custom route key based on 'action' field
+      AuthorizationType: NONE
+      OperationName: GenerateProblemRoute
+      Target: !Join
+        - /
+        - - integrations
+          - !Ref GenerateProblemIntegration
+
+  # --- WebSocket Integrations ---
+  ConnectIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref WebSocketApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${WebSocketConnectFunction.Arn}/invocations"
+      CredentialsArn: !GetAtt ApiGatewayInvokeRole.Arn # Role for API GW to invoke Lambda
+      TimeoutInMillis: 29000
+      RequestParameters:
+        integration.request.header.X-Amz-Invocation-Type: "'RequestResponse'"
+
+  DisconnectIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref WebSocketApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${WebSocketDisconnectFunction.Arn}/invocations"
+      CredentialsArn: !GetAtt ApiGatewayInvokeRole.Arn
+
+  GenerateProblemIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref WebSocketApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ProblemGeneratorStreamingFunction.Arn}/invocations"
+      CredentialsArn: !GetAtt ApiGatewayInvokeRole.Arn
+      # RequestParameters might not be needed if invoking synchronously for the main logic
+      # ContentHandlingStrategy: CONVERT_TO_TEXT # If needed
+
+  # --- WebSocket Deployment & Stage ---
+  WebSocketDeployment:
+    Type: AWS::ApiGatewayV2::Deployment
+    DependsOn: # Ensure routes are created before deployment
+      - ConnectRoute
+      - DisconnectRoute
+      - GenerateProblemRoute
+    Properties:
+      ApiId: !Ref WebSocketApi
+
+  WebSocketStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref WebSocketApi
+      StageName: prod # Or any stage name you prefer
+      DeploymentId: !Ref WebSocketDeployment
+      # AutoDeploy: true # Consider enabling for easier updates
+      AccessLogSettings: # 로깅 설정 추가
+        DestinationArn: !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/apigateway/${WebSocketApi}/prod:* # !GetAtt 대신 ARN 직접 구성
+        Format: '$context.identity.sourceIp $context.identity.caller $context.identity.user [$context.requestTime] "$context.httpMethod $context.resourcePath $context.protocol" $context.status $context.responseLength $context.requestId'
+      DefaultRouteSettings: # 모든 라우트에 대한 상세 로깅 활성화
+        LoggingLevel: INFO
+        DataTraceEnabled: true # 메시지 내용 로깅 (필요시 false로 변경)
+
+  # --- CloudWatch Log Group for WebSocket API (추가) ---
+  # WebSocketLogGroup:
+  #   Type: AWS::Logs::LogGroup
+  #   Properties:
+  #     LogGroupName: !Sub /aws/apigateway/${WebSocketApi}/prod # 로그 그룹 이름 지정
+  #     RetentionInDays: 7 # 로그 보존 기간 (선택 사항)
+
+  # --- IAM Role for API Gateway to Invoke Lambda ---
+  ApiGatewayInvokeRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: apigateway.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: ApiGatewayInvokeLambdaPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource: # Allow invoking all functions in this stack for simplicity, scope down if needed
+                  - !GetAtt WebSocketConnectFunction.Arn
+                  - !GetAtt WebSocketDisconnectFunction.Arn
+                  - !GetAtt ProblemGeneratorStreamingFunction.Arn
+              - Effect: Allow # CloudWatch Logs 쓰기 권한 추가
+                Action:
+                  - logs:PutLogEvents
+                  - logs:DescribeLogStreams
+                  - logs:DescribeLogGroups
+                Resource: !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/apigateway/${WebSocketApi}/prod:* # !GetAtt 대신 ARN 직접 구성
+
+  # --- DynamoDB Tables --- #
+  ProblemsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Ref ProblemsTableName
+      AttributeDefinitions:
+        - AttributeName: problemId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: problemId
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+
+  SubmissionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Ref SubmissionsTableName
+      AttributeDefinitions:
+        - AttributeName: submissionId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: submissionId
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+
+  # --- S3 Bucket --- #
+  # GraderS3Bucket:
+  #   Type: AWS::S3::Bucket
+  #   Properties:
+  #     BucketName: !Ref GraderS3BucketName
+  #     LifecycleConfiguration:
+  #       Rules:
+  #         - Id: AutoDeleteOldResults
+  #           Status: Enabled
+  #           ExpirationInDays: 7 # Adjust as needed
+
+  # --- IAM Roles --- #
+  ProblemGeneratorStreamingRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument: # Standard Lambda trust policy
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: ProblemGeneratorStreamingPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow # Logs
+                Action:
+                  [logs:CreateLogGroup, logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*:*"
+              - Effect: Allow # DynamoDB Put
+                Action: dynamodb:PutItem
+                Resource: !GetAtt ProblemsTable.Arn
+              - Effect: Allow # NEW: Allow posting back to WebSocket connections
+                Action: execute-api:ManageConnections
+                Resource: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WebSocketApi}/*" # Grant on the API level
+              # Add Secrets Manager access if using it for API keys
+              # - Effect: Allow
+              #   Action: secretsmanager:GetSecretValue
+              #   Resource: arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:YourSecretName
+
+  ApiLambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument: # Standard Lambda trust policy
+        Version: "2012-10-17"
+        Statement:
+          [
+            {
+              Effect: Allow,
+              Principal: { Service: lambda.amazonaws.com },
+              Action: sts:AssumeRole,
+            },
+          ]
+      Policies:
+        - PolicyName: ApiLambdaPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow # Logs
+                Action:
+                  [logs:CreateLogGroup, logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*:*"
+              - Effect: Allow # DynamoDB Get
+                Action: dynamodb:GetItem
+                Resource: !GetAtt ProblemsTable.Arn
+              - Effect: Allow # Step Functions Start
+                Action: states:StartExecution
+                Resource: !Ref GraderStateMachine
+
+  ProcessorLambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument: # Standard Lambda trust policy
+        Version: "2012-10-17"
+        Statement:
+          [
+            {
+              Effect: Allow,
+              Principal: { Service: lambda.amazonaws.com },
+              Action: sts:AssumeRole,
+            },
+          ]
+      Policies:
+        - PolicyName: ProcessorLambdaPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow # Logs
+                Action:
+                  [logs:CreateLogGroup, logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*:*"
+              - Effect: Allow # S3 Get
+                Action: s3:GetObject
+                Resource: !Sub "arn:aws:s3:::${GraderS3BucketName}/grader-results/*"
+              - Effect: Allow # DynamoDB Put
+                Action: dynamodb:PutItem
+                Resource: !GetAtt SubmissionsTable.Arn
+
+  # --- NEW Roles for WebSocket Handlers ---
+  WebSocketConnectRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: WebSocketConnectPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow # Logs
+                Action:
+                  [logs:CreateLogGroup, logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*:*"
+              # Add DynamoDB permissions here if storing connection IDs
+              - Effect: Allow # Allow managing connections (Best practice, even if not used in connect)
+                Action: execute-api:ManageConnections
+                Resource: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WebSocketApi}/*"
+
+  WebSocketDisconnectRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: WebSocketDisconnectPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow # Logs
+                Action:
+                  [logs:CreateLogGroup, logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*:*"
+              # Add DynamoDB permissions here if removing connection IDs
+
+  FargateTaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument: # Standard ECS Task trust policy
+        Version: "2012-10-17"
+        Statement:
+          [
+            {
+              Effect: Allow,
+              Principal: { Service: ecs-tasks.amazonaws.com },
+              Action: sts:AssumeRole,
+            },
+          ]
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy # For ECR pull, CloudWatch logs
+
+  FargateTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument: # Standard ECS Task trust policy
+        Version: "2012-10-17"
+        Statement:
+          [
+            {
+              Effect: Allow,
+              Principal: { Service: ecs-tasks.amazonaws.com },
+              Action: sts:AssumeRole,
+            },
+          ]
+      Policies:
+        - PolicyName: FargateTaskS3Policy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow # S3 Put
+                Action: s3:PutObject
+                Resource: !Sub "arn:aws:s3:::${GraderS3BucketName}/grader-results/*"
+
+  StateMachineExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument: # Standard Step Functions trust policy
+        Version: "2012-10-17"
+        Statement:
+          [
+            {
+              Effect: Allow,
+              Principal:
+                { Service: !Sub "states.${AWS::Region}.amazonaws.com" },
+              Action: sts:AssumeRole,
+            },
+          ]
+      Policies:
+        - PolicyName: StateMachinePolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow # Invoke Lambda
+                Action: lambda:InvokeFunction
+                Resource: !GetAtt ResultProcessorFunction.Arn
+              - Effect: Allow # Run ECS Task
+                Action: [ecs:RunTask, ecs:StopTask, ecs:DescribeTasks]
+                Resource: "*" # Scope down if possible
+              - Effect: Allow # Pass Roles to ECS Task
+                Action: iam:PassRole
+                Resource:
+                  [
+                    !GetAtt FargateTaskExecutionRole.Arn,
+                    !GetAtt FargateTaskRole.Arn,
+                  ]
+              # Permissions required for DISTRIBUTED Map state
+              - Effect: Allow
+                Action:
+                  [
+                    states:StartExecution,
+                    states:DescribeExecution,
+                    states:StopExecution,
+                  ]
+                Resource: !Sub "arn:aws:states:${AWS::Region}:${AWS::AccountId}:execution:${AWS::StackName}/*"
+              # Add X-Ray permissions (often needed, especially for complex states like Distributed Map)
+              - Effect: Allow
+                Action: [xray:PutTraceSegments, xray:PutTelemetryRecords]
+                Resource: "*"
+              # Add EventBridge permissions (needed for Distributed Map)
+              - Effect: Allow
+                Action:
+                  - events:PutRule
+                  - events:PutTargets
+                  - events:DeleteRule
+                  - events:RemoveTargets
+                  - events:DescribeRule
+                Resource: "*" # 임시로 와일드카드 사용
+
+  # --- Lambda Layers --- #
+  LangchainLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: LangchainLayer
+      Description: Layer containing the langchain library
+      ContentUri: ../../layers/langchain_layer/ # Path relative to this template.yaml
+      CompatibleRuntimes: [python3.12]
+      LicenseInfo: "Available under the MIT license." # Example license
+      RetentionPolicy: Retain # Or Delete
+    Metadata: # Required for sam build with requirements.txt
+      BuildMethod: python3.12
+
+  LangchainGoogleLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: LangchainGoogleLayer
+      Description: Layer containing langchain-core and langchain-google-genai
+      ContentUri: ../../layers/langchain_google_layer/ # Path relative to this template.yaml
+      CompatibleRuntimes: [python3.12]
+      LicenseInfo: "Available under the MIT license." # Example license
+      RetentionPolicy: Retain
+    Metadata: # Required for sam build with requirements.txt
+      BuildMethod: python3.12
+
+  UtilsLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: UtilsLayer
+      Description: Layer containing python-dotenv
+      ContentUri: ../../layers/utils_layer/ # Path relative to this template.yaml
+      CompatibleRuntimes: [python3.12]
+      LicenseInfo: "Available under the MIT license." # Example license
+      RetentionPolicy: Retain
+    Metadata: # Required for sam build with requirements.txt
+      BuildMethod: python3.12
+
+  # --- Lambda Functions --- #
+  ProblemGeneratorStreamingFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: ProblemGeneratorStreamingFunction
+      CodeUri: ../problem-generator-streaming/
+      Handler: lambda_function.handler
+      Role: !GetAtt ProblemGeneratorStreamingRole.Arn
+      Layers:
+        - !Ref LangchainLayer
+        - !Ref LangchainGoogleLayer
+        - !Ref UtilsLayer
+      MemorySize: 512
+      Timeout: 300
+      Environment:
+        Variables:
+          PROBLEMS_TABLE_NAME: !Ref ProblemsTableName
+          # Pass API Key via environment variable (Consider Secrets Manager for production)
+          # GOOGLE_AI_API_KEY: !Ref GoogleAiApiKey
+          GENERATOR_VERBOSE: "True" # Or "False"
+      # Events: # Remove the entire Events section for this function
+      #   ProblemGeneratorStreamingFunctionWebSocketEvent:
+      #     Type: WebSocket
+      #     Properties:
+      #       ApiId: !Ref WebSocketApi
+      #       RouteKey: generateProblem
+
+  ProblemGraderApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: ProblemGraderApiFunction # Choose a name
+      CodeUri: lambdas/api/
+      Handler: lambda_function.lambda_handler
+      Role: !GetAtt ApiLambdaExecutionRole.Arn
+      Environment: # Pass necessary ARNs and names to API Lambda
+        Variables:
+          PROBLEMS_TABLE_NAME: !Ref ProblemsTableName
+          GRADER_STATE_MACHINE_ARN: !Ref GraderStateMachine
+          CODE_RUNNER_TASK_DEFINITION_ARN: !Ref CodeRunnerTaskDefinition
+          ECS_CLUSTER_NAME: !Ref EcsClusterName
+          SUBNET_IDS: !Join [",", !Ref VpcSubnetIds]
+          SECURITY_GROUP_IDS: !Join [",", !Ref VpcSecurityGroupIds]
+          S3_BUCKET_NAME: !Ref GraderS3BucketName
+          S3_KEY_PREFIX: grader-results
+      FunctionUrlConfig:
+        AuthType: AWS_IAM # IAM authentication for grader API
+        # Cors configuration might be needed if called from browser
+
+  ResultProcessorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: ResultProcessorFunction # Choose a name
+      CodeUri: lambdas/processor/
+      Handler: lambda_function.lambda_handler
+      Role: !GetAtt ProcessorLambdaExecutionRole.Arn
+      Timeout: 60
+      Environment: # Pass Submissions table name
+        Variables:
+          SUBMISSIONS_TABLE_NAME: !Ref SubmissionsTableName
+
+  # --- NEW WebSocket Handler Functions ---
+  WebSocketConnectFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: WebSocketConnectFunction
+      CodeUri: ./websocket/connect/ # Define path for connect handler code
+      Handler: connect_handler.handler
+      Role: !GetAtt WebSocketConnectRole.Arn
+      # Runtime: Inherited from Globals (python3.11)
+      MemorySize: 128 # Usually small
+      Timeout: 10
+
+  WebSocketDisconnectFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: WebSocketDisconnectFunction
+      CodeUri: ./websocket/disconnect/ # Define path for disconnect handler code
+      Handler: disconnect_handler.handler
+      Role: !GetAtt WebSocketDisconnectRole.Arn
+      # Runtime: Inherited from Globals (python3.11)
+      MemorySize: 128
+      Timeout: 10
+
+  # --- ECS Task Definition --- #
+  CodeRunnerTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: code-runner-task
+      RequiresCompatibilities: [FARGATE]
+      NetworkMode: awsvpc
+      Cpu: "1024" # 1 vCPU
+      Memory: "2048" # 2 GB
+      ExecutionRoleArn: !GetAtt FargateTaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt FargateTaskRole.Arn
+      ContainerDefinitions:
+        - Name: code-runner-container
+          Image: !Ref CodeRunnerImageUri
+          Essential: true
+          LogConfiguration: # Configure CloudWatch Logs
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Sub /ecs/${AWS::StackName}/code-runner
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: ecs # Stream name will be ecs/code-runner-container/<task-id>
+
+  # --- Step Functions State Machine --- #
+  GraderStateMachine:
+    Type: AWS::StepFunctions::StateMachine
+    Properties:
+      StateMachineName: GraderStateMachine
+      RoleArn: !GetAtt StateMachineExecutionRole.Arn
+      # Use DefinitionString to embed ASL and substitute ARNs easily
+      DefinitionString: !Sub
+        - |-
+          {
+            "Comment": "사용자 코드 제출 채점 워크플로우 (Fargate 사용, 결과 S3 저장)",
+            "StartAt": "Prepare Fargate Inputs",
+            "States": {
+              "Prepare Fargate Inputs": {
+                "Type": "Pass",
+                "Comment": "Step Functions Map 상태에서 각 Fargate 작업에 공통적으로 필요한 파라미터 준비",
+                "ResultPath": "$.fargateInputs",
+                "Parameters": {
+                    "taskDefinitionArn": "${CodeRunnerTaskDefinitionArn}",
+                    "clusterName": "${EcsClusterName}",
+                    "subnets.$": "$.vpcConfig.subnetIds",
+                    "securityGroups.$": "$.vpcConfig.securityGroupIds",
+                    "s3BucketName": "${S3BucketName}",
+                    "s3KeyPrefix": "${S3KeyPrefix}",
+                    "submissionId.$": "$.submissionId"
+                },
+                "Next": "Map Over Testcases"
+              },
+              "Map Over Testcases": {
+                "Type": "Map",
+                "Comment": "테스트 케이스 배열 순회, 각 Fargate 작업 병렬 실행",
+                "InputPath": "$",
+                "ItemsPath": "$.testcases",
+                "MaxConcurrency": 10,
+                "ResultPath": "$.taskResults",
+                "Parameters": {
+                    "fargateParams.$": "$.fargateInputs",
+                    "testcase.$": "$$.Map.Item.Value",
+                    "testcaseId.$": "$$.Map.Item.Index",
+                    "originalInput.$": "$"
+                },
+                "ItemProcessor": {
+                  "ProcessorConfig": { "Mode": "DISTRIBUTED", "ExecutionType": "STANDARD" },
+                  "StartAt": "Run Code on Fargate",
+                  "States": {
+                    "Run Code on Fargate": {
+                      "Type": "Task",
+                      "Resource": "arn:aws:states:::ecs:runTask.sync",
+                      "Comment": "Fargate 작업을 동기 실행하고 결과를 파싱 시도",
+                      "Parameters": {
+                        "LaunchType": "FARGATE",
+                        "Cluster.$": "$.fargateParams.clusterName",
+                        "TaskDefinition.$": "$.fargateParams.taskDefinitionArn",
+                        "NetworkConfiguration": {
+                          "AwsvpcConfiguration": {
+                            "Subnets.$": "$.fargateParams.subnets",
+                            "SecurityGroups.$": "$.fargateParams.securityGroups",
+                            "AssignPublicIp": "ENABLED"
+                          }
+                        },
+                        "Overrides": {
+                          "ContainerOverrides": [{
+                              "Name": "code-runner-container",
+                              "Environment": [
+                                  {"Name": "USER_CODE", "value.$": "$.originalInput.code"},
+                                  {"Name": "LANGUAGE", "value.$": "$.originalInput.language"},
+                                  {"Name": "TIME_LIMIT", "value.$": "States.Format('{}', $.originalInput.timeLimit)"},
+                                  {"Name": "MEMORY_LIMIT", "value.$": "States.Format('{}', $.originalInput.memoryLimit)"},
+                                  {"Name": "INPUT_DATA", "value.$": "$.testcase.input"},
+                                  {"Name": "EXPECTED_OUTPUT", "value.$": "$.testcase.output"},
+                                  {"Name": "S3_BUCKET_NAME", "value.$": "$.fargateParams.s3BucketName"},
+                                  {"Name": "S3_KEY_PREFIX", "value.$": "$.fargateParams.s3KeyPrefix"},
+                                  {"Name": "SUBMISSION_ID", "value.$": "$.fargateParams.submissionId"},
+                                  {"Name": "TESTCASE_ID", "value.$": "States.Format('{}', $.testcaseId)"}
+                              ]
+                          }]
+                        }
+                      },
+                      "ResultSelector": {
+                           "Comment": "TODO: 실제 Fargate 출력에서 결과 파싱 로직 필요. 우선 Task ARN 반환.",
+                           "TaskArn.$": "$.TaskArn"
+                      },
+                      "ResultPath": "$.fargateTaskInfo",
+                      "Catch": [
+                        {
+                          "ErrorEquals": ["States.ALL"], "ResultPath": "$.errorInfo",
+                          "Comment": "Fargate 작업 실행 중 발생한 모든 오류를 처리합니다.",
+                          "Next": "Handle Fargate Error"
+                        }
+                      ],
+                      "Next": "Get Fargate Result"
+                    },
+                    "Get Fargate Result": {
+                       "Type": "Task",
+                       "Resource": "arn:aws:states:::lambda:invoke",
+                       "Comment": "TODO: 이 Lambda는 Task ARN을 받아 로그/S3에서 실제 runner.py 결과를 가져옵니다.",
+                       "Parameters": { "FunctionName": "${GetFargateResultLambdaArn}", "Payload.$": "$" },
+                       "ResultPath": "$.fargateResult.RunnerOutputJson",
+                       "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.errorInfo", "Next": "Handle Fargate Error"}],
+                       "Next": "Prepare Output"
+                    },
+                    "Handle Fargate Error": {
+                        "Type": "Pass",
+                        "Comment": "Fargate 작업 실패 시 오류 정보를 포함한 결과를 반환합니다.",
+                        "Parameters": { "status": "FargateTaskFailed", "error.$": "$.errorInfo", "testcaseId.$": "$.testcaseId"},
+                        "ResultPath": "$.fargateResult.RunnerOutputJson",
+                        "Next": "Prepare Output"
+                    },
+                    "Prepare Output": { "Type": "Pass", "InputPath": "$.fargateResult.RunnerOutputJson", "End": true }
+                  }
+                },
+                "Next": "Process Results"
+              },
+              "Process Results": {
+                "Type": "Task",
+                "Resource": "arn:aws:states:::lambda:invoke",
+                "Comment": "모든 Fargate 작업 결과를 취합하여 최종 채점 결과를 계산하고 저장하는 Lambda 함수 호출",
+                "Parameters": { "FunctionName": "${ResultProcessorFunctionArn}", "Payload.$": "$" },
+                "ResultPath": "$.gradingResult",
+                "OutputPath": "$.gradingResult.Payload",
+                "End": true
+              }
+            }
+          }
+        - {
+            CodeRunnerTaskDefinitionArn: !Ref CodeRunnerTaskDefinition,
+            EcsClusterName: !Ref EcsClusterName,
+            S3BucketName: !Ref GraderS3BucketName,
+            S3KeyPrefix: "grader-results",
+            ResultProcessorFunctionArn: !GetAtt ResultProcessorFunction.Arn,
+            GetFargateResultLambdaArn: "arn:aws:lambda:REGION:ACCOUNT_ID:function:YourGetFargateResultLambda",
+          }
+
+  # --- Add Explicit Lambda Permission for WebSocket Route (Moved to Resources) ---
+  GenerateProblemInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt ProblemGeneratorStreamingFunction.Arn # Use !GetAtt to reference the function ARN
+      Principal: apigateway.amazonaws.com
+      # Grant permission specifically for the generateProblem route on the WebSocket API
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WebSocketApi}/*/generateProblem"
+
+Outputs:
+  # Remove Function URL output for streaming
+  # ProblemGeneratorStreamingApiEndpoint:
+  #   Description: "API Endpoint URL for Problem Generator Streaming Function"
+  #   Value: !GetAtt ProblemGeneratorStreamingFunctionUrl.FunctionUrl
+
+  # Add WebSocket API Endpoint Output
+  WebSocketApiEndpoint:
+    Description: "WebSocket API endpoint URL"
+    Value: !Sub "wss://${WebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/prod" # Use hardcoded stage name 'prod'
+
+  ProblemGraderApiEndpoint:
+    Description: "API Endpoint URL for Problem Grader API Function"
+    Value: !GetAtt ProblemGraderApiFunctionUrl.FunctionUrl
+  GraderStateMachineArn:
+    Description: "ARN of the Grader State Machine"
+    Value: !Ref GraderStateMachine
+  ProblemsTableNameOutput:
+    Description: "Name of the Problems DynamoDB table"
+    Value: !Ref ProblemsTableName
+  SubmissionsTableNameOutput:
+    Description: "Name of the Submissions DynamoDB table"
+    Value: !Ref SubmissionsTableName
+  GraderS3BucketNameOutput:
+    Description: "Name of the S3 bucket for grader results"
+    Value: !Ref GraderS3BucketName

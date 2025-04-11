@@ -24,24 +24,23 @@
       "ItemsPath": "$.testcases",
       "MaxConcurrency": 10,
       "ResultPath": "$.taskResults",
-      "ResultSelector": {
-        "originalInput.$": "$.originalInput",
-        "taskResults.$": "$"
-      },
       "Parameters": {
         "fargateParams.$": "$.fargateInputs",
         "testcase.$": "$$.Map.Item.Value",
         "testcaseId.$": "$$.Map.Item.Index",
         "originalInput.$": "$"
       },
-      "Iterator": {
-        "Comment": "각 테스트 케이스에 대한 Fargate 작업 실행 및 S3 결과 위치 반환",
+      "ItemProcessor": {
+        "ProcessorConfig": {
+          "Mode": "DISTRIBUTED",
+          "ExecutionType": "STANDARD"
+        },
         "StartAt": "Run Code on Fargate",
         "States": {
           "Run Code on Fargate": {
             "Type": "Task",
             "Resource": "arn:aws:states:::ecs:runTask.sync",
-            "Comment": "Fargate 작업을 동기 실행하고 S3 결과 위치 또는 오류 반환",
+            "Comment": "Fargate 작업을 동기 실행하고 결과를 파싱 시도",
             "Parameters": {
               "LaunchType": "FARGATE",
               "Cluster.$": "$.fargateParams.clusterName",
@@ -101,11 +100,10 @@
               }
             },
             "ResultSelector": {
-              "Comment": "Fargate 작업의 표준 출력(stdout)에서 S3 위치 또는 원시 결과를 JSON으로 파싱합니다.",
-              "Output.$": "States.StringToJson($.Containers[0].ExitReason)"
+              "Comment": "Fargate 작업의 결과(종료 사유 등)에서 runner.py의 JSON 출력을 파싱 시도. 실제 경로는 테스트 필요.",
+              "RunnerOutputJson.$": "States.StringToJson($.Containers[0].Reason)"
             },
-            "ResultPath": "$.fargateOutput",
-            "OutputPath": "$.fargateOutput",
+            "ResultPath": "$.fargateResult",
             "Catch": [
               {
                 "ErrorEquals": ["States.ALL"],
@@ -114,7 +112,7 @@
                 "Next": "Handle Fargate Error"
               }
             ],
-            "End": true
+            "Next": "Prepare Output"
           },
           "Handle Fargate Error": {
             "Type": "Pass",
@@ -124,8 +122,13 @@
               "error.$": "$.errorInfo",
               "testcaseId.$": "$.testcaseId"
             },
-            "ResultPath": "$.fargateOutput",
-            "OutputPath": "$.fargateOutput",
+            "ResultPath": "$.fargateResult.RunnerOutputJson",
+            "Next": "Prepare Output"
+          },
+          "Prepare Output": {
+            "Type": "Pass",
+            "Comment": "다음 단계(result-processor)로 전달할 최종 출력 포맷 지정",
+            "InputPath": "$.fargateResult.RunnerOutputJson",
             "End": true
           }
         }
@@ -135,10 +138,13 @@
     "Process Results": {
       "Type": "Task",
       "Resource": "arn:aws:states:::lambda:invoke",
-      "Comment": "모든 Fargate 작업 결과(S3 위치 또는 원시 데이터)를 취합하여 최종 채점 결과를 계산하고 저장하는 Lambda 함수 호출",
+      "Comment": "모든 Fargate 작업 결과를 취합하여 최종 채점 결과를 계산하고 저장하는 Lambda 함수 호출",
       "Parameters": {
         "FunctionName": "arn:aws:lambda:REGION:ACCOUNT_ID:function:YourResultProcessorFunctionName",
-        "Payload.$": "$"
+        "Payload": {
+          "originalInput.$": "$.originalInput",
+          "taskResults.$": "$.taskResults"
+        }
       },
       "ResultPath": "$.gradingResult",
       "OutputPath": "$.gradingResult.Payload",
