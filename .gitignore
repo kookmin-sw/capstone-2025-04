@@ -97,3 +97,5 @@ infrastructure/cognito/post_confirmation_lambda.zip
 .next/
 .nuxt/
 .cache/
+
+infrastructure/api/lambda_zips/*.zip
