@@ -22,7 +22,7 @@ locals {
 # 1. createPost
 data "archive_file" "create_post_zip" {
   type        = "zip"
-  source_file = "${local.lambda_source_base_path}/createPost_modified.js"
+  source_file = "${local.lambda_source_base_path}/createPost_modified.mjs"
   output_path = "${path.module}/lambda_zips/createPost.zip"
 }
 
@@ -49,7 +49,7 @@ resource "aws_lambda_function" "create_post" {
 # 2. deletePost
 data "archive_file" "delete_post_zip" {
   type        = "zip"
-  source_file = "${local.lambda_source_base_path}/deletePost_modified.js"
+  source_file = "${local.lambda_source_base_path}/deletePost_modified.mjs"
   output_path = "${path.module}/lambda_zips/deletePost.zip"
 }
 
@@ -76,7 +76,7 @@ resource "aws_lambda_function" "delete_post" {
 # 3. getAllPosts
 data "archive_file" "get_all_posts_zip" {
   type        = "zip"
-  source_file = "${local.lambda_source_base_path}/getAllPosts_modified.js"
+  source_file = "${local.lambda_source_base_path}/getAllPosts_modified.mjs"
   output_path = "${path.module}/lambda_zips/getAllPosts.zip"
 }
 
@@ -103,7 +103,7 @@ resource "aws_lambda_function" "get_all_posts" {
 # 4. getPost
 data "archive_file" "get_post_zip" {
   type        = "zip"
-  source_file = "${local.lambda_source_base_path}/getPost_modified.js"
+  source_file = "${local.lambda_source_base_path}/getPost_modified.mjs"
   output_path = "${path.module}/lambda_zips/getPost.zip"
 }
 
@@ -130,7 +130,7 @@ resource "aws_lambda_function" "get_post" {
 # 5. likePost
 data "archive_file" "like_post_zip" {
   type        = "zip"
-  source_file = "${local.lambda_source_base_path}/likePost_modified.js"
+  source_file = "${local.lambda_source_base_path}/likePost_modified.mjs"
   output_path = "${path.module}/lambda_zips/likePost.zip"
 }
 
@@ -157,7 +157,7 @@ resource "aws_lambda_function" "like_post" {
 # 6. updatePost
 data "archive_file" "update_post_zip" {
   type        = "zip"
-  source_file = "${local.lambda_source_base_path}/updatePost_modified.js"
+  source_file = "${local.lambda_source_base_path}/updatePost_modified.mjs"
   output_path = "${path.module}/lambda_zips/updatePost.zip"
 }
 
@@ -187,7 +187,7 @@ resource "aws_lambda_function" "update_post" {
 # 7. createComment
 data "archive_file" "create_comment_zip" {
   type        = "zip"
-  source_file = "${local.lambda_source_base_path}/comment/createComment_modified.js"
+  source_file = "${local.lambda_source_base_path}/comment/createComment_modified.mjs"
   output_path = "${path.module}/lambda_zips/createComment.zip"
 }
 
@@ -214,7 +214,7 @@ resource "aws_lambda_function" "create_comment" {
 # 8. deleteComment
 data "archive_file" "delete_comment_zip" {
   type        = "zip"
-  source_file = "${local.lambda_source_base_path}/comment/deleteComment_modified.js"
+  source_file = "${local.lambda_source_base_path}/comment/deleteComment_modified.mjs"
   output_path = "${path.module}/lambda_zips/deleteComment.zip"
 }
 
@@ -241,7 +241,7 @@ resource "aws_lambda_function" "delete_comment" {
 # 9. getComments
 data "archive_file" "get_comments_zip" {
   type        = "zip"
-  source_file = "${local.lambda_source_base_path}/comment/getComments_modified.js"
+  source_file = "${local.lambda_source_base_path}/comment/getComments_modified.mjs"
   output_path = "${path.module}/lambda_zips/getComments.zip"
 }
 
