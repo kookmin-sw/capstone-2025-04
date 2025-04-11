@@ -68,3 +68,29 @@ resource "aws_iam_role_policy_attachment" "dynamodb_access" {
   role       = aws_iam_role.lambda_exec_role.name
   policy_arn = aws_iam_policy.dynamodb_policy.arn
 }
+
+# --- API Gateway Logging Role ---
+
+# Role for API Gateway to push logs to CloudWatch
+resource "aws_iam_role" "api_gateway_cloudwatch_role" {
+  name = "${var.project_name}-APIGatewayCloudWatchRole-${var.environment}"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action    = "sts:AssumeRole"
+      Effect    = "Allow"
+      Principal = { Service = "apigateway.amazonaws.com" }
+    }]
+  })
+
+  tags = merge(var.common_tags, {
+    Name = "${var.project_name}-APIGatewayCloudWatchRole-${var.environment}"
+  })
+}
+
+# Policy attachment for the logging role
+resource "aws_iam_role_policy_attachment" "api_gateway_cloudwatch_policy_attachment" {
+  role       = aws_iam_role.api_gateway_cloudwatch_role.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs"
+}

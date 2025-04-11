@@ -7,7 +7,7 @@ locals {
   lambda_memory  = 256 # MB
 
   # Base path to the Lambda source code directory relative to this module
-  lambda_source_base_path = "${path.module}/../../backend/lambdas/community"
+  lambda_source_base_path = "${path.module}/../../backend/lambdas/community-lambda-functions"
 
   # Common environment variables for all community lambdas
   common_lambda_environment_variables = {
@@ -22,7 +22,7 @@ locals {
 # 1. createPost
 data "archive_file" "create_post_zip" {
   type        = "zip"
-  source_file = "${local.lambda_source_base_path}/createPost.js"
+  source_file = "${local.lambda_source_base_path}/createPost_modified.js"
   output_path = "${path.module}/lambda_zips/createPost.zip"
 }
 
@@ -30,7 +30,7 @@ resource "aws_lambda_function" "create_post" {
   function_name    = "${var.project_name}-createPost-${var.environment}"
   filename         = data.archive_file.create_post_zip.output_path
   source_code_hash = data.archive_file.create_post_zip.output_base64sha256
-  handler          = "createPost.handler"
+  handler          = "createPost_modified.handler"
   runtime          = local.lambda_runtime
   role             = aws_iam_role.lambda_exec_role.arn
   layers           = [aws_lambda_layer_version.common_deps_layer.arn]
@@ -49,7 +49,7 @@ resource "aws_lambda_function" "create_post" {
 # 2. deletePost
 data "archive_file" "delete_post_zip" {
   type        = "zip"
-  source_file = "${local.lambda_source_base_path}/deletePost.js"
+  source_file = "${local.lambda_source_base_path}/deletePost_modified.js"
   output_path = "${path.module}/lambda_zips/deletePost.zip"
 }
 
@@ -57,7 +57,7 @@ resource "aws_lambda_function" "delete_post" {
   function_name    = "${var.project_name}-deletePost-${var.environment}"
   filename         = data.archive_file.delete_post_zip.output_path
   source_code_hash = data.archive_file.delete_post_zip.output_base64sha256
-  handler          = "deletePost.handler"
+  handler          = "deletePost_modified.handler"
   runtime          = local.lambda_runtime
   role             = aws_iam_role.lambda_exec_role.arn
   layers           = [aws_lambda_layer_version.common_deps_layer.arn]
@@ -76,7 +76,7 @@ resource "aws_lambda_function" "delete_post" {
 # 3. getAllPosts
 data "archive_file" "get_all_posts_zip" {
   type        = "zip"
-  source_file = "${local.lambda_source_base_path}/getAllPosts.js"
+  source_file = "${local.lambda_source_base_path}/getAllPosts_modified.js"
   output_path = "${path.module}/lambda_zips/getAllPosts.zip"
 }
 
@@ -84,7 +84,7 @@ resource "aws_lambda_function" "get_all_posts" {
   function_name    = "${var.project_name}-getAllPosts-${var.environment}"
   filename         = data.archive_file.get_all_posts_zip.output_path
   source_code_hash = data.archive_file.get_all_posts_zip.output_base64sha256
-  handler          = "getAllPosts.handler"
+  handler          = "getAllPosts_modified.handler"
   runtime          = local.lambda_runtime
   role             = aws_iam_role.lambda_exec_role.arn
   layers           = [aws_lambda_layer_version.common_deps_layer.arn]
@@ -103,7 +103,7 @@ resource "aws_lambda_function" "get_all_posts" {
 # 4. getPost
 data "archive_file" "get_post_zip" {
   type        = "zip"
-  source_file = "${local.lambda_source_base_path}/getPost.js"
+  source_file = "${local.lambda_source_base_path}/getPost_modified.js"
   output_path = "${path.module}/lambda_zips/getPost.zip"
 }
 
@@ -111,7 +111,7 @@ resource "aws_lambda_function" "get_post" {
   function_name    = "${var.project_name}-getPost-${var.environment}"
   filename         = data.archive_file.get_post_zip.output_path
   source_code_hash = data.archive_file.get_post_zip.output_base64sha256
-  handler          = "getPost.handler"
+  handler          = "getPost_modified.handler"
   runtime          = local.lambda_runtime
   role             = aws_iam_role.lambda_exec_role.arn
   layers           = [aws_lambda_layer_version.common_deps_layer.arn]
@@ -130,7 +130,7 @@ resource "aws_lambda_function" "get_post" {
 # 5. likePost
 data "archive_file" "like_post_zip" {
   type        = "zip"
-  source_file = "${local.lambda_source_base_path}/likePost.js"
+  source_file = "${local.lambda_source_base_path}/likePost_modified.js"
   output_path = "${path.module}/lambda_zips/likePost.zip"
 }
 
@@ -138,7 +138,7 @@ resource "aws_lambda_function" "like_post" {
   function_name    = "${var.project_name}-likePost-${var.environment}"
   filename         = data.archive_file.like_post_zip.output_path
   source_code_hash = data.archive_file.like_post_zip.output_base64sha256
-  handler          = "likePost.handler"
+  handler          = "likePost_modified.handler"
   runtime          = local.lambda_runtime
   role             = aws_iam_role.lambda_exec_role.arn
   layers           = [aws_lambda_layer_version.common_deps_layer.arn]
@@ -157,7 +157,7 @@ resource "aws_lambda_function" "like_post" {
 # 6. updatePost
 data "archive_file" "update_post_zip" {
   type        = "zip"
-  source_file = "${local.lambda_source_base_path}/updatePost.js"
+  source_file = "${local.lambda_source_base_path}/updatePost_modified.js"
   output_path = "${path.module}/lambda_zips/updatePost.zip"
 }
 
@@ -165,7 +165,7 @@ resource "aws_lambda_function" "update_post" {
   function_name    = "${var.project_name}-updatePost-${var.environment}"
   filename         = data.archive_file.update_post_zip.output_path
   source_code_hash = data.archive_file.update_post_zip.output_base64sha256
-  handler          = "updatePost.handler"
+  handler          = "updatePost_modified.handler"
   runtime          = local.lambda_runtime
   role             = aws_iam_role.lambda_exec_role.arn
   layers           = [aws_lambda_layer_version.common_deps_layer.arn]
@@ -187,7 +187,7 @@ resource "aws_lambda_function" "update_post" {
 # 7. createComment
 data "archive_file" "create_comment_zip" {
   type        = "zip"
-  source_file = "${local.lambda_source_base_path}/comment/createComment.js"
+  source_file = "${local.lambda_source_base_path}/comment/createComment_modified.js"
   output_path = "${path.module}/lambda_zips/createComment.zip"
 }
 
@@ -195,7 +195,7 @@ resource "aws_lambda_function" "create_comment" {
   function_name    = "${var.project_name}-createComment-${var.environment}"
   filename         = data.archive_file.create_comment_zip.output_path
   source_code_hash = data.archive_file.create_comment_zip.output_base64sha256
-  handler          = "createComment.handler"
+  handler          = "createComment_modified.handler"
   runtime          = local.lambda_runtime
   role             = aws_iam_role.lambda_exec_role.arn
   layers           = [aws_lambda_layer_version.common_deps_layer.arn]
@@ -214,7 +214,7 @@ resource "aws_lambda_function" "create_comment" {
 # 8. deleteComment
 data "archive_file" "delete_comment_zip" {
   type        = "zip"
-  source_file = "${local.lambda_source_base_path}/comment/deleteComment.js"
+  source_file = "${local.lambda_source_base_path}/comment/deleteComment_modified.js"
   output_path = "${path.module}/lambda_zips/deleteComment.zip"
 }
 
@@ -222,7 +222,7 @@ resource "aws_lambda_function" "delete_comment" {
   function_name    = "${var.project_name}-deleteComment-${var.environment}"
   filename         = data.archive_file.delete_comment_zip.output_path
   source_code_hash = data.archive_file.delete_comment_zip.output_base64sha256
-  handler          = "deleteComment.handler"
+  handler          = "deleteComment_modified.handler"
   runtime          = local.lambda_runtime
   role             = aws_iam_role.lambda_exec_role.arn
   layers           = [aws_lambda_layer_version.common_deps_layer.arn]
@@ -241,7 +241,7 @@ resource "aws_lambda_function" "delete_comment" {
 # 9. getComments
 data "archive_file" "get_comments_zip" {
   type        = "zip"
-  source_file = "${local.lambda_source_base_path}/comment/getComments.js"
+  source_file = "${local.lambda_source_base_path}/comment/getComments_modified.js"
   output_path = "${path.module}/lambda_zips/getComments.zip"
 }
 
@@ -249,7 +249,7 @@ resource "aws_lambda_function" "get_comments" {
   function_name    = "${var.project_name}-getComments-${var.environment}"
   filename         = data.archive_file.get_comments_zip.output_path
   source_code_hash = data.archive_file.get_comments_zip.output_base64sha256
-  handler          = "getComments.handler"
+  handler          = "getComments_modified.handler"
   runtime          = local.lambda_runtime
   role             = aws_iam_role.lambda_exec_role.arn
   layers           = [aws_lambda_layer_version.common_deps_layer.arn]

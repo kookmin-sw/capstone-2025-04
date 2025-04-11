@@ -34,12 +34,14 @@ resource "aws_dynamodb_table" "community_table" {
 
     # Attributes needed by getAllPosts.js (adjust if needed)
     non_key_attributes = [
+      "PK",
       "title",
       "author",
       "likesCount",
       "commentCount",
-      "problemId" # Assuming problemId is the same as job_id
-      # PK is automatically included as it's the main table's hash key
+      "problemId" # Changed back from job_id
+      # createdAt is the range key (GSI1SK), so it's automatically included
+      # PK is automatically included as it's the main table's hash key -> This comment is incorrect for INCLUDE projection
     ]
   }
 

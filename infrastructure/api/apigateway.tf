@@ -19,13 +19,21 @@ resource "aws_api_gateway_rest_api" "community_api" {
     types = ["REGIONAL"] # Or EDGE for CloudFront distribution
   }
 
-  # Enable CloudWatch logging for API Gateway
-  # (Requires an IAM role for API Gateway to write logs - define separately if needed)
-  # cloudwatch_role_arn = aws_iam_role.api_gateway_cloudwatch_role.arn
+  # cloudwatch_role_arn is set in aws_api_gateway_account resource
 
   tags = merge(var.common_tags, {
     Name = "${var.project_name}-CommunityAPI-${var.environment}"
   })
+}
+
+# --- API Gateway Account Settings ---
+# Configures the AWS account-level settings for API Gateway, such as the CloudWatch role ARN.
+# This is needed once per region per account.
+resource "aws_api_gateway_account" "apigw_account" {
+  cloudwatch_role_arn = aws_iam_role.api_gateway_cloudwatch_role.arn
+
+  # Ensure this depends on the role being created
+  depends_on = [aws_iam_role.api_gateway_cloudwatch_role]
 }
 
 # --- Cognito Authorizer ---
@@ -90,9 +98,9 @@ locals {
     "POST /community"   = { method = aws_api_gateway_method.community_post.http_method, path = aws_api_gateway_resource.community_root.path }
     "GET /community"    = { method = aws_api_gateway_method.community_get_all.http_method, path = aws_api_gateway_resource.community_root.path }
     "GET /community/{postId}" = { method = aws_api_gateway_method.post_get_one.http_method, path = aws_api_gateway_resource.post_id.path }
-    "PUT /community/{postId}" = { method = aws_api_gateway_method.post_update.http_method, path = aws_api_gateway_resource.post_id.path }
+    "PATCH /community/{postId}" = { method = aws_api_gateway_method.post_update.http_method, path = aws_api_gateway_resource.post_id.path }
     "DELETE /community/{postId}" = { method = aws_api_gateway_method.post_delete.http_method, path = aws_api_gateway_resource.post_id.path }
-    "PUT /community/{postId}/like" = { method = aws_api_gateway_method.post_like_update.http_method, path = aws_api_gateway_resource.post_like.path }
+    "POST /community/{postId}/like" = { method = aws_api_gateway_method.post_like_update.http_method, path = aws_api_gateway_resource.post_like.path }
     # Comments
     "POST /community/{postId}/comments" = { method = aws_api_gateway_method.comments_post.http_method, path = aws_api_gateway_resource.post_comments.path }
     "GET /community/{postId}/comments" = { method = aws_api_gateway_method.comments_get_all.http_method, path = aws_api_gateway_resource.post_comments.path }
@@ -171,11 +179,11 @@ resource "aws_lambda_permission" "apigw_lambda_get_post" {
   source_arn    = local.lambda_permission_source_arn["GET /community/{postId}"]
 }
 
-# 4. PUT /community/{postId} -> updatePost
+# 4. PATCH /community/{postId} -> updatePost
 resource "aws_api_gateway_method" "post_update" {
   rest_api_id   = aws_api_gateway_rest_api.community_api.id
   resource_id   = aws_api_gateway_resource.post_id.id
-  http_method   = "PUT"
+  http_method   = "PATCH"
   authorization = "COGNITO_USER_POOLS"
   authorizer_id = aws_api_gateway_authorizer.cognito_auth.id
 }
@@ -192,7 +200,7 @@ resource "aws_lambda_permission" "apigw_lambda_update_post" {
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.update_post.function_name
   principal     = "apigateway.amazonaws.com"
-  source_arn    = local.lambda_permission_source_arn["PUT /community/{postId}"]
+  source_arn    = local.lambda_permission_source_arn["PATCH /community/{postId}"]
 }
 
 # 5. DELETE /community/{postId} -> deletePost
@@ -219,11 +227,11 @@ resource "aws_lambda_permission" "apigw_lambda_delete_post" {
   source_arn    = local.lambda_permission_source_arn["DELETE /community/{postId}"]
 }
 
-# 6. PUT /community/{postId}/like -> likePost
+# 6. POST /community/{postId}/like -> likePost
 resource "aws_api_gateway_method" "post_like_update" {
   rest_api_id   = aws_api_gateway_rest_api.community_api.id
   resource_id   = aws_api_gateway_resource.post_like.id
-  http_method   = "PUT"
+  http_method   = "POST"
   authorization = "COGNITO_USER_POOLS"
   authorizer_id = aws_api_gateway_authorizer.cognito_auth.id
 }
@@ -240,7 +248,7 @@ resource "aws_lambda_permission" "apigw_lambda_like_post" {
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.like_post.function_name
   principal     = "apigateway.amazonaws.com"
-  source_arn    = local.lambda_permission_source_arn["PUT /community/{postId}/like"]
+  source_arn    = local.lambda_permission_source_arn["POST /community/{postId}/like"]
 }
 
 # 7. POST /community/{postId}/comments -> createComment
@@ -326,12 +334,10 @@ resource "aws_api_gateway_integration" "options_community_root_integration" {
   rest_api_id = aws_api_gateway_rest_api.community_api.id
   resource_id = aws_api_gateway_resource.community_root.id
   http_method = aws_api_gateway_method.options_community_root.http_method
-  type        = "MOCK" # Return CORS headers directly
+  type        = "MOCK"
   request_templates = {
     "application/json" = "{\"statusCode\": 200}"
   }
-  # Integration response for MOCK is handled implicitly by returning statusCode 200
-  # Response headers are defined in the aws_api_gateway_method_response resource
 }
 resource "aws_api_gateway_method_response" "options_community_root_response" {
   rest_api_id = aws_api_gateway_rest_api.community_api.id
@@ -347,7 +353,22 @@ resource "aws_api_gateway_method_response" "options_community_root_response" {
     "method.response.header.Access-Control-Allow-Origin"  = true
   }
 }
-# Repeat OPTIONS method/integration/response for other resources: post_id, post_like, post_comments, comment_id
+# Separate Integration Response for OPTIONS /community
+resource "aws_api_gateway_integration_response" "options_community_root_integration_response" {
+  rest_api_id = aws_api_gateway_rest_api.community_api.id
+  resource_id = aws_api_gateway_resource.community_root.id
+  http_method = aws_api_gateway_method.options_community_root.http_method
+  status_code = aws_api_gateway_method_response.options_community_root_response.status_code
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
+    "method.response.header.Access-Control-Allow-Methods" = "'POST,GET,OPTIONS'" # Adjusted
+    "method.response.header.Access-Control-Allow-Origin"  = "'*'" # Use var.frontend_url in production
+  }
+  response_templates = {
+    "application/json" = "" # Empty body for OPTIONS response
+  }
+  depends_on = [aws_api_gateway_integration.options_community_root_integration]
+}
 
 # --- OPTIONS for /community/{postId} ---
 resource "aws_api_gateway_method" "options_post_id" {
@@ -375,9 +396,25 @@ resource "aws_api_gateway_method_response" "options_post_id_response" {
   }
   response_parameters = {
     "method.response.header.Access-Control-Allow-Headers" = true
-    "method.response.header.Access-Control-Allow-Methods" = true # Should reflect allowed methods on this resource (GET, PUT, DELETE)
+    "method.response.header.Access-Control-Allow-Methods" = true
     "method.response.header.Access-Control-Allow-Origin"  = true
   }
+}
+# Separate Integration Response for OPTIONS /community/{postId}
+resource "aws_api_gateway_integration_response" "options_post_id_integration_response" {
+  rest_api_id = aws_api_gateway_rest_api.community_api.id
+  resource_id = aws_api_gateway_resource.post_id.id
+  http_method = aws_api_gateway_method.options_post_id.http_method
+  status_code = aws_api_gateway_method_response.options_post_id_response.status_code
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
+    "method.response.header.Access-Control-Allow-Methods" = "'GET,PATCH,DELETE,OPTIONS'" # Adjusted
+    "method.response.header.Access-Control-Allow-Origin"  = "'*'"
+  }
+  response_templates = {
+    "application/json" = ""
+  }
+  depends_on = [aws_api_gateway_integration.options_post_id_integration]
 }
 
 # --- OPTIONS for /community/{postId}/like ---
@@ -406,9 +443,25 @@ resource "aws_api_gateway_method_response" "options_post_like_response" {
   }
   response_parameters = {
     "method.response.header.Access-Control-Allow-Headers" = true
-    "method.response.header.Access-Control-Allow-Methods" = true # Should reflect allowed methods (PUT)
+    "method.response.header.Access-Control-Allow-Methods" = true
     "method.response.header.Access-Control-Allow-Origin"  = true
   }
+}
+# Separate Integration Response for OPTIONS /community/{postId}/like
+resource "aws_api_gateway_integration_response" "options_post_like_integration_response" {
+  rest_api_id = aws_api_gateway_rest_api.community_api.id
+  resource_id = aws_api_gateway_resource.post_like.id
+  http_method = aws_api_gateway_method.options_post_like.http_method
+  status_code = aws_api_gateway_method_response.options_post_like_response.status_code
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
+    "method.response.header.Access-Control-Allow-Methods" = "'POST,OPTIONS'" # Adjusted
+    "method.response.header.Access-Control-Allow-Origin"  = "'*'"
+  }
+  response_templates = {
+    "application/json" = ""
+  }
+  depends_on = [aws_api_gateway_integration.options_post_like_integration]
 }
 
 # --- OPTIONS for /community/{postId}/comments ---
@@ -437,9 +490,25 @@ resource "aws_api_gateway_method_response" "options_post_comments_response" {
   }
   response_parameters = {
     "method.response.header.Access-Control-Allow-Headers" = true
-    "method.response.header.Access-Control-Allow-Methods" = true # Should reflect allowed methods (GET, POST)
+    "method.response.header.Access-Control-Allow-Methods" = true
     "method.response.header.Access-Control-Allow-Origin"  = true
   }
+}
+# Separate Integration Response for OPTIONS /community/{postId}/comments
+resource "aws_api_gateway_integration_response" "options_post_comments_integration_response" {
+  rest_api_id = aws_api_gateway_rest_api.community_api.id
+  resource_id = aws_api_gateway_resource.post_comments.id
+  http_method = aws_api_gateway_method.options_post_comments.http_method
+  status_code = aws_api_gateway_method_response.options_post_comments_response.status_code
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
+    "method.response.header.Access-Control-Allow-Methods" = "'GET,POST,OPTIONS'" # Adjusted
+    "method.response.header.Access-Control-Allow-Origin"  = "'*'"
+  }
+  response_templates = {
+    "application/json" = ""
+  }
+  depends_on = [aws_api_gateway_integration.options_post_comments_integration]
 }
 
 # --- OPTIONS for /community/{postId}/comments/{commentId} ---
@@ -468,72 +537,124 @@ resource "aws_api_gateway_method_response" "options_comment_id_response" {
   }
   response_parameters = {
     "method.response.header.Access-Control-Allow-Headers" = true
-    "method.response.header.Access-Control-Allow-Methods" = true # Should reflect allowed methods (DELETE)
+    "method.response.header.Access-Control-Allow-Methods" = true
     "method.response.header.Access-Control-Allow-Origin"  = true
   }
 }
+# Separate Integration Response for OPTIONS /community/{postId}/comments/{commentId}
+resource "aws_api_gateway_integration_response" "options_comment_id_integration_response" {
+  rest_api_id = aws_api_gateway_rest_api.community_api.id
+  resource_id = aws_api_gateway_resource.comment_id.id
+  http_method = aws_api_gateway_method.options_comment_id.http_method
+  status_code = aws_api_gateway_method_response.options_comment_id_response.status_code
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
+    "method.response.header.Access-Control-Allow-Methods" = "'DELETE,OPTIONS'" # Adjusted
+    "method.response.header.Access-Control-Allow-Origin"  = "'*'"
+  }
+  response_templates = {
+    "application/json" = ""
+  }
+  depends_on = [aws_api_gateway_integration.options_comment_id_integration]
+}
 
-# post_id, post_like, post_comments, comment_id
-# post_id, post_like, post_comments, comment_id
-
-
-# --- Deployment ---
-# Create a deployment that triggers when API structure changes
+# --- API Gateway Deployment ---
+# This resource triggers redeployment when API configuration changes.
 resource "aws_api_gateway_deployment" "community_api_deployment" {
   rest_api_id = aws_api_gateway_rest_api.community_api.id
 
-  # Trigger deployment by hashing the configuration of methods/integrations
+  # Triggers for redeployment
+  # Include resources that, when changed, should trigger a new deployment
   triggers = {
     redeployment = sha1(jsonencode([
-      # List all method and integration resources to track changes
-      aws_api_gateway_integration.community_post_integration,
-      aws_api_gateway_integration.community_get_all_integration,
-      aws_api_gateway_integration.post_get_one_integration,
-      aws_api_gateway_integration.post_update_integration,
-      aws_api_gateway_integration.post_delete_integration,
-      aws_api_gateway_integration.post_like_update_integration,
-      aws_api_gateway_integration.comments_post_integration,
-      aws_api_gateway_integration.comments_get_all_integration,
-      aws_api_gateway_integration.comment_delete_integration,
-      # Include ALL OPTIONS integrations
-      aws_api_gateway_integration.options_community_root_integration,
-      aws_api_gateway_integration.options_post_id_integration,
-      aws_api_gateway_integration.options_post_like_integration,
-      aws_api_gateway_integration.options_post_comments_integration,
-      aws_api_gateway_integration.options_comment_id_integration,
-      # ... add other OPTIONS integrations ...
+      # Resources
+      aws_api_gateway_resource.community_root.id,
+      aws_api_gateway_resource.post_id.id,
+      aws_api_gateway_resource.post_like.id,
+      aws_api_gateway_resource.post_comments.id,
+      aws_api_gateway_resource.comment_id.id,
+      # Methods & Integrations (Including OPTIONS)
+      # Note: Referencing the integration might be more robust than the method
+      aws_api_gateway_integration.community_post_integration.id,
+      aws_api_gateway_integration.community_get_all_integration.id,
+      aws_api_gateway_integration.post_get_one_integration.id,
+      aws_api_gateway_integration.post_update_integration.id,
+      aws_api_gateway_integration.post_delete_integration.id,
+      aws_api_gateway_integration.post_like_update_integration.id,
+      aws_api_gateway_integration.comments_post_integration.id,
+      aws_api_gateway_integration.comments_get_all_integration.id,
+      aws_api_gateway_integration.comment_delete_integration.id,
+      aws_api_gateway_integration.options_community_root_integration.id,
+      aws_api_gateway_integration_response.options_community_root_integration_response.id,
+      aws_api_gateway_integration.options_post_id_integration.id,
+      aws_api_gateway_integration_response.options_post_id_integration_response.id,
+      aws_api_gateway_integration.options_post_like_integration.id,
+      aws_api_gateway_integration_response.options_post_like_integration_response.id,
+      aws_api_gateway_integration.options_post_comments_integration.id,
+      aws_api_gateway_integration_response.options_post_comments_integration_response.id,
+      aws_api_gateway_integration.options_comment_id_integration.id,
+      aws_api_gateway_integration_response.options_comment_id_integration_response.id,
+      # Authorizer
+      aws_api_gateway_authorizer.cognito_auth.id
     ]))
   }
 
   lifecycle {
-    create_before_destroy = true # Avoid downtime during updates
+    create_before_destroy = true
   }
 }
 
-# --- Stage ---
-# Create a stage (e.g., 'dev' or 'prod') linked to the deployment
+# --- API Gateway Stage ---
+# Connects the deployment to a stage (e.g., 'dev', 'prod')
 resource "aws_api_gateway_stage" "community_api_stage" {
   deployment_id = aws_api_gateway_deployment.community_api_deployment.id
   rest_api_id   = aws_api_gateway_rest_api.community_api.id
-  stage_name    = var.environment # Use environment variable for stage name
+  stage_name    = var.environment
 
-  # Enable CloudWatch Logs for this stage (Detailed metrics cost extra)
+  # Enable access logging
   access_log_settings {
-    destination_arn = aws_cloudwatch_log_group.api_gateway_logs.arn # Define log group separately
-    format          = jsonencode({ "requestId" : "$context.requestId", "ip" : "$context.identity.sourceIp", "caller" : "$context.identity.caller", "user" : "$context.identity.user", "requestTime" : "$context.requestTime", "httpMethod" : "$context.httpMethod", "resourcePath" : "$context.resourcePath", "status" : "$context.status", "protocol" : "$context.protocol", "responseLength" : "$context.responseLength" })
+    destination_arn = aws_cloudwatch_log_group.api_gateway_logs.arn
+    format          = "$context.identity.sourceIp $context.identity.caller $context.identity.user [$context.requestTime] \"$context.httpMethod $context.resourcePath $context.protocol\" $context.status $context.responseLength $context.requestId"
   }
-  # Enable detailed metrics if needed
-  # metrics_enabled = true
+
+  # Execution logging and other settings are configured via aws_api_gateway_method_settings
+  xray_tracing_enabled = false # Set to true to enable X-Ray tracing
 
   tags = merge(var.common_tags, {
-    Name = "${var.project_name}-CommunityAPIStage-${var.environment}"
+    Name = "${var.project_name}-CommunityAPI-Stage-${var.environment}"
   })
+
+  depends_on = [
+    aws_cloudwatch_log_group.api_gateway_logs,
+    aws_api_gateway_account.apigw_account # Ensure account settings are applied before stage
+  ]
 }
 
-# --- CloudWatch Log Group for API Gateway ---
+# --- API Gateway Method Settings ---
+# Apply settings like logging level and metrics to all methods in the stage
+resource "aws_api_gateway_method_settings" "all" {
+  rest_api_id = aws_api_gateway_rest_api.community_api.id
+  stage_name  = aws_api_gateway_stage.community_api_stage.stage_name
+  method_path = "*/*" # Apply to all methods
+
+  settings {
+    metrics_enabled = true       # Enable detailed CloudWatch metrics
+    logging_level   = "INFO"     # Log full requests/responses (or ERROR)
+    data_trace_enabled = true    # Log request/response bodies (use with caution)
+    throttling_burst_limit = 5000 # Example throttling limit
+    throttling_rate_limit  = 10000 # Example throttling limit
+    # Caching settings can also be configured here if needed
+    # caching_enabled = false
+    # cache_ttl_in_seconds = 300
+  }
+
+  depends_on = [aws_api_gateway_stage.community_api_stage]
+}
+
+# --- CloudWatch Log Group for API Gateway Access Logs ---
 resource "aws_cloudwatch_log_group" "api_gateway_logs" {
-  name              = "/aws/api-gateway/${aws_api_gateway_rest_api.community_api.name}/${var.environment}"
-  retention_in_days = 14 # Adjust retention as needed
+  name              = "/aws/api-gateway/${aws_api_gateway_rest_api.community_api.name}/${var.environment}" # Match expected format
+  retention_in_days = 7 # Adjust retention as needed
 
   tags = merge(var.common_tags, {
     Name = "${var.project_name}-APIGatewayLogs-${var.environment}"
