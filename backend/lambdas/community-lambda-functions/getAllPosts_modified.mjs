@@ -1,18 +1,22 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { DynamoDBDocumentClient, GetCommand } from "@aws-sdk/lib-dynamodb";
+import {
+  DynamoDBDocumentClient,
+  QueryCommand, // Import QueryCommand
+} from "@aws-sdk/lib-dynamodb";
 
 // 클라이언트 설정
 const client = new DynamoDBClient({});
 const dynamoDB = DynamoDBDocumentClient.from(client);
+const tableName = "alpaco-Community-production"; // Use the correct table name
 
 // Define CORS headers
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS", // Include OPTIONS
-  "Access-Control-Allow-Headers": "Content-Type, Authorization", // Include Authorization
+  "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
 
-// 로그인 없이 모든 유저 사용 가능
+// No login required
 export const handler = async (event) => {
   // Handle OPTIONS preflight requests for CORS
   if (event.httpMethod === "OPTIONS") {
@@ -24,48 +28,53 @@ export const handler = async (event) => {
   }
 
   try {
+    // --- Query using GSI and SDK v3 style ---
+    // Assuming GSI name is 'postOnlyIndex' with GSI1PK as partition key and GSI1SK as sort key (createdAt)
+    // Using the GSI definition from _modified.mjs
     const params = {
-      TableName: "alpaco-Community-production",
-      IndexName: "postOnlyIndex", // GSI 이름
-      KeyConditionExpression: "GSI1PK = :gsi1pk", // GSI 파티션 키 조건
+      TableName: tableName,
+      IndexName: "postOnlyIndex", // Use the GSI name specified in community/getAllPosts.js
+      KeyConditionExpression: "GSI1PK = :gsi1pk", // Use GSI1PK from _modified.mjs structure
       ExpressionAttributeValues: {
-        ":gsi1pk": "POST", // 모든 게시물을 나타내는 값
+        ":gsi1pk": "POST", // Value to query all posts in the GSI
       },
-      // 필요한 속성만 가져오도록 ProjectionExpression 설정
+      // Select only the attributes needed for the list view
       ProjectionExpression:
         "PK, title, author, createdAt, likesCount, commentCount, problemId",
-      ScanIndexForward: false, // 최신 게시물부터 정렬 (createdAt 내림차순)
+      ScanIndexForward: false, // false = descending order (latest first based on GSI1SK which is createdAt)
     };
 
-    const result = await dynamoDB.query(params).promise();
+    const command = new QueryCommand(params);
+    const result = await dynamoDB.send(command);
     const items = result.Items || [];
 
+    // Map results using logic from community/getAllPosts.js
     const posts = items.map((item) => ({
-      postId: item.PK,
+      postId: item.PK, // PK is the postId
       title: item.title,
       author: item.author,
       createdAt: item.createdAt,
-      likesCount: item.likesCount || 0,
-      commentCount: item.commentCount || 0,
-      problemId: item.problemId || null,
+      likesCount: item.likesCount ?? 0, // Use nullish coalescing for default
+      commentCount: item.commentCount ?? 0, // Use nullish coalescing for default
+      problemId: item.problemId || null, // Default to null if missing
     }));
 
     // --- SUCCESS RESPONSE ---
     return {
       statusCode: 200,
-      headers: { ...corsHeaders, "Content-Type": "application/json" }, // Add CORS and Content-Type
-      body: JSON.stringify(posts), // Ensure body is stringified
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      body: JSON.stringify(posts),
     };
   } catch (error) {
     console.error("게시글 목록 조회 중 오류 발생:", error);
     // --- ERROR RESPONSE ---
     return {
       statusCode: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" }, // Add CORS and Content-Type
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
       body: JSON.stringify({
         message: "게시글 목록 조회 중 오류 발생",
         error: error.message,
-      }), // Ensure body is stringified
+      }),
     };
   }
 };

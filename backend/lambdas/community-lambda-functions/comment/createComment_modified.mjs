@@ -1,16 +1,20 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { DynamoDBDocumentClient, GetCommand } from "@aws-sdk/lib-dynamodb";
+import {
+  DynamoDBDocumentClient,
+  TransactWriteCommand, // Import TransactWriteCommand
+} from "@aws-sdk/lib-dynamodb";
+import { v4 as uuidv4 } from "uuid";
 
 // 클라이언트 설정
 const client = new DynamoDBClient({});
 const dynamoDB = DynamoDBDocumentClient.from(client);
-import { v4 as uuidv4 } from "uuid";
+const tableName = "alpaco-Community-production"; // Use the correct table name
 
-// Define CORS headers - reuse this!
+// Define CORS headers
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*", // Replace with your frontend domain in production for better security!
+  "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization", // Ensure Authorization is allowed
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
 
 export const handler = async (event) => {
@@ -24,24 +28,24 @@ export const handler = async (event) => {
   }
 
   try {
-    const { postId } = event.pathParameters;
-    const body = JSON.parse(event.body || "{}"); // Add default empty object for safety
+    const { postId } = event.pathParameters || {}; // Use || {} for safety
+    const body = JSON.parse(event.body || "{}");
     const { content } = body;
 
     if (!content) {
       return {
         statusCode: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" }, // Add CORS and Content-Type
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
         body: JSON.stringify({ message: "content는 필수 항목입니다." }),
       };
     }
 
-    // API Gateway JWT Authorizer에서 전달된 유저 정보 가져오기 (Optional Chaining 사용)
+    // API Gateway JWT Authorizer claims
     const claims = event.requestContext?.authorizer?.claims;
     if (!claims || !claims.username) {
       return {
         statusCode: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" }, // Add CORS and Content-Type
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
         body: JSON.stringify({ message: "인증 정보가 없습니다." }),
       };
     }
@@ -50,40 +54,41 @@ export const handler = async (event) => {
     const commentId = uuidv4();
     const createdAt = new Date().toISOString();
 
-    // --- DynamoDB Transaction ---
-    await dynamoDB
-      .transactWrite({
-        TransactItems: [
-          {
-            // 1. Add the new comment
-            Put: {
-              TableName: "alpaco-Community-production",
-              Item: {
-                PK: postId,
-                SK: `COMMENT#${commentId}`,
-                commentId,
-                author,
-                content,
-                createdAt,
-              },
+    // --- DynamoDB Transaction using SDK v3 style ---
+    const command = new TransactWriteCommand({
+      TransactItems: [
+        {
+          // 1. Add the new comment
+          Put: {
+            TableName: tableName,
+            Item: {
+              PK: postId,
+              SK: `COMMENT#${commentId}`,
+              commentId,
+              author,
+              content,
+              createdAt,
+              // Add GSI keys if comments need separate listing/sorting later
+              // GSI1PK: `COMMENT#${postId}`,
+              // GSI1SK: createdAt,
             },
           },
-          {
-            // 2. Increment the comment count on the post item
-            Update: {
-              TableName: "alpaco-Community-production",
-              Key: { PK: postId, SK: "POST" },
-              // Initialize commentCount to 0 if it doesn't exist, then increment
-              UpdateExpression:
-                "SET commentCount = if_not_exists(commentCount, :zero) + :inc",
-              ExpressionAttributeValues: { ":inc": 1, ":zero": 0 },
-              // ConditionExpression could be added to ensure the post exists
-              // ConditionExpression: "attribute_exists(PK)"
-            },
+        },
+        {
+          // 2. Increment the comment count on the post item
+          Update: {
+            TableName: tableName,
+            Key: { PK: postId, SK: "POST" },
+            UpdateExpression:
+              "SET commentCount = if_not_exists(commentCount, :zero) + :inc",
+            ExpressionAttributeValues: { ":inc": 1, ":zero": 0 },
+            ConditionExpression: "attribute_exists(PK)", // Ensure the post exists
           },
-        ],
-      })
-      .promise();
+        },
+      ],
+    });
+
+    await dynamoDB.send(command);
 
     // --- SUCCESS RESPONSE ---
     const responseBody = {
@@ -95,20 +100,43 @@ export const handler = async (event) => {
       createdAt,
     };
     return {
-      statusCode: 201, // Use 201 for successful creation
-      headers: { ...corsHeaders, "Content-Type": "application/json" }, // Add CORS and Content-Type
-      body: JSON.stringify(responseBody), // Ensure body is stringified
+      statusCode: 201,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      body: JSON.stringify(responseBody),
     };
   } catch (error) {
     console.error("댓글 작성 중 오류 발생:", error);
     // --- ERROR RESPONSE ---
+    // Check for specific DynamoDB errors like ConditionalCheckFailed
+    let statusCode = 500;
+    let message = "서버 오류가 발생했습니다.";
+    if (error.name === "TransactionCanceledException") {
+      // Check cancellation reasons if needed, potentially the post didn't exist
+      const reasons = error.CancellationReasons || [];
+      if (reasons[1]?.Code === "ConditionalCheckFailed") {
+        // Check reason for the Update operation
+        statusCode = 404;
+        message = "댓글을 추가할 게시글을 찾을 수 없습니다.";
+      } else {
+        message = "댓글 저장 트랜잭션 중 오류가 발생했습니다.";
+      }
+    } else if (error.name === "ConditionalCheckFailedException") {
+      // This might happen if the ConditionExpression was on the PutItem (not used here)
+      statusCode = 400; // Or appropriate status
+      message = "댓글 저장 조건 확인 실패.";
+    }
+
     return {
-      statusCode: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" }, // Add CORS and Content-Type
+      statusCode: statusCode,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
       body: JSON.stringify({
-        message: "서버 오류가 발생했습니다.",
+        message: message,
         error: error.message,
-      }), // Ensure body is stringified
+        errorDetails:
+          error.name === "TransactionCanceledException"
+            ? error.CancellationReasons
+            : undefined,
+      }),
     };
   }
 };

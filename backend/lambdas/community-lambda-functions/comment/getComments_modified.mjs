@@ -1,9 +1,13 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { DynamoDBDocumentClient, GetCommand } from "@aws-sdk/lib-dynamodb";
+import {
+  DynamoDBDocumentClient,
+  QueryCommand, // Import QueryCommand
+} from "@aws-sdk/lib-dynamodb";
 
 // 클라이언트 설정
 const client = new DynamoDBClient({});
 const dynamoDB = DynamoDBDocumentClient.from(client);
+const tableName = "alpaco-Community-production"; // Use the correct table name
 
 // Define CORS headers
 const corsHeaders = {
@@ -12,7 +16,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
 
-// No login required
+// No login required (as per original comment)
 export const handler = async (event) => {
   // Handle OPTIONS preflight requests for CORS
   if (event.httpMethod === "OPTIONS") {
@@ -24,48 +28,59 @@ export const handler = async (event) => {
   }
 
   try {
-    const { postId } = event.pathParameters; // Get postId from request URL
+    const { postId } = event.pathParameters || {};
 
     const params = {
-      TableName: "alpaco-Community-production",
-      KeyConditionExpression: "PK = :postId AND begins_with(SK, :prefix)",
+      TableName: tableName,
+      KeyConditionExpression:
+        "PK = :postId AND begins_with(SK, :commentPrefix)",
       ExpressionAttributeValues: {
         ":postId": postId,
-        ":prefix": "COMMENT#", // Query comments for the given post
+        ":commentPrefix": "COMMENT#",
       },
-      // ScanIndexForward: false, // Optional: sort by createdAt descending (latest first) - Assuming SK is COMMENT#{createdAt}
+      // Select only needed attributes to reduce payload size
+      ProjectionExpression: "commentId, content, author, createdAt, SK",
+      ScanIndexForward: false, // Get latest comments first (descending sort key order)
     };
 
-    const result = await dynamoDB.query(params).promise();
+    // --- DynamoDB Query using SDK v3 style ---
+    const command = new QueryCommand(params);
+    const result = await dynamoDB.send(command);
     const items = result.Items || [];
 
-    const comments = items.map((item) => ({
-      commentId: item.commentId,
-      content: item.content,
-      author: item.author,
-      createdAt: item.createdAt,
-    }));
+    // Map results using logic from community/getComments.js
+    const comments = items.map(
+      ({ content, author, createdAt, SK, commentId }) => ({
+        // Prefer using the dedicated commentId attribute if available, otherwise parse SK
+        commentId: commentId || SK.replace("COMMENT#", ""),
+        content,
+        author,
+        createdAt,
+      })
+    );
 
     // --- SUCCESS RESPONSE ---
     const responseBody = {
       comments: comments,
       commentCount: comments.length, // Count based on retrieved items
+      // Note: If pagination is added, this count reflects only the current page.
+      // The total count might be better retrieved from the post item's commentCount attribute.
     };
     return {
       statusCode: 200,
-      headers: { ...corsHeaders, "Content-Type": "application/json" }, // Add CORS and Content-Type
-      body: JSON.stringify(responseBody), // Ensure body is stringified
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      body: JSON.stringify(responseBody),
     };
   } catch (error) {
     console.error("댓글 목록 조회 중 오류 발생:", error);
     // --- ERROR RESPONSE ---
     return {
       statusCode: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" }, // Add CORS and Content-Type
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
       body: JSON.stringify({
         message: "댓글 목록 조회 중 오류 발생",
         error: error.message,
-      }), // Ensure body is stringified
+      }),
     };
   }
 };

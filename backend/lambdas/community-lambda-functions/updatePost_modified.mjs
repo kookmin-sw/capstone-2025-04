@@ -1,9 +1,14 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { DynamoDBDocumentClient, GetCommand } from "@aws-sdk/lib-dynamodb";
+import {
+  DynamoDBDocumentClient,
+  GetCommand,
+  UpdateCommand,
+} from "@aws-sdk/lib-dynamodb";
 
 // 클라이언트 설정
 const client = new DynamoDBClient({});
 const dynamoDB = DynamoDBDocumentClient.from(client);
+const tableName = "alpaco-Community-production"; // Use the correct table name
 
 // Define CORS headers
 const corsHeaders = {
@@ -23,80 +28,53 @@ export const handler = async (event) => {
   }
 
   try {
-    const { postId } = event.pathParameters; // Extract postId from request URL
+    const { postId } = event.pathParameters || {};
 
-    // Extract data to be updated from the body
-    const body = JSON.parse(event.body || "{}"); // Safe parsing
+    // Extract data from body
+    const body = JSON.parse(event.body || "{}");
     const { title, content } = body;
 
-    // Return error if title or content is missing
     if (!title || !content) {
       return {
         statusCode: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" }, // Add headers
-        body: JSON.stringify({ message: "title과 content는 필수 항목입니다." }), // Stringify
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        body: JSON.stringify({ message: "title과 content는 필수 항목입니다." }),
       };
     }
 
-    // Get user info from API Gateway JWT Authorizer (using optional chaining)
+    // Get user info from API Gateway JWT Authorizer
     const claims = event.requestContext?.authorizer?.claims;
     if (!claims || !claims.username) {
       return {
         statusCode: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" }, // Add headers
-        body: JSON.stringify({ message: "인증 정보가 없습니다." }), // Stringify
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        body: JSON.stringify({ message: "인증 정보가 없습니다." }),
       };
     }
+    const username = claims.username;
 
-    const username = claims.username; // Username from JWT
+    // --- Check Post Existence and Ownership using SDK v3 style ---
+    // We use a ConditionExpression in the UpdateCommand instead of a separate Get
+    // This makes the update atomic (check and update in one operation)
 
-    // Check if the post exists
-    const getPostParams = {
-      TableName: "alpaco-Community-production",
-      Key: {
-        PK: postId,
-        SK: "POST",
-      },
-    };
-
-    const postResult = await dynamoDB.get(getPostParams).promise();
-    const post = postResult.Item;
-
-    if (!post) {
-      return {
-        statusCode: 404,
-        headers: { ...corsHeaders, "Content-Type": "application/json" }, // Add headers
-        body: JSON.stringify({ message: "게시글을 찾을 수 없습니다." }), // Stringify
-      };
-    }
-
-    // Check if the user is the author
-    if (post.author !== username) {
-      return {
-        statusCode: 403, // Forbidden
-        headers: { ...corsHeaders, "Content-Type": "application/json" }, // Add headers
-        body: JSON.stringify({ message: "게시글을 수정할 권한이 없습니다." }), // Stringify
-      };
-    }
-
-    // Update the post
-    const updateParams = {
-      TableName: "alpaco-Community-production",
-      Key: {
-        PK: postId,
-        SK: "POST",
-      },
+    // --- Update Post using SDK v3 style ---
+    const updateCommand = new UpdateCommand({
+      TableName: tableName,
+      Key: { PK: postId, SK: "POST" },
       UpdateExpression:
         "SET title = :title, content = :content, updatedAt = :updatedAt",
+      // Condition ensures the post exists AND the author matches
+      ConditionExpression: "attribute_exists(PK) AND author = :author",
       ExpressionAttributeValues: {
         ":title": title,
         ":content": content,
         ":updatedAt": new Date().toISOString(),
+        ":author": username, // Value for the condition check
       },
       ReturnValues: "ALL_NEW", // Return the entire updated item
-    };
+    });
 
-    const updateResult = await dynamoDB.update(updateParams).promise();
+    const updateResult = await dynamoDB.send(updateCommand);
     const updatedPost = updateResult.Attributes;
 
     // --- SUCCESS RESPONSE ---
@@ -106,19 +84,49 @@ export const handler = async (event) => {
     };
     return {
       statusCode: 200,
-      headers: { ...corsHeaders, "Content-Type": "application/json" }, // Add headers
-      body: JSON.stringify(responseBody), // Stringify
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      body: JSON.stringify(responseBody),
     };
   } catch (error) {
     console.error("게시글 수정 중 오류 발생:", error);
     // --- ERROR RESPONSE ---
+    let statusCode = 500;
+    let message = "서버 오류가 발생했습니다.";
+
+    // Handle specific error for failed condition check
+    if (error.name === "ConditionalCheckFailedException") {
+      // Need to differentiate between "Not Found" and "Forbidden"
+      // Perform a Get to check after the failed update
+      try {
+        const checkPost = await dynamoDB.send(
+          new GetCommand({
+            TableName: tableName,
+            Key: { PK: event.pathParameters.postId, SK: "POST" },
+          })
+        );
+        if (!checkPost.Item) {
+          statusCode = 404;
+          message = "수정할 게시글을 찾을 수 없습니다.";
+        } else {
+          // Post exists, so condition failed due to author mismatch
+          statusCode = 403;
+          message = "게시글을 수정할 권한이 없습니다.";
+        }
+      } catch (getErr) {
+        console.error("게시글 존재/권한 확인 중 오류:", getErr);
+        message = "게시글 수정 실패 후 확인 중 오류 발생.";
+      }
+    } else {
+      message = error.message || "게시글 수정 중 알 수 없는 오류 발생.";
+    }
+
     return {
-      statusCode: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" }, // Add headers
+      statusCode: statusCode,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
       body: JSON.stringify({
-        message: "서버 오류가 발생했습니다.",
+        message: message,
         error: error.message,
-      }), // Stringify
+      }),
     };
   }
 };

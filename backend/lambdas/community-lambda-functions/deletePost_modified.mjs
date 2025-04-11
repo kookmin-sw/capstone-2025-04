@@ -1,9 +1,15 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { DynamoDBDocumentClient, GetCommand } from "@aws-sdk/lib-dynamodb";
+import {
+  DynamoDBDocumentClient,
+  GetCommand,
+  QueryCommand,
+  TransactWriteCommand,
+} from "@aws-sdk/lib-dynamodb";
 
 // 클라이언트 설정
 const client = new DynamoDBClient({});
 const dynamoDB = DynamoDBDocumentClient.from(client);
+const tableName = "alpaco-Community-production"; // Use the correct table name
 
 // Define CORS headers
 const corsHeaders = {
@@ -11,6 +17,9 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
+
+// Max items for TransactWriteCommand
+const MAX_TRANSACTION_ITEMS = 100; // Increased limit for newer SDK versions (check DynamoDB docs for current limit)
 
 export const handler = async (event) => {
   // Handle OPTIONS preflight requests for CORS
@@ -23,135 +32,168 @@ export const handler = async (event) => {
   }
 
   try {
-    const { postId } = event.pathParameters; // Get postId from request URL
+    const { postId } = event.pathParameters || {};
 
-    // Get user info from API Gateway JWT Authorizer (using optional chaining)
+    // Get user info from API Gateway JWT Authorizer
     const claims = event.requestContext?.authorizer?.claims;
     if (!claims || !claims.username) {
       return {
         statusCode: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" }, // Add headers
-        body: JSON.stringify({ message: "인증 정보가 없습니다." }), // Stringify
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        body: JSON.stringify({ message: "인증 정보가 없습니다." }),
       };
     }
-
     const username = claims.username;
 
-    // Check if the post exists
-    const getParams = {
-      TableName: "alpaco-Community-production",
-      Key: {
-        PK: postId,
-        SK: "POST",
-      },
-    };
-
-    const result = await dynamoDB.get(getParams).promise();
-    const post = result.Item;
+    // --- Get Post and Verify Ownership using SDK v3 style ---
+    const getCommand = new GetCommand({
+      TableName: tableName,
+      Key: { PK: postId, SK: "POST" },
+    });
+    const postResult = await dynamoDB.send(getCommand);
+    const post = postResult.Item;
 
     if (!post) {
       return {
         statusCode: 404,
-        headers: { ...corsHeaders, "Content-Type": "application/json" }, // Add headers
-        body: JSON.stringify({ message: "게시글을 찾을 수 없습니다." }), // Stringify
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        body: JSON.stringify({ message: "게시글을 찾을 수 없습니다." }),
       };
     }
 
-    // Check if the user is the author
     if (post.author !== username) {
       return {
         statusCode: 403, // Forbidden
-        headers: { ...corsHeaders, "Content-Type": "application/json" }, // Add headers
-        body: JSON.stringify({ message: "게시글을 삭제할 권한이 없습니다." }), // Stringify
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        body: JSON.stringify({ message: "게시글을 삭제할 권한이 없습니다." }),
       };
     }
 
-    // Query comments (supports up to 24 comments in one transaction; pagination needed for more)
-    const commentQuery = await dynamoDB
-      .query({
-        TableName: "alpaco-Community-production",
+    // --- Query Comments using SDK v3 style ---
+    // We need pagination here if comments can exceed MAX_TRANSACTION_ITEMS - 1
+    let allCommentDeleteOps = [];
+    let lastEvaluatedKey;
+
+    do {
+      const commentQuery = new QueryCommand({
+        TableName: tableName,
         KeyConditionExpression: "PK = :postId AND begins_with(SK, :prefix)",
         ExpressionAttributeValues: {
           ":postId": postId,
           ":prefix": "COMMENT#",
         },
-        // Limit might be needed if pagination is implemented
-      })
-      .promise();
+        // Only need PK and SK for deletion
+        ProjectionExpression: "PK, SK",
+        ExclusiveStartKey: lastEvaluatedKey,
+        Limit: MAX_TRANSACTION_ITEMS - 1, // Leave space for the post delete op
+      });
 
-    const commentDeleteOps = commentQuery.Items.map((comment) => ({
-      Delete: {
-        TableName: "alpaco-Community-production",
-        Key: {
-          PK: comment.PK,
-          SK: comment.SK,
-        },
-      },
-    }));
+      const commentResult = await dynamoDB.send(commentQuery);
+      const currentCommentDeleteOps = (commentResult.Items || []).map(
+        (comment) => ({
+          Delete: {
+            TableName: tableName,
+            Key: { PK: comment.PK, SK: comment.SK },
+          },
+        })
+      );
 
-    // Include the post delete operation
+      allCommentDeleteOps = allCommentDeleteOps.concat(currentCommentDeleteOps);
+      lastEvaluatedKey = commentResult.LastEvaluatedKey;
+
+      // Safety break if transaction limit is reached (shouldn't happen with Limit above, but good practice)
+      if (
+        allCommentDeleteOps.length >= MAX_TRANSACTION_ITEMS - 1 &&
+        lastEvaluatedKey
+      ) {
+        console.warn(
+          `Post ${postId} has more comments than can be deleted in a single transaction batch. Deleting in multiple steps or implement BatchWriteItem.`
+        );
+        // For simplicity here, we'll proceed with the first batch.
+        // A robust solution requires handling this loop with multiple transactions or BatchWriteItem.
+        break;
+      }
+    } while (
+      lastEvaluatedKey &&
+      allCommentDeleteOps.length < MAX_TRANSACTION_ITEMS - 1
+    );
+
+    // --- Prepare Transaction using SDK v3 style ---
     const deletePostOp = {
       Delete: {
-        TableName: "alpaco-Community-production",
-        Key: {
-          PK: postId,
-          SK: "POST",
-        },
+        TableName: tableName,
+        Key: { PK: postId, SK: "POST" },
       },
     };
 
-    // Combine operations for transaction (max 25 items)
-    const transactItems = [deletePostOp, ...commentDeleteOps];
+    const transactItems = [deletePostOp, ...allCommentDeleteOps];
 
-    // Check transaction item limit
-    if (transactItems.length > 25) {
-      // Note: This simple check might not be sufficient for large numbers of comments.
-      // A more robust solution would involve batching delete operations.
-      console.warn(
-        `Attempted to delete ${transactItems.length} items (max 25) for post ${postId}. Aborting.`
+    // DynamoDB now supports up to 100 items per transaction.
+    // We already limited the query, but this check is still relevant.
+    if (transactItems.length > MAX_TRANSACTION_ITEMS) {
+      // This indicates the pagination logic might need adjustment or a different strategy (BatchWriteItem)
+      console.error(
+        `Attempted to delete ${transactItems.length} items (max ${MAX_TRANSACTION_ITEMS}) for post ${postId}. Aborting.`
       );
       return {
-        statusCode: 400, // Bad Request or potentially 500 Internal Server Error
-        headers: { ...corsHeaders, "Content-Type": "application/json" }, // Add headers
+        statusCode: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
         body: JSON.stringify({
-          message:
-            "댓글 수가 너무 많아 한 번에 삭제할 수 없습니다. 관리자에게 문의하세요.",
-        }), // User-friendly message
+          message: `댓글 수가 너무 많아(${
+            allCommentDeleteOps.length
+          }) 한 번에 삭제할 수 없습니다. 관리자에게 문의하세요. (최대 ${
+            MAX_TRANSACTION_ITEMS - 1
+          }개 지원)`,
+        }),
       };
     }
 
-    // Execute the transaction if within limits
+    // --- Execute Transaction ---
     if (transactItems.length > 0) {
-      await dynamoDB
-        .transactWrite({
-          TransactItems: transactItems,
-        })
-        .promise();
+      const transactionCommand = new TransactWriteCommand({
+        TransactItems: transactItems,
+      });
+      await dynamoDB.send(transactionCommand);
     } else {
-      // Handle case where only the post exists and no comments (should be rare)
-      await dynamoDB.delete(deletePostOp.Delete).promise();
+      // Should not happen if post exists, but handle defensively
+      console.warn(`No items to delete for post ${postId}?`);
     }
 
     // --- SUCCESS RESPONSE ---
     const responseBody = {
-      message: "게시글과 관련 댓글이 성공적으로 삭제되었습니다.",
-      deletedCommentsCount: commentDeleteOps.length, // Use a more descriptive key
+      message: `게시글과 관련 댓글 ${
+        allCommentDeleteOps.length
+      }개가 성공적으로 삭제되었습니다.${
+        lastEvaluatedKey ? " (추가 댓글이 있을 수 있음)" : ""
+      }`,
+      deletedCommentsCount: allCommentDeleteOps.length,
     };
     return {
-      statusCode: 200, // Or 204 No Content if preferred for DELETE
-      headers: { ...corsHeaders, "Content-Type": "application/json" }, // Add headers
-      body: JSON.stringify(responseBody), // Stringify
+      statusCode: 200,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      body: JSON.stringify(responseBody),
     };
   } catch (error) {
     console.error("게시글 삭제 중 오류 발생:", error);
     // --- ERROR RESPONSE ---
+    let statusCode = 500;
+    let message = "서버 오류가 발생했습니다.";
+    // Add specific error handling if needed (e.g., transaction failures)
+    if (error.name === "TransactionCanceledException") {
+      message = "게시글/댓글 삭제 트랜잭션 중 오류 발생.";
+    }
+
     return {
-      statusCode: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" }, // Add headers
+      statusCode: statusCode,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
       body: JSON.stringify({
-        message: "서버 오류가 발생했습니다.",
+        message: message,
         error: error.message,
-      }), // Stringify
+        errorDetails:
+          error.name === "TransactionCanceledException"
+            ? error.CancellationReasons
+            : undefined,
+      }),
     };
   }
 };

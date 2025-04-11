@@ -1,9 +1,13 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { DynamoDBDocumentClient, GetCommand } from "@aws-sdk/lib-dynamodb";
+import {
+  DynamoDBDocumentClient,
+  GetCommand, // Import GetCommand
+} from "@aws-sdk/lib-dynamodb";
 
 // 클라이언트 설정
 const client = new DynamoDBClient({});
 const dynamoDB = DynamoDBDocumentClient.from(client);
+const tableName = "alpaco-Community-production"; // Use the correct table name
 
 // Define CORS headers
 const corsHeaders = {
@@ -12,7 +16,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
 
-// 로그인 없이 모든 유저 사용 가능
+// No login required
 export const handler = async (event) => {
   // Handle OPTIONS preflight requests for CORS
   if (event.httpMethod === "OPTIONS") {
@@ -24,66 +28,71 @@ export const handler = async (event) => {
   }
 
   try {
-    const { postId } = event.pathParameters; // Get postId from request URL
+    const { postId } = event.pathParameters || {};
 
-    // Fetch post information
+    // --- Get Post using SDK v3 style ---
     const postParams = {
-      TableName: "alpaco-Community-production",
+      TableName: tableName,
       Key: {
-        PK: postId, // Composite key
-        SK: "POST", // Fixed SK for posts
+        PK: postId,
+        SK: "POST",
       },
     };
 
-    const postResult = await dynamoDB.get(postParams).promise();
-    const post = postResult.Item;
+    const command = new GetCommand(postParams);
+    const result = await dynamoDB.send(command);
+    const post = result.Item;
 
     if (!post) {
       return {
         statusCode: 404,
-        headers: { ...corsHeaders, "Content-Type": "application/json" }, // Add headers
-        body: JSON.stringify({ message: "게시글을 찾을 수 없습니다." }), // Stringify
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        body: JSON.stringify({ message: "게시글을 찾을 수 없습니다." }),
       };
     }
 
+    // Destructure using logic from community/getPost.js with defaults
     const {
       title,
       content,
       author,
       createdAt,
-      likesCount = 0, // Default to 0 if not present
-      likedUsers = [], // Default to empty array if not present
-      updatedAt = null, // Default to null if not present
-      problemId = null, // Default to null if not present
+      likesCount = 0,
+      likedUsers = [], // Default to empty array for Set compatibility later if needed
+      updatedAt = null,
+      problemId = null,
+      // Include userId if it's stored and might be needed
+      // userId
     } = post;
 
     // --- SUCCESS RESPONSE ---
     const responseBody = {
-      postId,
+      postId, // Include postId from path params
       title,
       content,
       author,
       createdAt,
       likesCount,
-      likedUsers,
+      likedUsers: Array.isArray(likedUsers) ? likedUsers : [], // Ensure it's an array
       updatedAt,
       problemId,
+      // userId
     };
     return {
       statusCode: 200,
-      headers: { ...corsHeaders, "Content-Type": "application/json" }, // Add headers
-      body: JSON.stringify(responseBody), // Stringify
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      body: JSON.stringify(responseBody),
     };
   } catch (error) {
     console.error("게시글 조회 중 오류 발생:", error);
     // --- ERROR RESPONSE ---
     return {
       statusCode: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" }, // Add headers
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
       body: JSON.stringify({
         message: "게시글 조회 중 오류 발생",
         error: error.message,
-      }), // Stringify
+      }),
     };
   }
 };
