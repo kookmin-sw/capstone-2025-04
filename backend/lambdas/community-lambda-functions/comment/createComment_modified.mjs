@@ -42,7 +42,8 @@ export const handler = async (event) => {
 
     // API Gateway JWT Authorizer claims
     const claims = event.requestContext?.authorizer?.claims;
-    if (!claims || !claims.username) {
+    if (!claims || !claims["cognito:username"]) {
+      console.warn("❌ Missing or invalid claims:", claims); // 콘솔 로그 추가
       return {
         statusCode: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -50,7 +51,7 @@ export const handler = async (event) => {
       };
     }
 
-    const author = claims.username;
+    const author = claims["cognito:username"];
     const commentId = uuidv4();
     const createdAt = new Date().toISOString();
 

@@ -44,14 +44,15 @@ export const handler = async (event) => {
 
     // Get user info from API Gateway JWT Authorizer
     const claims = event.requestContext?.authorizer?.claims;
-    if (!claims || !claims.username) {
+    if (!claims || !claims["cognito:username"]) {
+      console.warn("❌ Missing or invalid claims:", claims);
       return {
         statusCode: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         body: JSON.stringify({ message: "인증 정보가 없습니다." }),
       };
     }
-    const username = claims.username;
+    const username = claims["cognito:username"];
 
     // --- Check Post Existence and Ownership using SDK v3 style ---
     // We use a ConditionExpression in the UpdateCommand instead of a separate Get

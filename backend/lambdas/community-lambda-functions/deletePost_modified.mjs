@@ -36,14 +36,15 @@ export const handler = async (event) => {
 
     // Get user info from API Gateway JWT Authorizer
     const claims = event.requestContext?.authorizer?.claims;
-    if (!claims || !claims.username) {
+    if (!claims || !claims["cognito:username"]) {
+      console.warn("❌ Missing or invalid claims:", claims);
       return {
         statusCode: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         body: JSON.stringify({ message: "인증 정보가 없습니다." }),
       };
     }
-    const username = claims.username;
+    const username = claims["cognito:username"];
 
     // --- Get Post and Verify Ownership using SDK v3 style ---
     const getCommand = new GetCommand({

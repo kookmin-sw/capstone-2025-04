@@ -243,13 +243,13 @@ export const getPostById = async (postId: string): Promise<PostDetail> => {
 
 /**
  * Fetches the comments for a specific post.
- * GET /community/{postId}/comment
+ * GET /community/{postId}/comments
  */
 export const getComments = async (
   postId: string
 ): Promise<GetCommentsResponse> => {
   if (!postId) throw new Error("postId is required.");
-  const response = await fetch(`${API_BASE_URL}/community/${postId}/comment`, {
+  const response = await fetch(`${API_BASE_URL}/community/${postId}/comments`, {
     method: "GET",
     headers: {
       "Content-Type": "application/json",
@@ -347,7 +347,7 @@ export const createComment = async (
   // Use unknown
   if (!postId) throw new Error("postId is required.");
   const headers = await getAuthHeaders();
-  const response = await fetch(`${API_BASE_URL}/community/${postId}/comment`, {
+  const response = await fetch(`${API_BASE_URL}/community/${postId}/comments`, {
     method: "POST",
     headers: headers,
     body: JSON.stringify(payload),
@@ -370,7 +370,7 @@ export const deleteComment = async (
   const headers = await getAuthHeaders();
   delete headers["Content-Type"]; // DELETE requests typically don't have a body
   const response = await fetch(
-    `${API_BASE_URL}/community/${postId}/comment/${commentId}`,
+    `${API_BASE_URL}/community/${postId}/comments/${commentId}`,
     {
       method: "DELETE",
       headers: headers,

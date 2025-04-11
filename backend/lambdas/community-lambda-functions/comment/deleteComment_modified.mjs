@@ -32,14 +32,15 @@ export const handler = async (event) => {
 
     // Get user info from API Gateway JWT Authorizer
     const claims = event.requestContext?.authorizer?.claims;
-    if (!claims || !claims.username) {
+    if (!claims || !claims["cognito:username"]) {
+      console.warn("❌ Missing or invalid claims:", claims); // 콘솔 로그 추가
       return {
         statusCode: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         body: JSON.stringify({ message: "인증 정보가 없습니다." }),
       };
     }
-    const username = claims.username; // Use username for clarity
+    const username = claims["cognito:username"]; // Use username for clarity
     const commentSK = `COMMENT#${commentId}`;
 
     // --- OPTIONAL Pre-check (Alternative to complex transaction error handling) ---
@@ -118,7 +119,7 @@ export const handler = async (event) => {
             message = "삭제할 댓글을 찾을 수 없습니다.";
           } else if (
             checkComment.Item.author !==
-            event.requestContext?.authorizer?.claims?.username
+            event.requestContext?.authorizer?.claims?.["cognito:username"]
           ) {
             statusCode = 403;
             message = "댓글을 삭제할 권한이 없습니다.";

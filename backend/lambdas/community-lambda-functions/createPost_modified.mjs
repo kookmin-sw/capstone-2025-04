@@ -41,8 +41,8 @@ export const handler = async (event) => {
 
     // API Gateway JWT Authorizer claims
     const claims = event.requestContext?.authorizer?.claims;
-    if (!claims || !claims.username || !claims.sub) {
-      // Ensure sub also exists if needed
+    if (!claims || !claims["cognito:username"] || !claims.sub) {
+      console.warn("❌ Missing or invalid claims:", claims);
       return {
         statusCode: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -50,7 +50,7 @@ export const handler = async (event) => {
       };
     }
 
-    const author = claims.username;
+    const author = claims["cognito:username"];
     const userId = claims.sub; // Use 'sub' from JWT as userId
     const postId = uuidv4();
     const createdAt = new Date().toISOString();
