@@ -1,5 +1,9 @@
-const AWS = require("aws-sdk");
-const dynamoDB = new AWS.DynamoDB.DocumentClient();
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { DynamoDBDocumentClient, GetCommand } from "@aws-sdk/lib-dynamodb";
+
+// 클라이언트 설정
+const client = new DynamoDBClient({});
+const dynamoDB = DynamoDBDocumentClient.from(client);
 
 // Define CORS headers
 const corsHeaders = {
@@ -9,7 +13,7 @@ const corsHeaders = {
 };
 
 // No login required
-exports.handler = async (event) => {
+export const handler = async (event) => {
   // Handle OPTIONS preflight requests for CORS
   if (event.httpMethod === "OPTIONS") {
     return {

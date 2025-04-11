@@ -1,6 +1,10 @@
-const AWS = require("aws-sdk");
-const dynamoDB = new AWS.DynamoDB.DocumentClient();
-const { v4: uuidv4 } = require("uuid");
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { DynamoDBDocumentClient, GetCommand } from "@aws-sdk/lib-dynamodb";
+
+// 클라이언트 설정
+const client = new DynamoDBClient({});
+const dynamoDB = DynamoDBDocumentClient.from(client);
+import { v4 as uuidv4 } from "uuid";
 
 // Define CORS headers - reuse this!
 const corsHeaders = {
@@ -9,7 +13,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization", // Ensure Authorization is allowed
 };
 
-exports.handler = async (event) => {
+export const handler = async (event) => {
   // Handle OPTIONS preflight requests for CORS
   if (event.httpMethod === "OPTIONS") {
     return {
