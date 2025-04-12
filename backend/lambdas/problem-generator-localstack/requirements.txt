@@ -1,0 +1,10 @@
+boto3==1.28.62
+# langchain 관련 패키지 버전 명시 (0.1.20 기준 호환성)
+langchain==0.1.20
+langchain-core==0.1.52
+langchain-community==0.0.38
+langsmith==0.1.52 # langsmith 명시적 추가
+langchain-google-genai==0.0.6 # problem-generator와 동일 버전 유지
+google-generativeai>=0.3.0 # problem-generator와 동일 버전 유지
+python-dotenv==1.0.0
+requests==2.31.0

@@ -58,41 +58,44 @@
                     "Name": "code-runner-container",
                     "Environment": [
                       {
-                        "name": "USER_CODE",
-                        "value.$": "$.originalInput.code"
+                        "Name": "USER_CODE",
+                        "Value.$": "$.originalInput.code"
                       },
                       {
-                        "name": "LANGUAGE",
-                        "value.$": "$.originalInput.language"
+                        "Name": "LANGUAGE",
+                        "Value.$": "$.originalInput.language"
                       },
                       {
-                        "name": "TIME_LIMIT",
-                        "value.$": "States.Format('{}', $.originalInput.timeLimit)"
+                        "Name": "TIME_LIMIT",
+                        "Value.$": "States.Format('{}', $.originalInput.timeLimit)"
                       },
                       {
-                        "name": "MEMORY_LIMIT",
-                        "value.$": "States.Format('{}', $.originalInput.memoryLimit)"
-                      },
-                      { "name": "INPUT_DATA", "value.$": "$.testcase.input" },
-                      {
-                        "name": "EXPECTED_OUTPUT",
-                        "value.$": "$.testcase.output"
+                        "Name": "MEMORY_LIMIT",
+                        "Value.$": "States.Format('{}', $.originalInput.memoryLimit)"
                       },
                       {
-                        "name": "S3_BUCKET_NAME",
-                        "value.$": "$.fargateParams.s3BucketName"
+                        "Name": "INPUT_DATA",
+                        "Value.$": "$.testcase.input"
                       },
                       {
-                        "name": "S3_KEY_PREFIX",
-                        "value.$": "$.fargateParams.s3KeyPrefix"
+                        "Name": "EXPECTED_OUTPUT",
+                        "Value.$": "$.testcase.output"
                       },
                       {
-                        "name": "SUBMISSION_ID",
-                        "value.$": "$.fargateParams.submissionId"
+                        "Name": "S3_BUCKET_NAME",
+                        "Value.$": "$.fargateParams.s3BucketName"
                       },
                       {
-                        "name": "TESTCASE_ID",
-                        "value.$": "States.Format('{}', $.testcaseId)"
+                        "Name": "S3_KEY_PREFIX",
+                        "Value.$": "$.fargateParams.s3KeyPrefix"
+                      },
+                      {
+                        "Name": "SUBMISSION_ID",
+                        "Value.$": "$.fargateParams.submissionId"
+                      },
+                      {
+                        "Name": "TESTCASE_ID",
+                        "Value.$": "States.Format('{}', $.testcaseId)"
                       }
                     ]
                   }
@@ -133,21 +136,6 @@
           }
         }
       },
-      "Next": "Process Results"
-    },
-    "Process Results": {
-      "Type": "Task",
-      "Resource": "arn:aws:states:::lambda:invoke",
-      "Comment": "모든 Fargate 작업 결과를 취합하여 최종 채점 결과를 계산하고 저장하는 Lambda 함수 호출",
-      "Parameters": {
-        "FunctionName": "arn:aws:lambda:REGION:ACCOUNT_ID:function:YourResultProcessorFunctionName",
-        "Payload": {
-          "originalInput.$": "$.originalInput",
-          "taskResults.$": "$.taskResults"
-        }
-      },
-      "ResultPath": "$.gradingResult",
-      "OutputPath": "$.gradingResult.Payload",
       "End": true
     }
   }

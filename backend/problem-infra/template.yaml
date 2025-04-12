@@ -1,0 +1,450 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Problem Grader application with asynchronous Problem Generator and HTTP API, using Lambda Layers.
+
+Parameters:
+  ProblemsTableName:
+    Type: String
+    Description: DynamoDB table name for problems.
+    Default: Problems
+  SubmissionsTableName:
+    Type: String
+    Description: DynamoDB table name for submissions.
+    Default: Submissions
+  GraderS3BucketName:
+    Type: String
+    Description: S3 bucket name for Fargate task results. Needs to be globally unique.
+    Default: your-unique-grader-results-bucket # MUST BE UNIQUE
+  CodeRunnerImageUri:
+    Type: String
+    Description: Full URI of the code-runner Docker image in ECR.
+  EcsClusterName:
+    Type: String
+    Description: Name of the existing ECS Cluster for Fargate tasks.
+  VpcSubnetIds:
+    Type: CommaDelimitedList
+    Description: Comma-separated list of VPC Subnet IDs for Fargate tasks.
+  VpcSecurityGroupIds:
+    Type: CommaDelimitedList
+    Description: Comma-separated list of Security Group IDs for Fargate tasks.
+  GoogleAiApiKey: # Added parameter for API Key (Consider Secrets Manager)
+    Type: String
+    Description: Google AI API Key (Required for Problem Generation)
+    NoEcho: true
+
+Globals:
+  Function:
+    Timeout: 90
+    MemorySize: 512
+    Runtime: python3.12
+
+Resources:
+  # --- Log Group for API Gateway --- #
+  ApiGatewayLogGroup: # Re-added resource definition
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/api-gateway/ProblemSolverApiLogs # 로그 그룹 이름 지정 (Fixed name)
+      RetentionInDays: 7 # 로그 보존 기간 (일)
+
+  # --- HTTP API Gateway --- #
+  ProblemApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      Name: ProblemSolverApi # Explicitly set the API name
+      AccessLogSettings:
+        DestinationArn: !GetAtt ApiGatewayLogGroup.Arn # Reverted to use !GetAtt
+        Format: '{"requestId": "$context.requestId", "ip": "$context.identity.sourceIp", "caller": "$context.identity.caller", "user": "$context.identity.user", "requestTime": "$context.requestTime", "httpMethod": "$context.httpMethod", "resourcePath": "$context.resourcePath", "status": "$context.status", "protocol": "$context.protocol", "responseLength": "$context.responseLength"}' # JSON 형식 로그 예시
+      CorsConfiguration:
+        AllowMethods:
+          - POST
+          - GET
+        AllowHeaders:
+          - Content-Type
+          - Authorization
+        AllowOrigins:
+          - "*" # Restrict this in production
+
+  # --- DynamoDB Tables --- #
+  ProblemsTable: # Re-added resource definition
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Ref ProblemsTableName
+      AttributeDefinitions:
+        - AttributeName: problemId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: problemId
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+
+  SubmissionsTable: # Re-added resource definition
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Ref SubmissionsTableName
+      AttributeDefinitions:
+        - AttributeName: submissionId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: submissionId
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+
+  # --- S3 Bucket (If not existing, uncomment to create) --- #
+  # GraderS3Bucket:
+  #   Type: AWS::S3::Bucket
+  #   Properties:
+  #     BucketName: !Ref GraderS3BucketName
+  #     LifecycleConfiguration:
+  #       Rules:
+  #         - Id: AutoDeleteOldResults
+  #           Status: Enabled
+  #           ExpirationInDays: 7
+
+  # --- Lambda Layers --- #
+  LangchainLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: LangchainLayer-Grader
+      Description: Layer containing core langchain libraries
+      ContentUri: ../layers/langchain_layer/ # Adjusted path relative to new template location
+      CompatibleRuntimes:
+        - python3.12
+      LicenseInfo: "MIT"
+      RetentionPolicy: Retain # Keep layer versions
+    Metadata:
+      BuildMethod: python3.12 # Assumes layer has its own requirements.txt
+
+  LangchainGoogleLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: LangchainGoogleLayer-Grader
+      Description: Layer containing langchain-google-genai and google-generativeai
+      ContentUri: ../layers/langchain_google_layer/ # Adjusted path relative to new template location
+      CompatibleRuntimes:
+        - python3.12
+      LicenseInfo: "Apache-2.0"
+      RetentionPolicy: Retain
+    Metadata:
+      BuildMethod: python3.12 # Assumes layer has its own requirements.txt
+
+  UtilsLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: UtilsLayer-Grader
+      Description: Layer containing utility functions
+      ContentUri: ../layers/utils_layer/ # Adjusted path relative to new template location
+      CompatibleRuntimes:
+        - python3.12
+      LicenseInfo: "MIT"
+      RetentionPolicy: Retain # Keep layer versions
+    Metadata:
+      BuildMethod: python3.12 # Assumes layer has its own requirements.txt
+
+  # --- IAM Roles --- #
+  ProblemGeneratorAWSRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: ProblemGeneratorAWSPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow # Basic Lambda execution (Logs)
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*:*"
+              - Effect: Allow # DynamoDB Put
+                Action: dynamodb:PutItem
+                Resource: !GetAtt ProblemsTable.Arn # Reverted to use !GetAtt
+
+  ApiLambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: ApiLambdaPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow # WARNING: Using wildcard for Lambda invocation - UNSAFE FOR PRODUCTION
+                Action: lambda:InvokeFunction
+                Resource: "*" # Avoids direct dependency on ProblemGeneratorAWSFunction ARN
+              - Effect: Allow # WARNING: Using wildcard for StateMachine execution - UNSAFE FOR PRODUCTION
+                Action: states:StartExecution
+                Resource: "*" # Avoids direct dependency on ProblemGraderStateMachine ARN
+              - Effect: Allow # Allow interacting with DynamoDB (CRUD + Scan)
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:Query
+                  - dynamodb:Scan
+                Resource:
+                  - !GetAtt ProblemsTable.Arn # Reverted to use !GetAtt
+                  - !GetAtt SubmissionsTable.Arn # Reverted to use !GetAtt
+
+  StateMachineExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - !Sub "states.${AWS::Region}.amazonaws.com"
+                - lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: StateMachineLambdaInvokePolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource: "*" # WARNING: Using wildcard for Lambda invocation - UNSAFE FOR PRODUCTION.
+        - PolicyName: StateMachineEcsRunTaskPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ecs:RunTask
+                  - ecs:StopTask
+                  - ecs:DescribeTasks
+                Resource: "*"
+              - Effect: Allow
+                Action: iam:PassRole
+                Resource: !GetAtt FargateTaskExecutionRole.Arn
+        - PolicyName: StateMachineS3AccessPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                Resource: !Sub "arn:aws:s3:::${GraderS3BucketName}/*"
+        - PolicyName: StateMachineDynamoDBAccessPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:Query
+                  - dynamodb:Scan
+                Resource: !GetAtt SubmissionsTable.Arn # Reverted (Check consistency)
+
+  FargateTaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ecs-tasks.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Policies:
+        - PolicyName: FargateTaskS3Policy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow # Allow writing results to S3
+                Action: s3:PutObject
+                Resource: !Sub "arn:aws:s3:::${GraderS3BucketName}/*"
+
+  # --- Lambda Functions --- #
+  ProblemGeneratorAWSFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: ProblemGeneratorAWSFunction
+      CodeUri: ../lambdas/problem-generator-aws/ # Adjusted path relative to new template location
+      Handler: lambda_function.handler
+      Role: !GetAtt ProblemGeneratorAWSRole.Arn
+      Timeout: 300
+      MemorySize: 1024
+      Layers:
+        - !Ref LangchainLayer
+        - !Ref LangchainGoogleLayer
+        - !Ref UtilsLayer
+      Environment:
+        Variables:
+          PROBLEMS_TABLE_NAME: !Ref ProblemsTableName
+          GOOGLE_AI_KEY: !Ref GoogleAiApiKey
+          GENERATOR_VERBOSE: "false"
+
+  ProblemApiHandlerFunction:
+    Type: AWS::Serverless::Function
+    DependsOn: ApiLambdaExecutionRole
+    Properties:
+      FunctionName: ProblemApiHandlerFunction
+      CodeUri: ../lambdas/api_handler/ # Adjusted path relative to new template location
+      Handler: lambda_function.handler
+      Role: !GetAtt ApiLambdaExecutionRole.Arn
+      Timeout: 60
+      MemorySize: 256
+      Environment:
+        Variables:
+          PROBLEMS_TABLE_NAME: !Ref ProblemsTableName
+          SUBMISSIONS_TABLE_NAME: !Ref SubmissionsTableName
+          PROBLEM_GENERATOR_FUNCTION_ARN: !GetAtt ProblemGeneratorAWSFunction.Arn
+      Events:
+        # Problems API routes (re-added)
+        GenerateProblemApi:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ProblemApi
+            Path: /problems
+            Method: POST
+        ListProblemsApi:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ProblemApi
+            Path: /problems
+            Method: GET
+        GetProblemDetailsApi:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ProblemApi
+            Path: /problems/{problemId}
+            Method: GET
+        # Submissions API routes
+        SubmitSolutionApi:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ProblemApi
+            Path: /submissions
+            Method: POST
+        ListSubmissionsApi:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ProblemApi
+            Path: /submissions
+            Method: GET
+        GetSubmissionStatusApi:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ProblemApi
+            Path: /submissions/{submissionId}
+            Method: GET
+
+  # --- ECS Task Definition --- #
+  GraderTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: problem-grader-task
+      RequiresCompatibilities: ["FARGATE"]
+      NetworkMode: awsvpc
+      Cpu: "1024"
+      Memory: "2048"
+      ExecutionRoleArn: !GetAtt FargateTaskExecutionRole.Arn
+      ContainerDefinitions:
+        - Name: code-runner-container
+          Image: !Ref CodeRunnerImageUri
+          Essential: true
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref GraderTaskLogGroup # Reverted to use !Ref
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: ecs # Or any other prefix
+
+  # --- Log Group for ECS Task (Re-added at the end for clarity) --- #
+  GraderTaskLogGroup: # Re-added resource definition
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /ecs/problem-grader-task # Fixed name
+      RetentionInDays: 7
+
+  # --- Step Functions State Machine --- #
+  ProblemGraderStateMachine:
+    Type: AWS::Serverless::StateMachine
+    DependsOn:
+      - StateMachineExecutionRole
+      - GraderTaskDefinition
+      - FargateTaskExecutionRole
+    Properties:
+      Name: ProblemGraderStateMachine
+      DefinitionUri: ../lambdas/problem-grader/statemachine/grader_workflow.asl.json # Adjusted path relative to new template location
+      Policies:
+        # Policy added to allow Step Functions to manage EventBridge rules for distributed map state
+        - Statement:
+            - Effect: Allow
+              Action:
+                - events:PutRule
+                - events:PutTargets
+                - events:DeleteRule
+                - events:RemoveTargets
+                - events:DescribeRule
+              Resource: !Sub "arn:aws:events:${AWS::Region}:${AWS::AccountId}:rule/StepFunctionsGetEventsForECSTaskRule"
+        - Statement:
+            - Effect: Allow
+              Action:
+                - ecs:RunTask
+                - ecs:StopTask
+                - ecs:DescribeTasks
+              Resource: "*"
+            - Effect: Allow
+              Action: iam:PassRole
+              Resource:
+                - !GetAtt FargateTaskExecutionRole.Arn
+        - Statement:
+            - Effect: Allow
+              Action:
+                - s3:GetObject
+                - s3:PutObject
+                - s3:DeleteObject
+              Resource: !Sub "arn:aws:s3:::${GraderS3BucketName}/*"
+        - Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:PutItem
+                - dynamodb:UpdateItem
+                - dynamodb:Query
+                - dynamodb:Scan
+              Resource: !GetAtt SubmissionsTable.Arn # Reverted (Check consistency)
+
+Outputs:
+  StateMachineArn:
+    Description: "ARN of the Problem Grader State Machine"
+    Value: !Ref ProblemGraderStateMachine
+  ProblemsTableName:
+    Description: "Problems DynamoDB table name"
+    Value: !Ref ProblemsTableName
+  SubmissionsTableName:
+    Description: "Submissions DynamoDB table name"
+    Value: !Ref SubmissionsTableName
+  GraderS3BucketName:
+    Description: "S3 bucket name for grading results"
+    Value: !Ref GraderS3BucketName
+  ProblemGeneratorAWSFunctionName:
+    Description: "Name of the Problem Generator AWS Lambda function"
+    Value: !Ref ProblemGeneratorAWSFunction
+  ProblemGeneratorAWSRoleArn:
+    Description: "ARN of the Problem Generator AWS Lambda function's execution role"
+    Value: !GetAtt ProblemGeneratorAWSRole.Arn
+  ProblemApiEndpoint:
+    Description: "API Gateway endpoint URL for Problem API"
+    Value: !Sub "https://${ProblemApi}.execute-api.${AWS::Region}.amazonaws.com/"
