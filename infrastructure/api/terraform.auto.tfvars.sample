@@ -1,0 +1,2 @@
+tf_state_bucket     = "YOUR_TERRAFORM_STATE_BUCKET_NAME" # Terraform 상태 파일을 저장할 S3 버킷 이름을 입력하세요. (backend-setup 결과)
+tf_state_lock_table = "YOUR_TERRAFORM_STATE_LOCK_TABLE_NAME" # Terraform 상태 잠금을 위한 DynamoDB 테이블 이름을 입력하세요. (backend-setup 결과)
