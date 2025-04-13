@@ -1,0 +1,118 @@
+name: Deploy Chatbot Infrastructure
+
+on:
+  push:
+    branches:
+      - main # Or your primary deployment branch
+    paths:
+      # Trigger when Chatbot Lambda source code changes
+      - "backend/lambdas/chatbot-query/**"
+      # Trigger when Chatbot infrastructure code changes
+      - "infrastructure/chatbot/**"
+      # Trigger when this workflow file itself changes
+      - ".github/workflows/deploy-chatbot.yml"
+  # Optional: Add pull_request trigger for planning on PRs
+  # pull_request:
+  #   paths:
+  #     - 'backend/lambdas/chatbot-query/**'
+  #     - 'infrastructure/chatbot/**'
+  #     - '.github/workflows/deploy-chatbot.yml'
+
+# Permissions needed for AWS OIDC authentication and checking out code
+permissions:
+  id-token: write # Required for assuming IAM role via OIDC
+  contents: read # Required to checkout the repository code
+
+jobs:
+  deploy_chatbot:
+    name: Terraform Plan & Apply (Chatbot)
+    runs-on: ubuntu-latest
+    # Optional: Link to a GitHub environment for secrets and protection rules
+    # environment: production
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.x" # Match Lambda runtime
+
+      - name: Check for package.json
+        id: check_files
+        uses: andstor/file-existence-action@v3
+        with:
+          files: "backend/lambdas/chatbot-query/package.json"
+
+      - name: Install Layer Dependencies (Node.js)
+        if: steps.check_files.outputs.files_exists == 'true' # Only run if package.json exists
+        run: |
+          echo "Installing dependencies from backend/lambdas/chatbot-query/package.json into layer directory..."
+          npm install --prefix ./infrastructure/chatbot/layers/chatbot_deps/nodejs ./backend/lambdas/chatbot-query
+          echo "Installation complete."
+
+      - name: Verify Layer Directory Contents
+        if: steps.check_files.outputs.files_exists == 'true' # Only run if package.json exists
+        run: |
+          echo "Listing contents of ./infrastructure/chatbot/layers/chatbot_deps/nodejs:"
+          ls -la ./infrastructure/chatbot/layers/chatbot_deps/nodejs
+
+      - name: Configure AWS Credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          # Role ARN that GitHub Actions will assume for chatbot deployment.
+          # Needs permissions for: API Gateway, Lambda, IAM (roles/policies), S3 (state), DynamoDB (state lock)
+          role-to-assume: ${{ secrets.AWS_IAM_ROLE_ARN_CHATBOT }} # GitHub Secret: ARN of the chatbot deployment role
+          aws-region: ${{ secrets.AWS_REGION }} # GitHub Secret: e.g., ap-northeast-2
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        # Optionally specify Terraform version:
+        # with:
+        #   terraform_version: 1.x.x
+
+      - name: Terraform Init (Chatbot)
+        id: init
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
+            -backend-config="key=chatbot/terraform.tfstate" \ # Key specific to chatbot module
+            -backend-config="region=${{ secrets.AWS_REGION }}" \
+            -backend-config="dynamodb_table=${{ secrets.TF_STATE_LOCK_TABLE }}" \
+            -backend-config="encrypt=true"
+        working-directory: ./infrastructure/chatbot
+        # Required GitHub Secrets:
+        # TF_STATE_BUCKET: Name of the S3 bucket from backend-setup
+        # TF_STATE_LOCK_TABLE: Name of the DynamoDB table from backend-setup
+
+      - name: Terraform Validate (Chatbot)
+        id: validate
+        run: terraform validate -no-color
+        working-directory: ./infrastructure/chatbot
+
+      - name: Terraform Plan (Chatbot)
+        id: plan
+        run: terraform plan -no-color -out=tfplan
+        working-directory: ./infrastructure/chatbot
+        # If running on pull_request, you might only run plan and exit here
+
+      # Optional: Add step to upload plan artifact for review on PRs
+
+      - name: Terraform Apply (Chatbot)
+        # Only run apply on pushes to the target branch (e.g., main)
+        # Add environment checks or manual approval steps if needed for production
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: terraform apply -auto-approve tfplan
+        working-directory: ./infrastructure/chatbot
+
+      # Optional: Add step to output API Gateway URL after apply
+      - name: Get Chatbot API Gateway URL Output
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        id: get_output
+        run: echo "chatbot_api_url=$(terraform output -raw chatbot_api_invoke_url)" >> $GITHUB_OUTPUT
+        working-directory: ./infrastructure/chatbot
+
+      - name: Print Chatbot API URL
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: 'echo "Chatbot API Gateway URL: ${{ steps.get_output.outputs.chatbot_api_url }}"'

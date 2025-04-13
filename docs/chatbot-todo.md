@@ -13,18 +13,21 @@ This list breaks down the implementation of the AI Chatbot Assistant feature bas
 
 ## Phase 1: Setup & Initial Backend
 
-- [ ] **Infrastructure:** Create `infrastructure/chatbot/` directory.
-- [ ] **Infrastructure:** Define basic Terraform files (`providers.tf`, `variables.tf`, `backend.tf`).
-  - [ ] Configure S3 backend with key `chatbot/terraform.tfstate`.
-- [ ] **Infrastructure:** Define IAM Role and Policy (`iam.tf`) for Lambda execution, including `AWSLambdaBasicExecutionRole` and `bedrock:InvokeModelWithResponseStream` permissions.
-- [ ] **Backend:** Create `backend/lambdas/chatbot-query/` directory.
-- [ ] **Backend:** Create initial `lambda_function.py` with basic handler structure.
-- [ ] **Backend:** Create `requirements.txt` with `boto3`, `langchain`, `langchain_aws`.
-- [ ] **Infrastructure:** Define Lambda function resource (`lambda.tf`) using `archive_file` data source. Include environment variables (`BEDROCK_MODEL_ID`, `AWS_REGION`).
+- [x] **Infrastructure:** Create `infrastructure/chatbot/` directory.
+- [x] **Infrastructure:** Define basic Terraform files (`providers.tf`, `variables.tf`, `backend.tf`).
+  - [x] Configure S3 backend with key `chatbot/terraform.tfstate`.
+- [x] **Infrastructure:** Define IAM Role and Policy (`iam.tf`) for Lambda execution, including `AWSLambdaBasicExecutionRole` and `bedrock:InvokeModelWithResponseStream` permissions.
+- [x] **Backend:** Create `backend/lambdas/chatbot-query/` directory.
+- [x] **Backend:** Create initial `index.mjs` (Node.js) with basic handler structure.
+- [x] **Backend:** Create `package.json` with initial dependencies (e.g., `@aws-sdk/client-bedrock-runtime`, `@langchain/aws`, `langchain`).
+- [x] **Infrastructure:** Define Lambda Layer (`layer.tf`) for Node.js dependencies.
+- [x] **Infrastructure:** Create directory structure for Node.js Lambda Layer (`infrastructure/chatbot/layers/chatbot_deps/nodejs`).
+- [x] **Deployment:** Update GitHub Actions workflow (`deploy-chatbot.yml`) to install Node.js dependencies (`npm install`) into the layer directory.
+- [x] **Infrastructure:** Update Lambda function resource (`lambda.tf`) to use Layer, Node.js 22.x runtime, arm64 architecture, and include environment variables (`BEDROCK_MODEL_ID`, `AWS_REGION`).
 - [ ] **Infrastructure:** Define basic API Gateway resources (`apigateway.tf`): `/chatbot/query` POST method, `AWS_PROXY` integration, Lambda permission. (Defer Cognito auth & CORS for now).
 - [ ] **Infrastructure:** Define outputs (`outputs.tf`) for the API Gateway invoke URL.
-- [ ] **Deployment:** Create initial `deploy-chatbot.yml` GitHub Actions workflow to run `terraform init/plan/apply` for the `infrastructure/chatbot/` directory. Configure necessary secrets (`AWS_IAM_ROLE_ARN_CHATBOT`, etc.).
-- [ ] **Testing:** Manually invoke the deployed Lambda (via AWS Console or `aws lambda invoke`) or the basic API Gateway endpoint (e.g., using `curl` or Postman) to ensure basic setup is working (expecting placeholder response or error initially).
+- [x] **Deployment:** Update `deploy-chatbot.yml` GitHub Actions workflow to run `terraform init/plan/apply` for the `infrastructure/chatbot/` directory. Configure necessary secrets (`AWS_IAM_ROLE_ARN_CHATBOT`, etc.).
+- [x] **Testing:** Manually invoke the deployed Lambda (via AWS Console or `aws lambda invoke`) or the basic API Gateway endpoint (e.g., using `curl` or Postman) to ensure basic setup is working (expecting placeholder response or error initially).
 
 ## Phase 2: Core Backend Logic (LLM Interaction)
 
@@ -56,16 +59,4 @@ This list breaks down the implementation of the AI Chatbot Assistant feature bas
 ## Phase 4: Authentication & CORS
 
 - [ ] **Infrastructure:** Add Cognito Authorizer configuration to the `POST /chatbot/query` method in `apigateway.tf`. Use `data "terraform_remote_state"` to get Cognito User Pool ARN from the `cognito` state.
-- [ ] **Infrastructure:** Add `OPTIONS` method and necessary CORS response headers (using MOCK integration) for `/chatbot/query` in `apigateway.tf` to allow requests from the frontend domain (`NEXT_PUBLIC_APP_BASE_URL`).
-- [ ] **Deployment:** Ensure Terraform apply updates API Gateway correctly.
-- [ ] **Testing:** Verify that authenticated requests succeed and unauthenticated requests fail. Verify CORS preflight requests are handled correctly from the browser.
-
-## Phase 5: Refinement & Finalization
-
-- [ ] **Backend:** Refine prompt engineering for better response quality and spoiler avoidance.
-- [ ] **Frontend:** Polish UI/UX based on testing.
-- [ ] **Documentation:** Update `README.md` files in relevant directories (`infrastructure/chatbot/`, `backend/lambdas/chatbot-query/`).
-- [ ] **Testing:** Conduct thorough end-to-end testing across different scenarios.
-- [ ] **Code Review:** Review frontend, backend, infrastructure, and workflow code.
-
----
+- [ ] **Infrastructure:** Add `OPTIONS`

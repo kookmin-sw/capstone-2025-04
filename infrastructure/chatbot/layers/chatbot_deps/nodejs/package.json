@@ -1,0 +1,23 @@
+{
+  "name": "chatbot-query-lambda",
+  "version": "1.0.0",
+  "description": "Lambda function for handling chatbot queries",
+  "main": "index.mjs",
+  "type": "module",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "lambda",
+    "chatbot",
+    "bedrock",
+    "langchain"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@aws-sdk/client-bedrock-runtime": "^3.787.0",
+    "@langchain/aws": "^0.1.8",
+    "langchain": "^0.3.21"
+  }
+}

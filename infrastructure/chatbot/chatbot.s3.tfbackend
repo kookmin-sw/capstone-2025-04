@@ -1,0 +1,5 @@
+bucket         = "alpaco-tfstate-bucket-kmu"
+key            = "chatbot/terraform.tfstate"
+region         = "ap-northeast-2"
+dynamodb_table = "alpaco-tfstate-lock-table"
+encrypt        = true 
