@@ -86,7 +86,10 @@ Fargate Task(`code-runner`)가 사용할 이미지를 ECR에 업로드합니다.
     sam build -t backend/lambdas/problem-grader/template.yaml --use-container
     ```
 
-    **주의:** 빌드 후 `.aws-sam/build/` 디렉토리 내용을 확인하여 의도한 대로 함수와 레이어가 올바르게 패키징되었는지 확인하는 것이 좋습니다. 특히, 레이어를 사용하는 함수의 디렉토리(`.aws-sam/build/FunctionName/`) 안에 불필요한 의존성 라이브러리가 중복으로 포함되지 않았는지 확인하세요.
+    **주의:**
+
+    - 빌드 후 `.aws-sam/build/` 디렉토리 내용을 확인하여 의도한 대로 함수와 레이어가 올바르게 패키징되었는지 확인하는 것이 좋습니다.
+    - 특히, Lambda 함수에 필요한 핵심 라이브러리(boto3, langchain 등)는 `template.yaml`에 정의된 **Lambda Layer**를 통해 제공됩니다. 따라서 개별 함수 디렉토리(`backend/lambdas/problem-generator-aws/` 등)에 `requirements.txt` 파일이 없거나 내용이 비어 있어도 괜찮습니다. `sam build` 실행 시 `requirements.txt file not found` 경고가 발생할 수 있지만, Layer가 올바르게 설정되었다면 무시해도 됩니다.
 
 3.  **패키지:**
     빌드된 아티팩트(코드, 레이어)를 S3 버킷에 업로드하고, S3 경로를 참조하는 새로운 템플릿 파일 (`packaged.yaml`)을 생성합니다.
@@ -95,52 +98,58 @@ Fargate Task(`code-runner`)가 사용할 이미지를 ECR에 업로드합니다.
     # 프로젝트 루트 디렉토리에서 실행
     # YOUR_S3_BUCKET_NAME을 배포 아티팩트를 저장할 S3 버킷 이름으로 변경하세요.
     # GraderS3BucketName과 동일한 버킷을 사용해도 됩니다.
-    sam package \\
-      --template-file .aws-sam/build/template.yaml \\
-      --s3-bucket YOUR_S3_BUCKET_NAME \\
-      --output-template-file packaged.yaml \\
-      --force-upload # S3 캐싱 문제를 방지하기 위해 추가
+    # sam package \\
+    #  --template-file .aws-sam/build/template.yaml \\
+    #  --s3-bucket YOUR_S3_BUCKET_NAME \\
+    #  --output-template-file packaged.yaml \\
+    #  --force-upload # S3 캐싱 문제를 방지하기 위해 추가 (선택사항)
     ```
 
     **주의:** `YOUR_S3_BUCKET_NAME`은 SAM 배포 아티팩트를 저장하기 위한 S3 버킷입니다. `GraderS3BucketName`과 동일한 버킷을 사용해도 무방합니다.
 
 4.  **배포:**
-    `sam package` 명령으로 생성된 `packaged.yaml` 파일을 사용하여 CloudFormation 스택을 배포합니다.
+    빌드 단계에서 생성된 `.aws-sam/build/template.yaml` 파일을 사용하여 CloudFormation 스택을 배포합니다. (또는 `sam package`를 사용했다면 `packaged.yaml` 사용)
 
     ```bash
     # 프로젝트 루트 디렉토리에서 실행
-    # <YOUR_...> 값들을 실제 환경에 맞게 수정해야 합니다.
+    # 아래 값들은 실제 배포 환경에 맞게 확인 및 수정해야 합니다.
     sam deploy \\
-      --template-file packaged.yaml \\
-      --stack-name <YOUR_STACK_NAME> \\
-      --region <YOUR_REGION> \\
+      --template-file .aws-sam/build/template.yaml \\
+      --stack-name problem-infra-stack \\
+      --region ap-northeast-2 \\
       --capabilities CAPABILITY_IAM \\
+      --s3-bucket problem-solver-results \\
       --parameter-overrides \\
-        ProblemsTableName=<YOUR_PROBLEMS_TABLE> \\
-        SubmissionsTableName=<YOUR_SUBMISSIONS_TABLE> \\
-        GraderS3BucketName=<YOUR_GRADER_RESULTS_BUCKET> \\
-        CodeRunnerImageUri=<YOUR_ECR_IMAGE_URI> \\
-        EcsClusterName=<YOUR_ECS_CLUSTER_NAME> \\
-        VpcSubnetIds="<SUBNET_ID_1,SUBNET_ID_2>" \\
-        VpcSecurityGroupIds="<SG_ID_1,SG_ID_2>" \\
-      --confirm-changeset
+        ProblemsTableName=Problems \\
+        SubmissionsTableName=Submissions \\
+        GraderS3BucketName=problem-solver-results \\
+        CodeRunnerImageUri=897722694537.dkr.ecr.ap-northeast-2.amazonaws.com/problem-grader/code-runner:latest \\
+        EcsClusterName=code-runner-cluster \\
+        VpcSubnetIds=\"subnet-017ce875f56125b56,subnet-0749f96b14750c07c,subnet-07957a2efb3216fd6,subnet-0e8f7de3277620546\" \\
+        VpcSecurityGroupIds=\"sg-0f95a4abfc6e0046a\" \\
+        GoogleAiApiKey=<YOUR_GOOGLE_AI_API_KEY> \\
+      --no-confirm-changeset
     ```
 
     **파라미터 설명:**
 
-    - `YOUR_STACK_NAME`: CloudFormation 스택 이름 (예: `problem-solver-stack`)
-    - `YOUR_REGION`: 배포할 AWS 리전 (예: `ap-northeast-2`)
-    - `CAPABILITY_IAM`: IAM 역할 생성을 허용합니다.
-    - `ProblemsTableName`: Problems DynamoDB 테이블 이름.
-    - `SubmissionsTableName`: Submissions DynamoDB 테이블 이름.
-    - `GraderS3BucketName`: Fargate 채점 결과가 저장될 S3 버킷 이름 (전역 고유).
-    - `CodeRunnerImageUri`: 3단계에서 ECR에 푸시한 Docker 이미지의 전체 URI.
-    - `EcsClusterName`: 2단계에서 준비한 ECS 클러스터 이름.
-    - `VpcSubnetIds`: Fargate 작업이 사용할 서브넷 ID 목록 (쉼표로 구분, 따옴표로 감싸기).
-    - `VpcSecurityGroupIds`: Fargate 작업에 적용할 보안 그룹 ID 목록 (쉼표로 구분, 따옴표로 감싸기).
-    - `--confirm-changeset`: 배포 전에 변경 사항을 확인합니다.
+    - `template-file`: 빌드된 템플릿 파일 경로 (`.aws-sam/build/template.yaml` 또는 `packaged.yaml`).
+    - `stack-name`: CloudFormation 스택 이름 (예: `problem-infra-stack`).
+    - `region`: 배포할 AWS 리전 (예: `ap-northeast-2`).
+    - `capabilities CAPABILITY_IAM`: IAM 역할 생성을 허용합니다.
+    - `s3-bucket`: 배포 아티팩트를 업로드할 S3 버킷 이름.
+    - `parameter-overrides`: 템플릿 파라미터 값을 지정합니다.
+      - `ProblemsTableName`: Problems DynamoDB 테이블 이름.
+      - `SubmissionsTableName`: Submissions DynamoDB 테이블 이름.
+      - `GraderS3BucketName`: Fargate 채점 결과가 저장될 S3 버킷 이름.
+      - `CodeRunnerImageUri`: 3단계에서 ECR에 푸시한 Docker 이미지의 전체 URI.
+      - `EcsClusterName`: 2단계에서 준비한 ECS 클러스터 이름.
+      - `VpcSubnetIds`: Fargate 작업이 사용할 서브넷 ID 목록 (쉼표로 구분, 따옴표로 감싸기).
+      - `VpcSecurityGroupIds`: Fargate 작업에 적용할 보안 그룹 ID 목록 (쉼표로 구분, 따옴표로 감싸기).
+      - `GoogleAiApiKey`: Google AI API 키. **(보안상 환경 변수나 다른 안전한 방법으로 관리하는 것을 권장합니다.)**
+    - `--no-confirm-changeset`: 배포 전 변경 사항 확인 단계를 건너뛰니다. (개발/테스트 시 유용)
 
-**주의:** `template.yaml` 내 `ProblemGeneratorStreamingFunction`의 환경 변수 (`GOOGLE_AI_API_KEY` 등)는 SAM 배포 파라미터 또는 배포 후 Lambda 콘솔에서 별도로 설정해야 할 수 있습니다. Secrets Manager 사용을 권장합니다.
+**주의:** `template.yaml` 내 Lambda 함수의 환경 변수 (`GOOGLE_AI_API_KEY` 등)는 `--parameter-overrides`를 통해 전달하거나, 배포 후 Lambda 콘솔 또는 다른 구성 관리 도구를 통해 설정해야 합니다. 보안에 민감한 값은 직접 노출하는 대신 다른 안전한 방법(예: AWS Secrets Manager, Parameter Store) 사용을 강력히 권장합니다.
 
 ## 5. 배포 확인
 

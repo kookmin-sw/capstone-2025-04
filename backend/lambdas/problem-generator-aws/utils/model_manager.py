@@ -23,6 +23,7 @@ PROVIDER_BEDROCK = "bedrock"
 # 모델 이름 매핑 딕셔너리
 MODEL_NAME_MAPPING = {
     # 원래 이름도 그대로 사용할 수 있도록 유지
+    "gemini-2.0-flash": "gemini-2.0-flash-001",
     "gemini-2.0-flash-thinking-exp-01-21": "gemini-2.0-flash-thinking-exp-01-21",
     "gemini-2.5-pro-exp-03-25": "gemini-2.5-pro-exp-03-25",
 }
@@ -53,7 +54,7 @@ def get_llm(api_key=None, model_name="gemini-flash", temperature=0.7, model_type
         api_key (str, optional): Google AI API 키
         model_name (str, optional): 사용할 모델 이름 (짧은 이름 또는 전체 이름)
         temperature (float, optional): 생성 온도 (낮을수록 결정적, 높을수록 창의적)
-        model_type (str, optional): "thinking"일 경우 추론 특화 모델 반환
+        model_type (str, optional): "thinking"일 경우 추론 특화 모델 반환, "standard"일 경우 JSON 지원 모델 우선 반환
         
     Returns:
         ChatGoogleGenerativeAI: 설정된 LLM 모델 인스턴스
@@ -62,13 +63,21 @@ def get_llm(api_key=None, model_name="gemini-flash", temperature=0.7, model_type
     if model_type == "thinking":
         return _get_thinking_model(api_key=api_key, temperature=temperature)
     
+    # 모델 이름 결정 로직 수정
+    if model_type == "standard":
+        # 표준 타입 요청 시 JSON 모드 지원 모델 우선 (gemini-pro에서 변경)
+        selected_model_name = "gemini-2.0-flash" 
+    else:
+        # 그 외에는 model_name 파라미터 사용 (기본값 gemini-flash)
+        selected_model_name = model_name
+        
     # 모델 이름 매핑 적용
-    full_model_name = MODEL_NAME_MAPPING.get(model_name, model_name)
+    full_model_name = MODEL_NAME_MAPPING.get(selected_model_name, selected_model_name)
     
     # API 키 가져오기
     api_key = get_api_key(api_key)
     
-    # 일반 표준 모델 설정
+    # 모델 설정
     return ChatGoogleGenerativeAI(
         model=full_model_name,
         google_api_key=api_key,

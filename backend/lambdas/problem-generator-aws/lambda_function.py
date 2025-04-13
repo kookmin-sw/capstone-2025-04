@@ -106,15 +106,38 @@ def save_problem_to_dynamodb(problem_data: dict):
         print("DynamoDB client initialized.")
 
     problem_id = str(uuid.uuid4())
+    current_time = datetime.datetime.utcnow().isoformat()
+    # Use snake_case for attribute names (reverted)
     item_to_save = {
         'problemId': {'S': problem_id},
-        'title': {'S': problem_data.get('title', 'N/A')},
+        'title': {'S': problem_data.get('problem_title', 'Untitled Problem')},
         'description': {'S': problem_data.get('description', '')},
-        'testcases': {'S': json.dumps(problem_data.get('testcases', []))},
-        'difficulty': {'S': problem_data.get('difficulty', 'Medium')},
-        'algorithmType': {'S': problem_data.get('algorithmType', 'Implementation')},
-        'createdAt': {'S': datetime.datetime.utcnow().isoformat()}
+        'input_format': {'S': problem_data.get('input_format', '')},
+        'output_format': {'S': problem_data.get('output_format', '')},
+        'constraints': {'S': problem_data.get('constraints', '')},
+        'difficulty': {'S': problem_data.get('difficulty', 'Unknown')},
+        'algorithmType': {'S': problem_data.get('algorithmType', 'Unknown')},
+        'solution_code': {'S': problem_data.get('solution_code', '')},
+        'testcases': {'S': json.dumps(problem_data.get('generated_examples', []))},
+        'example_input': {'S': json.dumps(problem_data.get('example_input', None))},
+        'example_output': {'S': json.dumps(problem_data.get('example_output', None))},
+        'test_case_generation_code': {'S': problem_data.get('test_case_generation_code', '')},
+        'genStatus': {'S': 'completed'}, # Assuming generation is complete when saving
+        'createdAt': {'S': current_time},
+        'updatedAt': {'S': current_time},
+        'likesCount': {'N': '0'},
+        # 'creatorId': {'S': 'generator'} # 원래 하드코딩된 값
+        'creatorId': {'S': ''} # TODO: 추후 실제 사용자 ID로 업데이트 필요
     }
+    
+    # Add optional fields with snake_case names if they exist in problem_data (reverted)
+    if 'template_source' in problem_data:
+        item_to_save['template_source'] = {'S': problem_data['template_source']}
+    if 'algorithm_hint' in problem_data:
+        item_to_save['algorithm_hint'] = {'S': problem_data['algorithm_hint']}
+    if 'language' in problem_data:
+        item_to_save['language'] = {'S': problem_data['language']}
+        
 
     try:
         dynamodb_client.put_item(
@@ -122,12 +145,21 @@ def save_problem_to_dynamodb(problem_data: dict):
             Item=item_to_save
         )
         print(f"Successfully saved problem {problem_id} to DynamoDB.")
-        # Step Functions 반환값을 위해 problem_id와 함께 전체 데이터를 반환하도록 수정 고려
-        problem_data['problemId'] = problem_id
-        return problem_data # 저장된 데이터 반환
+        # Reconstruct the dictionary with snake_case keys (reverted)
+        saved_data_dict = {k: list(v.values())[0] for k, v in item_to_save.items()}
+        saved_data_dict['likesCount'] = int(saved_data_dict['likesCount'])
+        # Parse JSON strings back to objects
+        try: saved_data_dict['testcases'] = json.loads(saved_data_dict.get('testcases', '[]')) # Reverted
+        except json.JSONDecodeError: saved_data_dict['testcases'] = []
+        try: saved_data_dict['example_input'] = json.loads(saved_data_dict.get('example_input', 'null')) # Reverted
+        except json.JSONDecodeError: saved_data_dict['example_input'] = None
+        try: saved_data_dict['example_output'] = json.loads(saved_data_dict.get('example_output', 'null')) # Reverted
+        except json.JSONDecodeError: saved_data_dict['example_output'] = None
+            
+        return saved_data_dict
     except ClientError as e:
         print(f"Error saving problem to DynamoDB: {e.response['Error']['Message']}")
-        return None # 실패 시 None 반환
+        return None
     except Exception as e:
         print(f"Unexpected error saving to DynamoDB: {e}")
         return None

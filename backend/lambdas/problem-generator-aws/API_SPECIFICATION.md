@@ -73,19 +73,52 @@ API Gateway 배포 후 생성되는 URL을 사용합니다. 예: `https://{api-i
   ```json
   {
     "problemId": "uuid-string-...",
-    "title": "두 수 더하기",
-    "description": "두 정수 A와 B를 입력받아 A+B를 출력하는 프로그램을 작성하시오.",
-    "input_format": "첫째 줄에 A와 B가 주어진다. (0 < A, B < 10)",
-    "output_format": "첫째 줄에 A+B를 출력한다.",
-    "constraints": "시간 제한 1초, 메모리 제한 128MB",
+    "title": "과거 제출 기록의 가중 평균 점수",
+    "description": "알고리즘 대회에 참가 중인 당신은 과거 제출 기록을 바탕으로 자신의 현재 실력을 가늠해보려 합니다...",
+    "input_format": "첫 번째 줄에 제출 기록의 수 N (0 ≤ N ≤ 50)이 주어집니다...",
+    "output_format": "계산된 가중 평균 점수를 **반올림한 정수** 값을 한 줄에 출력합니다...",
+    "constraints": "- 제출 기록의 수 N은 0 이상 50 이하의 정수입니다...",
+    "example_input": {
+      "n": 3,
+      "submissions": [
+        ["2021/01/01 00:00:00", 100.0],
+        ["2021/06/01 00:00:00", 200.0],
+        ["2022/01/01 00:00:00", 300.0]
+      ]
+    },
+    "example_output": {
+      "weighted_average_score": 235
+    },
     "testcases": [
-      { "input": "1 1", "output": "2" },
-      { "input": "2 3", "output": "5" }
+      {
+        "input": {
+          "n": 3,
+          "submissions": [
+            ["2021/01/01 00:00:00", 100.0],
+            ["2021/06/01 00:00:00", 200.0],
+            ["2022/01/01 00:00:00", 300.0]
+          ]
+        },
+        "output": { "weighted_average_score": 235 }
+      },
+      {
+        "input": { "n": 1, "submissions": [["2022/01/01 00:00:00", 500.0]] },
+        "output": { "weighted_average_score": 500 }
+      }
+      // ... more test cases ...
     ],
     "difficulty": "쉬움",
     "algorithmType": "구현",
-    "createdAt": "timestamp"
-    // ... 기타 문제 정보 ...
+    "likesCount": 0,
+    "creatorId": "", // 생성자 ID (현재 빈 값, 추후 사용자 ID)
+    "genStatus": "completed",
+    "createdAt": "2025-04-13T07:08:39.784873",
+    "updatedAt": "2025-04-13T07:08:39.784873",
+    "language": "cpp",
+    "solution_code": "// 변형된 C++ 코드 작성 시작...",
+    "test_case_generation_code": "import json\nimport datetime\nimport math...",
+    "template_source": "implementation/25318.cpp",
+    "algorithm_hint": ""
   }
   ```
 - **Error Responses:**

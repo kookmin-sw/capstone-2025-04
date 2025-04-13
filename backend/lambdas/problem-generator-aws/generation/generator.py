@@ -212,13 +212,15 @@ class ProblemGenerator:
                  raise ValueError("No API key provided. Set GOOGLE_AI_KEY environment variable.")
 
         self.model = get_llm(api_key=self.api_key, model_type="thinking")
-        # self.standard_model = get_llm(api_key=self.api_key, model_type="standard") # Reverted: No separate standard model
+        # Create a separate instance for standard model that supports JSON mode
+        self.standard_model = get_llm(api_key=self.api_key, model_type="standard")
         self.verbose = verbose
 
         # --- Pre-build Parsers, Lambda, Bound Model --- 
         self.json_parser = JsonOutputParser()
         self.ensure_structure_lambda = RunnableLambda(ensure_test_case_structure)
-        # self.json_mode_model = self.standard_model.bind(generation_config={"response_mime_type": "application/json"}) # Reverted: No JSON mode model needed here
+        # Use the standard model for JSON mode binding
+        self.json_mode_model = self.standard_model.bind(generation_config={"response_mime_type": "application/json"})
 
         # --- Build Prompts --- 
         self._build_prompts()
@@ -356,7 +358,7 @@ class ProblemGenerator:
                    {{solution_code}}
                    ```
 
-                ## 최종 결과물 필드 생성 지침
+                ## 최종 결과물 필드 생성 지침 (snake_case 사용)
                 - `problem_title`: `problem_description`의 `problem_title` 사용 (문자열).
                 - `description`: `problem_description`의 `description` 사용 (문자열).
                 - `input_format`: `problem_description`의 `input_format` 사용 (문자열).
@@ -371,6 +373,7 @@ class ProblemGenerator:
                 - `testcases`: `test_cases`의 `generated_examples` 전체 리스트 사용 (리스트).
                 - `algorithmType`: 입력으로 받은 `algorithm_type` 문자열 사용 (문자열).
                 - `difficulty`: 입력으로 받은 `difficulty` 문자열 사용 (문자열).
+                - `language`: 입력으로 받은 `language` 문자열 사용 (문자열).
 
                 **주의:**
                 - **다른 어떤 텍스트도 포함하지 말고, 위의 지침에 따라 각 필드를 채운 최종 단일 JSON 객체 하나만 생성하여 반환하세요.**
@@ -521,10 +524,11 @@ class ProblemGenerator:
             print(f"[{request_id}] Building Langchain chains...")
             template_analysis_chain = self.template_analysis_prompt | self.model
             code_transform_chain = self.code_transform_prompt | self.model
-            description_chain = self.description_prompt | self.model | self.json_parser # Using standard model
+            # Use standard model for description and test cases, relying on parser
+            description_chain = self.description_prompt | self.model | self.json_parser 
             test_case_chain = self.test_cases_prompt | self.model | self.json_parser | self.ensure_structure_lambda
-            # Use the standard model for the integration step as well, relying on prompt and parser for JSON
-            integration_chain = self.integration_prompt | self.model | self.json_parser 
+            # Use the standard model WITH JSON mode for the final integration step
+            integration_chain = self.integration_prompt | self.json_mode_model | self.json_parser 
             print(f"[{request_id}] Langchain chains built.")
             # -------------------------------
 

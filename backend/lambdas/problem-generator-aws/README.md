@@ -2,20 +2,26 @@
 
 이 문서는 기존 `problem-generator-streaming` Lambda의 스트리밍 기능을 제거하고, 비동기 문제 생성을 처리하는 `problem-generator-aws` Lambda의 현재 구현 상태와 초기 계획을 설명합니다.
 
-## 현재 상태 (2025-04-12)
+## 현재 상태 (2025-04-13)
 
 - **구현 완료:** API Gateway를 통해 요청을 받아 백그라운드에서 문제를 생성하고 DynamoDB에 저장하는 Lambda 함수(`ProblemGeneratorAWSFunction`)가 성공적으로 구현 및 배포되었습니다.
 - **비동기 처리:** API 핸들러(`ProblemApiHandlerFunction`)는 생성 요청을 받으면 즉시 `202 Accepted`를 반환하고, 실제 생성 작업은 `ProblemGeneratorAWSFunction`에서 비동기적으로 처리됩니다. (주의: `ProblemGeneratorAWSFunction` 자체는 Step Functions와 통합되지 않고 직접 호출/실행되는 방식으로 구현되었습니다.)
 - **핸들러:** `lambda_function.py`의 핸들러(`def handler(...)`)는 동기식이지만, 내부적으로 `ProblemGenerator`의 비동기 메서드(`generate_problem_stream`)를 `asyncio.run()`으로 호출하여 실행합니다.
-- **LLM:** `gemini-2.0-flash-thinking-exp-01-21` 모델을 사용하여 문제 생성의 모든 단계를 처리합니다. 비용 문제로 다른 모델로 변경하지 않았습니다.
-- **JSON 처리:** LLM 출력에서 JSON을 안정적으로 얻기 위해 LangChain의 `JsonOutputParser`를 사용합니다. 모델 자체의 JSON 모드(`response_mime_type="application/json"`)는 사용 중인 모델에서 지원되지 않아 사용하지 않습니다.
-- **DynamoDB 저장:** 생성된 최종 문제 데이터(딕셔너리)는 `lambda_function.py`의 `save_problem_to_dynamodb` 함수를 통해 `Problems` 테이블에 저장됩니다. 저장되는 `testcases` 필드는 **테스트 케이스 예시(입력/출력 딕셔너리 리스트)**이며, 테스트 케이스 생성 코드는 저장되지 않습니다.
-- **디버깅:** 구현 과정에서 다음과 같은 주요 문제들을 해결했습니다.
-  - 템플릿 로딩 경로 및 배포 문제 해결.
-  - LangChain 프롬프트 내 f-string 포맷 오류 및 파서 혼동 문제 해결 (예시 제거 등).
-  - LangChain 체인 호출 시 `language` 변수 누락 문제 해결.
+- **LLM:** 문제 생성의 다양한 단계 (분석, 변환, 설명 생성, 테스트 케이스 생성 등)에 `gemini-2.0-flash` 모델을 사용합니다. (`utils/model_manager.py`의 `get_llm` 함수 참조).
+  - `standard` 타입 모델 (JSON 출력 보조)에 `gemini-2.0-flash`를 사용하도록 수정되었습니다. (이전 `gemini-pro` 사용 시 `NotFound` 오류 발생)
+  - 추론(`thinking`) 타입 모델로는 `gemini-2.0-flash-thinking-exp-01-21`이 사용됩니다.
+- **JSON 처리:** LLM 출력에서 JSON을 안정적으로 얻기 위해 LangChain의 `JsonOutputParser`를 사용합니다.
+- **DynamoDB 저장:** 생성된 최종 문제 데이터(딕셔너리)는 `lambda_function.py`의 `save_problem_to_dynamodb` 함수를 통해 `Problems` 테이블에 저장됩니다.
+  - `creatorId` 필드는 현재 빈 문자열(`''`)로 저장되며, 추후 실제 사용자 ID로 업데이트해야 합니다 (`lambda_function.py` 내 `TODO` 주석 참조).
+  - `testcases` 필드에는 생성된 **테스트 케이스 데이터 (입력/출력 딕셔너리 리스트)**가 JSON 문자열 형태로 저장됩니다.
+  - `test_case_generation_code` 필드에는 이 테스트 케이스 데이터를 생성하는 **Python 코드**가 저장됩니다.
+- **디버깅:** 구현 및 테스트 과정에서 다음과 같은 주요 문제들을 해결했습니다.
+  - 템플릿 로딩 경로 및 배포 문제 해결 (`templates/` 디렉토리 구조 및 `load_template` 함수 수정).
+  - `lambda_function.py`의 비동기/동기 처리 로직 수정 (`async def handler` -> `def handler` + `asyncio.run`).
+  - LangChain 프롬프트 내 f-string 포맷 오류 및 파서 혼동 문제 해결.
+  - LangChain 체인 호출 시 필요한 변수 누락 문제 해결.
   - `generate_problem_stream` 함수의 반환 값 타입 변경(list -> dict/None)에 따른 핸들러 로직 수정.
-  - 사용 모델의 JSON 모드 미지원 문제 확인 및 대안 적용.
+  - LLM 모델 호환성 문제 해결 (`gemini-pro` -> `gemini-2.0-flash` 변경).
 
 ## 초기 계획 (참고용)
 
@@ -62,6 +68,6 @@
 ## 고려 사항 (초기 계획)
 
 - **오류 처리:** 핸들러 내 `try...except` 블록 및 `save_problem_to_dynamodb` 함수에서 오류를 처리하고 적절한 반환 값을 생성합니다.
-- **타임아웃:** Lambda 함수의 타임아웃 설정(기본값)이 문제 생성 시간을 고려하여 충분한지 확인해야 합니다.
-- **비용:** 사용 중인 `gemini-2.0-flash-thinking-exp-01-21` 모델 및 Lambda 실행 시간에 따른 비용을 고려합니다.
-- **보안:** IAM 역할 권한은 SAM에 의해 관리되며, API 키는 환경 변수로 주입됩니다. (Secrets Manager/Parameter Store 사용 고려 가능)
+- **타임아웃:** Lambda 함수의 타임아웃 설정(현재 `template.yaml`에서 900초)이 문제 생성 시간을 고려하여 충분한지 확인해야 합니다.
+- **비용:** 사용 중인 Gemini 모델 및 Lambda 실행 시간에 따른 비용을 고려합니다.
+- **보안:** IAM 역할 권한은 SAM에 의해 관리되며, API 키는 환경 변수로 주입됩니다.
