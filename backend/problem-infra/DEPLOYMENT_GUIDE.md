@@ -1,6 +1,6 @@
 # AWS 배포 가이드 (SAM)
 
-이 문서는 `@problem-generator-streaming` 및 `@problem-grader` 시스템을 AWS SAM을 사용하여 배포하는 간결 가이드입니다.
+이 문서는 `@problem-generator-aws` 및 `@problem-grader`를 포함하는 전체 백엔드 인프라(`problem-infra`)를 AWS SAM을 사용하여 배포하는 간결 가이드입니다.
 
 ## 1. 사전 준비
 
@@ -83,7 +83,7 @@ Fargate Task(`code-runner`)가 사용할 이미지를 ECR에 업로드합니다.
 
     ```bash
     # 프로젝트 루트 디렉토리에서 실행
-    sam build -t backend/lambdas/problem-grader/template.yaml --use-container
+    sam build -t backend/problem-infra/template.yaml --use-container
     ```
 
     **주의:**
@@ -155,11 +155,13 @@ Fargate Task(`code-runner`)가 사용할 이미지를 ECR에 업로드합니다.
 
 `sam deploy` 완료 후 출력되는 `Outputs` 섹션의 값을 확인하고 사용합니다.
 
-- `ProblemGeneratorStreamingApiEndpoint`: 문제 생성 API 엔드포인트 URL
-- `ProblemGraderApiEndpoint`: 문제 채점 API 엔드포인트 URL
-- `GraderStateMachineArn`: Step Functions 상태 머신 ARN
+- `ProblemApiEndpoint`: 문제 생성/조회 API 엔드포인트 URL (`problem-generator-aws` 관련)
+- `ProblemGraderApiEndpoint`: 문제 채점 API 엔드포인트 URL (`problem-grader` 관련)
+- `StateMachineArn`: Step Functions 상태 머신 ARN (`problem-grader` 관련)
 - `ProblemsTableNameOutput`: Problems 테이블 이름
 - `SubmissionsTableNameOutput`: Submissions 테이블 이름
-- `GraderS3BucketNameOutput`: 채점 결과 S3 버킷 이름
+- `GraderS3BucketNameOutput`: 채점 결과 S3 버킷 이름 (`problem-grader` 관련)
+- `ProblemGeneratorAWSFunctionName`: 문제 생성 Lambda 함수 이름
+- `ProblemGeneratorAWSRoleArn`: 문제 생성 Lambda 함수 역할 ARN
 
 API 테스트, Step Functions 실행 확인, CloudWatch Logs 확인 등 필요한 테스트를 진행합니다.
