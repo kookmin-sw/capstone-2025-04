@@ -23,7 +23,7 @@ export default function Home() {
           <div className="w-full px-4 mx-auto max-w-7xl">
             <section className="py-20 text-center bg-white rounded-lg shadow-sm my-8">
               <Banner />
-              <div className="flex gap-4 justify-center">
+              <div className="flex gap-4 items-start">
                 <Link
                   href="/coding-test"
                   className="bg-primary text-white py-2 px-4 rounded-md font-medium transition-colors duration-200 hover:bg-primary-hover"

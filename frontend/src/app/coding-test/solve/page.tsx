@@ -1,5 +1,12 @@
 "use client";
-import React, { useState, useEffect, Suspense, ChangeEvent } from "react";
+import React, {
+  useState,
+  useEffect,
+  Suspense,
+  ChangeEvent,
+  useRef,
+  useMemo,
+} from "react";
 import Head from "next/head";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
@@ -14,6 +21,8 @@ import {
   ProblemExample,
 } from "@/api/codingTestApi";
 import { toast } from "sonner";
+import Chatbot from "@/components/Chatbot";
+import { CODE_TEMPLATES } from "@/components/CodeEditor";
 
 // --- Main Content Component ---
 const CodingTestContent: React.FC = () => {
@@ -33,19 +42,42 @@ const CodingTestContent: React.FC = () => {
   const [language, setLanguage] = useState<
     "python" | "javascript" | "java" | "cpp"
   >("python");
-  const [editorResetKey, setEditorResetKey] = useState(0); // Key to force editor reset
+  const [editorResetKey, setEditorResetKey] = useState(0);
+  const hasLoadedInitialCode = useRef(false);
+
+  // Generate unique key for editor code local storage
+  const editorLocalStorageKey = useMemo(() => {
+    return problemDetails?.id
+      ? `editorCode_${problemDetails.id}_${language}`
+      : null;
+  }, [problemDetails?.id, language]);
+
   // --- Handlers ---
   const handleLanguageChange = (e: ChangeEvent<HTMLSelectElement>) => {
-    setLanguage(e.target.value as "python" | "javascript" | "java" | "cpp");
-    setEditorResetKey((prev) => prev + 1); // Reset editor when language changes
+    const newLang = e.target.value as "python" | "javascript" | "java" | "cpp";
+    hasLoadedInitialCode.current = false;
+    setLanguage(newLang);
   };
 
   const handleCodeChange = (value: string) => {
-    setCode(value);
+    if (value !== code) {
+      setCode(value);
+    }
   };
 
   const handleResetCode = () => {
+    const defaultCode = CODE_TEMPLATES[language] || "";
+    console.log(`Resetting code to template for ${language}`);
+    setCode(defaultCode);
     setEditorResetKey((prev) => prev + 1);
+    if (editorLocalStorageKey) {
+      try {
+        localStorage.setItem(editorLocalStorageKey, defaultCode);
+        console.log(`Saved reset code to key: ${editorLocalStorageKey}`);
+      } catch (error) {
+        console.error("Failed to save reset code to localStorage:", error);
+      }
+    }
   };
 
   const handleSubmit = () => {
@@ -64,6 +96,7 @@ const CodingTestContent: React.FC = () => {
         try {
           const data = await getProblemById(id);
           setProblemDetails(data);
+          hasLoadedInitialCode.current = false;
         } catch (err) {
           console.error("Failed to fetch problem:", err);
           const errorMsg =
@@ -83,6 +116,42 @@ const CodingTestContent: React.FC = () => {
       setIsLoadingProblem(false);
     }
   }, [id]);
+
+  // Load editor code from Local Storage OR set template when key changes
+  useEffect(() => {
+    if (editorLocalStorageKey) {
+      hasLoadedInitialCode.current = false;
+      console.log(
+        `Attempting to load/set editor code for key: ${editorLocalStorageKey}`
+      );
+      let initialCode = CODE_TEMPLATES[language] || "";
+      try {
+        const savedCode = localStorage.getItem(editorLocalStorageKey);
+        if (savedCode !== null) {
+          initialCode = savedCode;
+          console.log(`Loaded saved code from localStorage.`);
+        } else {
+          console.log(`No saved code found, using template for ${language}.`);
+        }
+      } catch (error) {
+        console.error("Failed to load code from localStorage:", error);
+      }
+      setCode(initialCode);
+      hasLoadedInitialCode.current = true;
+    }
+  }, [editorLocalStorageKey, language]);
+
+  // Save editor code to Local Storage whenever it changes (after initial load attempt)
+  useEffect(() => {
+    if (editorLocalStorageKey && hasLoadedInitialCode.current) {
+      console.log(`Saving code to key: ${editorLocalStorageKey}`);
+      try {
+        localStorage.setItem(editorLocalStorageKey, code);
+      } catch (error) {
+        console.error("Failed to save code to localStorage:", error);
+      }
+    }
+  }, [code, editorLocalStorageKey]);
 
   // --- Render Logic ---
   if (isLoadingProblem) {
@@ -194,6 +263,7 @@ const CodingTestContent: React.FC = () => {
                 handleSubmit={handleSubmit}
                 onResetClick={handleResetCode}
                 editorKey={editorResetKey}
+                codeValue={code}
               />
             </Panel>
             <PanelResizeHandle className="h-1 bg-gray-200 hover:bg-primary transition-colors data-[resize-handle-active]:bg-primary" />
@@ -222,7 +292,7 @@ const CodingTestContent: React.FC = () => {
           id="chatbot-panel"
           className="bg-gray-50 border-l border-gray-200"
         >
-          <RightSidebar />
+          <Chatbot problemDetails={problemDetails} userCode={code} />
         </Panel>
       </PanelGroup>
     </div>
@@ -325,6 +395,7 @@ interface EditorPanelProps {
   handleSubmit: () => void;
   onResetClick: () => void;
   editorKey: number;
+  codeValue: string;
 }
 
 const EditorPanel: React.FC<EditorPanelProps> = ({
@@ -334,6 +405,7 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
   handleSubmit,
   onResetClick,
   editorKey,
+  codeValue,
 }) => {
   return (
     <div className="flex flex-col h-full text-gray-900">
@@ -376,13 +448,11 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
       </div>
       {/* Code Editor Wrapper */}
       <div className="flex-grow h-full overflow-hidden p-2">
-        {" "}
-        {/* Removed themed background, editor handles it */}
         <CodeEditor
           key={editorKey}
           language={language}
           onChange={handleCodeChange}
-          // Assuming CodeEditor now uses global theme or has its own internal toggle
+          value={codeValue}
         />
       </div>
     </div>
@@ -508,30 +578,6 @@ const ResultsPanel: React.FC<{ problemDetails: ProblemDetail }> = ({
       </div>
       {/* Tab Content */}
       <div className="p-4 flex-grow overflow-y-auto">{renderTabContent()}</div>
-    </div>
-  );
-};
-
-// Right Sidebar (Chatbot)
-const RightSidebar: React.FC = () => {
-  return (
-    <div className="p-4 h-full flex flex-col text-gray-900">
-      <h3 className="text-lg font-semibold mb-3 border-b pb-2 flex-shrink-0 border-gray-200">
-        AI Assistant
-      </h3>
-      <div className="flex-grow bg-gray-100 rounded p-2 mb-3 overflow-y-auto">
-        <p className="text-sm text-gray-500">
-          Chat messages will appear here...
-        </p>
-      </div>
-      <textarea
-        className="w-full p-2 border border-gray-300 rounded-md text-sm mb-2 flex-shrink-0 bg-white text-gray-900"
-        rows={3}
-        placeholder="Ask the AI assistant..."
-      ></textarea>
-      <button className="px-4 py-1 bg-blue-500 text-white text-sm font-medium rounded-md hover:bg-blue-600 transition self-end flex-shrink-0">
-        Send
-      </button>
     </div>
   );
 };

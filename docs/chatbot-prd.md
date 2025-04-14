@@ -1,18 +1,18 @@
-# PRD: AI Chatbot Assistant for Coding Test Solve Page
+# PRD: AI Chatbot Assistant for Coding Test Solve Page (Client-Side Gemini)
 
-**Version:** 1.0
+**Version:** 2.0
 **Date:** 2025-04-13
 **Author:** pwh9882
 
 ## 1. Introduction
 
-This document outlines the requirements for an AI-powered chatbot assistant integrated into the coding test solving page (`/coding-test/solve`) of the ALPACO platform. The chatbot aims to provide helpful, non-spoiling guidance to users while they are working on coding problems.
+This document outlines the requirements for an AI-powered chatbot assistant integrated into the coding test solving page (`/coding-test/solve`) of the ALPACO platform. The chatbot aims to provide helpful, non-spoiling guidance to users while they are working on coding problems, **using a client-side implementation powered by the Google Gemini API.**
 
 ## 2. Goals
 
 - Enhance the user learning experience by providing contextual assistance during problem-solving.
 - Reduce user frustration by offering hints and explanations without revealing the direct solution.
-- Leverage AI (LLM) capabilities to understand user queries related to the problem and their code.
+- Leverage AI (Gemini LLM) capabilities to understand user queries related to the problem and their code.
 - Provide a seamless and interactive experience through real-time streaming responses.
 
 ## 3. User Stories
@@ -34,35 +34,34 @@ This document outlines the requirements for an AI-powered chatbot assistant inte
   - Display the conversation history (user messages and chatbot responses).
   - Indicate when the chatbot is processing a request or generating a response.
 - **FR2: Contextual Input:**
-  - When the user sends a message, the frontend must gather and send the following context to the backend API:
+  - When the user sends a message, the **frontend (`Chatbot.tsx`)** must gather the following context:
     - Current problem details (ID, title, description, constraints, etc.).
     - User's current code from the editor.
-    - Current chat history (list of previous user/assistant messages).
+    - Current chat history (list of previous user/model messages).
     - The user's latest message/question.
-- **FR3: Backend Processing:**
-  - The backend API (Lambda function) must receive the context and user message.
-  - It must use Langchain and an appropriate LLM (e.g., AWS Bedrock Claude) to generate a response.
-  - The prompt sent to the LLM must explicitly instruct it **not** to provide direct solutions or significant spoilers.
-  - The backend must support and return a streaming response.
+- **FR3: Client-Side Processing & LLM Interaction:**
+  - The **frontend (`Chatbot.tsx`)** must use the **`@langchain/google-genai`** SDK (and potentially `langchain` core) to interact with the Gemini API.
+  - It must construct a prompt suitable for Gemini using **Langchain messages**, incorporating the gathered context and the **strict "no spoilers" rule**.
+  - It must call the Langchain Gemini model's `.stream()` method using a configured API key.
 - **FR4: Streaming Response:**
-  - The chatbot's response must be streamed back to the frontend token by token.
-  - The frontend must display the incoming tokens incrementally in the chat UI.
-- **FR5: Authentication:**
-  - API requests to the chatbot backend must be authenticated using the user's Cognito session (JWT token).
+  - The chatbot's response from the Gemini API, processed via the Langchain SDK, must be streamed back to the frontend as chunks (e.g., `AIMessageChunk`).
+  - The frontend must process the stream, extract the content from chunks, and display the incoming text incrementally in the chat UI.
+- **FR5: Authentication (API Key):**
+  - Requests to the Gemini API must be authenticated using a **Google AI API key** configured in the frontend environment.
 - **FR6: Spoiler Prevention:**
   - The core logic (prompt engineering) must prioritize providing hints, explanations, and clarifications over direct answers or code solutions.
 
 ### 4.2 Non-Functional Requirements
 
-- **NFR1: Performance:** Chatbot responses should begin streaming back to the user within a few seconds of the request.
-- **NFR2: Scalability:** The backend infrastructure (API Gateway, Lambda) should scale automatically to handle varying user loads.
-- **NFR3: Security:** API endpoints must be secured, and user data handled appropriately. Communication should use HTTPS.
-- **NFR4: Maintainability:** Code (frontend, backend, infrastructure) should follow project conventions and be well-documented.
+- **NFR1: Performance:** Chatbot responses should begin streaming back to the user within a reasonable time (a few seconds) after the request is sent to the Gemini API.
+- **NFR2: Scalability:** Scalability is primarily handled by the Google Gemini API service.
+- **NFR3: Security:** The primary security concern is the **exposure of the Google AI API key** in the client-side code. Appropriate key restrictions (if available) or alternative key management strategies should be considered for production.
+- **NFR4: Maintainability:** Frontend code (`Chatbot.tsx`) should follow project conventions and be well-documented.
 
 ### 4.3 Infrastructure & Deployment
 
-- **ID1:** Infrastructure (Lambda, API Gateway, IAM) must be defined using Terraform.
-- **ID2:** Deployment of the backend Lambda and infrastructure updates must be automated using GitHub Actions.
+- **ID1:** No dedicated backend infrastructure is required.
+- **ID2:** Deployment involves only updating the frontend application. The Google AI API key must be configured in the deployment environment.
 
 ## 5. Design & UI Mockup (Conceptual)
 
@@ -90,13 +89,13 @@ This document outlines the requirements for an AI-powered chatbot assistant inte
 +-----------------------------+
 ```
 
-## 6. Future Considerations (Out of Scope for v1.0)
+## 6. Future Considerations (Out of Scope for v2.0 Client-Side)
 
-- Persistent chat history storage (e.g., DynamoDB).
-- Ability to reference specific lines of user code in questions.
-- Integration with code execution results (once available).
-- More sophisticated context management (summarization of long histories).
-- User feedback mechanism for chatbot responses.
+- Persistent chat history storage (would require backend changes if needed beyond session storage).
+- API key management using a backend proxy for improved security.
+- Integration with code execution results.
+- More sophisticated context management (summarization).
+- User feedback mechanism.
 
 ## 7. Success Metrics
 

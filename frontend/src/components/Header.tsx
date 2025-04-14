@@ -30,8 +30,8 @@ const Header: React.FC = () => {
         {/* Logo */}
         <div className="flex flex-row items-center text-primary transition-transform duration-200 hover:scale-105">
           <Link href="/" className="flex flex-row items-center gap-2">
-            <AlpacoLogo width={50} height={50} />
-            <AlpacoWordLogo height={40} />
+            <AlpacoLogo height={40} />
+            <AlpacoWordLogo height={30} />
           </Link>
         </div>
 

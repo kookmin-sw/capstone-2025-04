@@ -8,7 +8,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useAuthenticator } from "@aws-amplify/ui-react";
 import { toast } from "sonner";
 import { createPost } from "@/api/communityApi";
-import CodeEditor from "@/components/CodeEditor";
+// import CodeEditor from "@/components/CodeEditor";
 
 // New component containing all form logic and state
 const CreatePageContent: React.FC = () => {
@@ -19,7 +19,7 @@ const CreatePageContent: React.FC = () => {
 
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
-  const [code, setCode] = useState("");
+  // const [code, setCode] = useState(""); // TODO: Implement code editing
   const [language, setLanguage] = useState<
     "python" | "javascript" | "java" | "cpp"
   >("python");
@@ -93,9 +93,9 @@ const CreatePageContent: React.FC = () => {
     router.push("/community");
   };
 
-  const handleCodeChange = (value: string) => {
-    setCode(value);
-  };
+  // const handleCodeChange = (value: string) => {
+  //   setCode(value);
+  // };
 
   return (
     <div className="max-w-5xl mx-auto p-8">
@@ -192,11 +192,7 @@ const CreatePageContent: React.FC = () => {
               </select>
 
               <div className="mt-4">
-                <CodeEditor
-                  language={language}
-                  onChange={handleCodeChange}
-                  initialCode={code}
-                />
+                {/* <CodeEditor language={language} onChange={handleCodeChange} /> */}
               </div>
             </div>
           )}

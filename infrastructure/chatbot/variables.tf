@@ -29,5 +29,21 @@ variable "common_tags" {
 variable "bedrock_model_id" {
   description = "The ID of the Bedrock model to use for the chatbot"
   type        = string
-  default     = "anthropic.claude-3-sonnet-20240229-v1:0" # Default to Claude 3 Sonnet
-} 
+  default     = "anthropic.claude-3-haiku-20240307-v1:0" # Default to Claude 3 Sonnet
+}
+
+/* Removed api_stage_name variable; stage now uses var.environment
+variable "api_stage_name" {
+  description = "Name for the API Gateway deployment stage"
+  type        = string
+  default     = "production" # Align with environment variable
+}
+*/
+
+/* Removed tf_state_bucket variable as the bucket name is hardcoded in the remote state data source
+variable "tf_state_bucket" {
+  description = "Name of the S3 bucket used for Terraform state storage"
+  type        = string
+  # No default, should be provided via configuration
+}
+*/
