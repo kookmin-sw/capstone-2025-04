@@ -1,25 +1,34 @@
-// src/app/login/page.tsx
+// src/app/auth/login/page.tsx
 "use client";
 
-import React from "react";
+import React, { useEffect, Suspense } from "react"; // Import Suspense
 import Image from "next/image";
-import Head from "next/head";
-import { useRouter } from "next/navigation";
-import SimpleHeader from "@/components/SimpleHeader";
-import Footer from "@/components/Footer";
+import Head from "next/head"; // Head import 추가
+import { useRouter, useSearchParams } from "next/navigation"; // Import useSearchParams
+import SimpleHeader from "@/components/SimpleHeader"; // Corrected import path
+import Footer from "@/components/Footer"; // Corrected import path
 import { useAuthenticator } from "@aws-amplify/ui-react";
 import { signInWithRedirect } from "aws-amplify/auth";
 
-const LoginPageContent = () => {
-  const { route } = useAuthenticator((context) => [context.route]);
+// Component to handle logic using hooks
+const LoginPageContentInternal = () => {
+  // Optimize: Only select the 'route' state we need for redirection logic
+  const { route, user } = useAuthenticator((context) => [
+    context.route,
+    context.user,
+  ]);
   const router = useRouter();
+  const searchParams = useSearchParams(); // Get URL search parameters
+  const error = searchParams.get("error"); // Check for error parameter
 
   // Redirect to home if already authenticated
-  React.useEffect(() => {
-    if (route === "authenticated") {
+  useEffect(() => {
+    console.log("context: ", route); // Debugging line
+
+    if (route === "authenticated" || user !== undefined) {
       router.push("/");
     }
-  }, [route, router]);
+  }, [route, router, user]);
 
   // Show loading or null while redirecting or checking auth state
   if (route === "authenticated") {
@@ -30,19 +39,18 @@ const LoginPageContent = () => {
     try {
       await signInWithRedirect({
         provider: "Google",
+        // Optional: custom state can be passed if needed
+        // customState: 'your_custom_state_here',
       });
+      // Redirect happens automatically, no router.push needed here
     } catch (error) {
-      console.error("Google Sign-In Error:", error);
+      console.error("Google Sign-In Redirect Error:", error);
+      // Display error to user if needed, though Cognito errors usually come via callback
     }
   };
 
   return (
     <div className="flex flex-col min-h-screen bg-white">
-      <Head>
-        <title>로그인 | ALPACO</title>
-        <meta name="description" content="ALPACO 로그인 페이지" />
-      </Head>
-
       <SimpleHeader />
 
       <main className="flex-1 flex justify-center items-center">
@@ -51,6 +59,20 @@ const LoginPageContent = () => {
             <h1 className="text-2xl font-bold mb-1 text-gray-900">ALPACO</h1>
             <h2 className="text-base text-gray-600">로그인</h2>
           </div>
+
+          {/* Display error message if present in URL */}
+          {error && (
+            <div
+              className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4"
+              role="alert"
+            >
+              <strong className="font-bold">로그인 오류: </strong>
+              <span className="block sm:inline">
+                {decodeURIComponent(error)}
+              </span>
+            </div>
+          )}
+
           <button
             onClick={handleGoogleSignIn}
             className="w-full flex items-center justify-center gap-2 px-4 py-3 border border-gray-300 rounded-md shadow-sm hover:bg-gray-100 transition"
@@ -66,6 +88,7 @@ const LoginPageContent = () => {
               Sign In with Google
             </span>
           </button>
+          {/* Optional: Add other login methods or information here */}
         </div>
       </main>
 
@@ -74,9 +97,21 @@ const LoginPageContent = () => {
   );
 };
 
-// Wrap the content to ensure Authenticator context is available
+// Main component wrapping content in Suspense for useSearchParams
 const LoginPage = () => {
-  return <LoginPageContent />;
+  return (
+    <>
+      <Head>
+        <title>로그인 | ALPACO</title>
+        <meta name="description" content="ALPACO 로그인 페이지" />
+      </Head>
+      <Suspense fallback={<div>Loading Login...</div>}>
+        {" "}
+        {/* Add a basic fallback */}
+        <LoginPageContentInternal />
+      </Suspense>
+    </>
+  );
 };
 
 export default LoginPage;

@@ -33,3 +33,8 @@ output "cognito_admins_group_name" {
   description = "Name of the Admins group"
   value       = aws_cognito_user_group.admins.name
 }
+
+output "cognito_user_pool_arn" {
+  description = "The ARN of the Cognito User Pool"
+  value       = aws_cognito_user_pool.main.arn
+}

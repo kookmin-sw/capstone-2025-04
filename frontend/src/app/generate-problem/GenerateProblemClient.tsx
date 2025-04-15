@@ -492,7 +492,7 @@ const GenerateProblemClient = () => {
                       )}
                       <Link
                         href={{
-                          pathname: "/coding-test/progress",
+                          pathname: "/coding-test/solve",
                           query: {
                             id: problem.id,
                             title: problem.title,

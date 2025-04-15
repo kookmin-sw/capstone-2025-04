@@ -1,17 +1,20 @@
 // src/components/AmplifyClientProvider.tsx
 "use client";
 
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { configureAmplify } from "@/utils/configureAmplify";
 import { Authenticator } from "@aws-amplify/ui-react";
-import "@aws-amplify/ui-react/styles.css"; // Import default Amplify UI styles
 
 const AmplifyClientProvider = ({ children }: { children: React.ReactNode }) => {
+  const [isConfigured, setIsConfigured] = useState(false);
+
   useEffect(() => {
     configureAmplify();
+    setIsConfigured(true);
   }, []);
 
-  // Wrap the children with Authenticator.Provider to make auth state available via hooks
+  if (!isConfigured) return null; // 로딩 스피너를 넣어도 OK
+
   return <Authenticator.Provider>{children}</Authenticator.Provider>;
 };
 

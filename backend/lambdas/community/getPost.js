@@ -10,15 +10,14 @@ export const handler = async (event) => {
     try {
         const { postId } = event.pathParameters || {}; // 요청 URL에서 postId 가져오기
 
-        // 게시글 정보 가져오기
-        const postParams = {
-            TableName: "Community",
-            Key: { 
-                PK: postId,     // 복합 키 사용
-                SK: "POST",   // 게시글은 SK를 고정값으로 설정 
-            },
-        };
-
+    // 게시글 정보 가져오기
+    const postParams = {
+      TableName: "Community",
+      Key: {
+        PK: postId, // 복합 키 사용
+        SK: "POST", // 게시글은 SK를 고정값으로 설정
+      },
+    };
         const result = await dynamoDB.send(new GetCommand(postParams));
         const post = result.Item;
 

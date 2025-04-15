@@ -11,14 +11,14 @@ export const handler = async (event) => {
         const body = JSON.parse(event.body || "{}"); // 클라이언트 요청 데이터 파싱
         const { title, content, problemId } = body; // 제목과 내용, 문제 ID
 
-        if (!title || !content) {
-            return {
-                statusCode: 400,
-                body: JSON.stringify({ message: "title과 content는 필수 항목입니다." }),
-            };
-        }
-
-        // API Gateway JWT Authorizer에서 전달된 유저 정보 가져오기
+    if (!title || !content) {
+      return {
+        statusCode: 400,
+        body: JSON.stringify({ message: "title과 content는 필수 항목입니다." }),
+      };
+    }
+      
+    // API Gateway JWT Authorizer에서 전달된 유저 정보 가져오기
         const claims = event?.requestContext?.authorizer?.claims;
         if (!claims || !claims.username) {
             return {
@@ -45,28 +45,30 @@ export const handler = async (event) => {
             },
         });
 
-        // DynamoDB에 데이터 저장
-        await dynamoDB.send(command);
+    // DynamoDB에 데이터 저장
+    await dynamoDB.send(command);
 
-        // 게시글 생성 성공 응답
-        return {
-            statusCode: 201,
-            body: JSON.stringify({
-                message: "게시글이 성공적으로 작성되었습니다.",
-                postId,
-                author,
-                title,
-                content,
-                createdAt,
-                ...(problemId && { problemId })
-            }),
-        };
-
-    } catch (error) {
-        console.error("게시글 작성 중 오류 발생:", error);
-        return {
-            statusCode: 500,
-            body: JSON.stringify({ message: "서버 오류가 발생했습니다.", error: error.message }),
-        };
-    }
+    // 게시글 생성 성공 응답
+    return {
+      statusCode: 201,
+      body: JSON.stringify({
+        message: "게시글이 성공적으로 작성되었습니다.",
+        postId,
+        author,
+        title,
+        content,
+        createdAt,
+        ...(problemId && { problemId }),
+      }),
+    };
+  } catch (error) {
+    console.error("게시글 작성 중 오류 발생:", error);
+    return {
+      statusCode: 500,
+      body: JSON.stringify({
+        message: "서버 오류가 발생했습니다.",
+        error: error.message,
+      }),
+    };
+  }
 };

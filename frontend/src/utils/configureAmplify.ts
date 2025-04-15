@@ -50,7 +50,7 @@ export const configureAmplify = () => {
     configured = true;
   } else if (!cognitoUserPoolId) {
     console.warn(
-      "Amplify configuration skipped: Missing environment variables.",
+      "Amplify configuration skipped: Missing environment variables."
     );
   }
 };
