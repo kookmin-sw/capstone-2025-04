@@ -64,7 +64,7 @@ resource "aws_lambda_function_url" "chatbot_url" {
     allow_credentials = false # OAC uses SigV4, not cookies
     allow_origins     = ["*"] # Allow requests from any origin via CloudFront (can restrict later if needed)
     allow_methods     = ["*"] # Use wildcard to avoid length validation issue on OPTIONS
-    allow_headers     = ["Content-Type", "Authorization", "X-Amz-Content-Sha256", "X-Amz-Date", "X-Amz-Security-Token", "X-Custom-Auth-Token"] # Headers needed for signed request + content + auth
+    allow_headers     = ["content-type", "authorization", "x-amz-content-sha256", "x-amz-date", "x-amz-security-token", "x-custom-auth-token"] # Headers needed for signed request + content + auth
     expose_headers    = ["*"] # Allow frontend to read any response headers if needed
     max_age           = 86400 # Cache preflight response for 1 day
   }

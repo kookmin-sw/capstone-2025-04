@@ -41,7 +41,7 @@ resource "aws_cognito_identity_provider" "google" {
   # Google 속성을 Cognito 표준 속성에 매핑
   attribute_mapping = {
     email       = "email"
-    family_name = "family_name"
+    # family_name = "family_name" # 학교 구글 계정인 경우 family_name이 없을 수 있음
     given_name  = "given_name"
     picture     = "picture"
     username    = "sub" # Google의 고유 ID(sub)를 Cognito username으로 사용
