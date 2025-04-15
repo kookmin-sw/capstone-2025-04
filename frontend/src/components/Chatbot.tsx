@@ -1,34 +1,32 @@
 "use client";
 
 import React, { useState, useRef, useEffect, useMemo } from "react";
-// import type { ProblemDetail } from "@/types/problem"; // Assuming ProblemDetail type exists - Placeholder below
-// import { sendChatMessage } from "../api/chatbotApi"; // Import the API function
-import { toast } from "sonner"; // Use toast for error messages
-// Langchain imports
-import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
-import {
-  SystemMessage,
-  HumanMessage,
-  AIMessage,
-} from "@langchain/core/messages";
+// Import the updated API function
+import { streamChatbotResponse } from "../api/chatbotApi";
+import { toast } from "sonner";
+// Remove Langchain imports
+// import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
+// import {
+//   SystemMessage,
+//   HumanMessage,
+//   AIMessage,
+// } from "@langchain/core/messages";
 
 // Placeholder type - Define properly later
 interface ProblemDetailPlaceholder {
   id: string | number;
   title: string;
-  description?: string; // Add description for prompt context
-  // Add other relevant fields from the actual type
+  description?: string;
 }
 
-// Define message structure - Use 'model' for AI role consistent with Langchain Gemini
+// Define message structure - Use 'model' for AI role
 interface ChatMessage {
-  role: "user" | "model";
+  role: "user" | "model"; // Changed 'assistant' to 'model' if backend uses that
   content: string;
 }
 
 // Define component props
 interface ChatbotProps {
-  // TODO: Define ProblemDetail type properly based on codingTestApi.ts or types definition
   problemDetails: ProblemDetailPlaceholder | null;
   userCode: string;
 }
@@ -85,55 +83,22 @@ const Chatbot: React.FC<ChatbotProps> = ({ problemDetails, userCode }) => {
   const [streamingResponse, setStreamingResponse] = useState<string>("");
   const messagesEndRef = useRef<HTMLDivElement>(null); // Ref for scrolling
 
-  // State to hold the initialized Langchain model
-  const [chatModel, setChatModel] = useState<ChatGoogleGenerativeAI | null>(
-    null
-  );
-  const [initError, setInitError] = useState<string | null>(null);
-  const hasLoadedInitialHistory = useRef(false); // Prevent writing initial empty state
-  const [showClearConfirm, setShowClearConfirm] = useState(false); // State for modal visibility
+  // Remove Langchain model state
+  // const [chatModel, setChatModel] = useState<ChatGoogleGenerativeAI | null>(
+  //   null
+  // );
+  // const [initError, setInitError] = useState<string | null>(null);
+  const hasLoadedInitialHistory = useRef(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
 
-  // Generate unique key for local storage based on problem ID
   const localStorageKey = useMemo(() => {
     return problemDetails?.id ? `chatbotHistory_${problemDetails.id}` : null;
   }, [problemDetails?.id]);
 
-  // Initialize the Langchain Chat Model
-  useEffect(() => {
-    const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
-    if (!apiKey) {
-      console.error("Gemini API Key not found in environment variables.");
-      setInitError("API 키가 설정되지 않았습니다. 환경 변수를 확인해주세요."); // Korean
-      return;
-    }
-    try {
-      const model = new ChatGoogleGenerativeAI({
-        apiKey,
-        model: "gemini-2.0-flash-lite",
-        streaming: true,
-        // Optional: Add safety settings if needed
-        // safetySettings: [
-        //   {
-        //     category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-        //     threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-        //   },
-        // ],
-      });
-      setChatModel(model);
-      setInitError(null); // Clear any previous init error
-      console.log("ChatGoogleGenerativeAI model initialized.");
-    } catch (error) {
-      console.error(
-        "Failed to initialize ChatGoogleGenerativeAI model:",
-        error
-      );
-      const errMsg = "AI 모델 초기화에 실패했습니다."; // Korean
-      setInitError(errMsg);
-      toast.error(errMsg);
-    }
-  }, []); // Run only once on mount
+  // Remove Langchain model initialization useEffect
+  // useEffect(() => { ... }, []);
 
-  // Load history from Local Storage when problemDetails/key is available
+  // Load history from Local Storage (Keep as is)
   useEffect(() => {
     if (localStorageKey) {
       console.log(`Attempting to load history from key: ${localStorageKey}`);
@@ -141,7 +106,6 @@ const Chatbot: React.FC<ChatbotProps> = ({ problemDetails, userCode }) => {
         const savedHistory = localStorage.getItem(localStorageKey);
         if (savedHistory) {
           const parsedHistory: ChatMessage[] = JSON.parse(savedHistory);
-          // Basic validation
           if (
             Array.isArray(parsedHistory) &&
             parsedHistory.every((m) => m.role && m.content !== undefined)
@@ -152,7 +116,7 @@ const Chatbot: React.FC<ChatbotProps> = ({ problemDetails, userCode }) => {
             );
           } else {
             console.warn("Invalid history format found in localStorage.");
-            localStorage.removeItem(localStorageKey); // Clear invalid data
+            localStorage.removeItem(localStorageKey);
           }
         } else {
           console.log("No previous history found in localStorage.");
@@ -162,16 +126,14 @@ const Chatbot: React.FC<ChatbotProps> = ({ problemDetails, userCode }) => {
           "Failed to load or parse history from localStorage:",
           error
         );
-        // Optionally clear corrupted data
         localStorage.removeItem(localStorageKey);
       }
-      hasLoadedInitialHistory.current = true; // Mark that we've attempted loading
+      hasLoadedInitialHistory.current = true;
     }
-  }, [localStorageKey]); // Rerun when the key changes (new problem loaded)
+  }, [localStorageKey]);
 
-  // Save history to Local Storage whenever messages change (after initial load)
+  // Save history to Local Storage (Keep as is)
   useEffect(() => {
-    // Only save if we have a key, messages exist, and initial load attempt finished
     if (
       localStorageKey &&
       messages.length > 0 &&
@@ -184,11 +146,9 @@ const Chatbot: React.FC<ChatbotProps> = ({ problemDetails, userCode }) => {
         localStorage.setItem(localStorageKey, JSON.stringify(messages));
       } catch (error) {
         console.error("Failed to save history to localStorage:", error);
-        toast.error("채팅 기록을 저장하지 못했습니다."); // Korean
+        toast.error("채팅 기록을 저장하지 못했습니다.");
       }
-    }
-    // If messages become empty AFTER initial load, clear storage
-    else if (
+    } else if (
       localStorageKey &&
       messages.length === 0 &&
       hasLoadedInitialHistory.current
@@ -202,27 +162,28 @@ const Chatbot: React.FC<ChatbotProps> = ({ problemDetails, userCode }) => {
     }
   }, [messages, localStorageKey]);
 
+  // Scroll to bottom effect (Keep as is)
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
   useEffect(() => {
-    scrollToBottom(); // Scroll when messages or streamingResponse changes
+    scrollToBottom();
   }, [messages, streamingResponse]);
 
+  // Input change handler (Keep as is)
   const handleInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setUserInput(event.target.value);
   };
 
-  // Function to open the confirmation modal
+  // Clear history handlers (Keep as is)
   const handleClearHistory = () => {
     setShowClearConfirm(true);
   };
 
-  // Function to actually perform the clear action (called by modal)
   const confirmClearHistory = () => {
     if (!localStorageKey) {
-      toast.error("기록을 삭제할 수 없습니다: 문제 ID를 찾을 수 없습니다."); // Korean
+      toast.error("기록을 삭제할 수 없습니다: 문제 ID를 찾을 수 없습니다.");
       return;
     }
     console.log(`Clearing history for key: ${localStorageKey}`);
@@ -230,130 +191,109 @@ const Chatbot: React.FC<ChatbotProps> = ({ problemDetails, userCode }) => {
     setStreamingResponse("");
     try {
       localStorage.removeItem(localStorageKey);
-      toast.success("채팅 기록이 삭제되었습니다."); // Korean
+      toast.success("채팅 기록이 삭제되었습니다.");
     } catch (error) {
       console.error("Failed to remove history from localStorage:", error);
-      toast.error("저장소에서 채팅 기록을 삭제하지 못했습니다."); // Korean
+      toast.error("저장소에서 채팅 기록을 삭제하지 못했습니다.");
     }
   };
 
-  // System prompt construction using useMemo for stability
-  const systemPromptContent = useMemo(() => {
-    return `You are an AI assistant embedded in a coding test platform called ALPACO. Your goal is to help users solve programming problems without giving away the direct solution or writing complete code for them. Focus on providing hints, explaining concepts, clarifying problem statements, and suggesting debugging strategies based on the user's code and the problem description. Do NOT provide the final answer or complete code snippets that solve the problem. Be encouraging and supportive. The user is currently working on the problem titled '${
-      problemDetails?.title || "Unknown Problem"
-    }'.`;
-  }, [problemDetails?.title]);
+  // Remove system prompt memoization, handled by backend now
+  // const systemPromptContent = useMemo(() => { ... }, [problemDetails?.title]);
 
   const handleSendMessage = async () => {
-    if (!userInput.trim() || isLoading || !chatModel) {
-      if (!chatModel) {
-        toast.error(initError || "AI 모델이 초기화되지 않았습니다."); // Korean
-      }
+    const messageToSend = userInput.trim();
+    if (!messageToSend || isLoading) {
       return;
     }
-    if (initError) {
-      toast.error(initError); // initError already in Korean
-      return;
-    }
-
-    const newUserMessage: ChatMessage = { role: "user", content: userInput };
-    const currentInput = userInput;
-    setUserInput("");
-
-    // Add user message immediately
-    setMessages((prevMessages) => [...prevMessages, newUserMessage]);
 
     setIsLoading(true);
-    setStreamingResponse("");
-    let accumulatedResponse = "";
-    let errorOccurred = false;
+    setStreamingResponse(""); // Clear previous streaming buffer
+    const newUserMessage: ChatMessage = {
+      role: "user",
+      content: messageToSend,
+    };
+    setMessages((prevMessages) => [...prevMessages, newUserMessage]);
+    setUserInput(""); // Clear input field immediately
+
+    // Prepare context, filtering out the currently streaming response placeholder if any
+    const historyForBackend = messages.filter(
+      (msg) => msg.role !== "model" || msg.content !== "..."
+    ); // Exclude placeholder if needed
+
+    const context = {
+      problemDetails: problemDetails,
+      userCode: userCode,
+      history: historyForBackend, // Send previous messages
+    };
+
+    let accumulatedResponse = ""; // Accumulate tokens locally
 
     try {
-      // Construct Langchain message history
-      const history = messages.map((msg) => {
-        return msg.role === "user"
-          ? new HumanMessage(msg.content)
-          : new AIMessage(msg.content);
-      });
-
-      // Include problem details and user code in the context of the latest message
-      const contextString = `Problem Description:\n${
-        problemDetails?.description || "Not available"
-      }\n\nUser Code:\n${userCode || "Not provided"}`;
-      const latestHumanMessage = new HumanMessage(
-        `${currentInput}\n\nContext:\n${contextString}`
-      );
-
-      const messagesToSend = [
-        new SystemMessage(systemPromptContent),
-        ...history,
-        latestHumanMessage,
-      ];
-
-      console.log("Sending messages to Langchain Gemini:", messagesToSend);
-
-      // Call the Langchain model's stream method
-      const stream = await chatModel.stream(messagesToSend);
-
-      // Process the stream
-      for await (const chunk of stream) {
-        if (chunk?.content) {
-          const content = chunk.content as string; // Content is expected to be string
-          accumulatedResponse += content;
+      console.log("Calling streamChatbotResponse...");
+      await streamChatbotResponse(context, messageToSend, {
+        onData: (token) => {
+          // Append token to local accumulator and update state for UI
+          accumulatedResponse += token;
           setStreamingResponse(accumulatedResponse);
-        } else {
-          console.warn("Received stream chunk without content:", chunk);
-        }
-      }
-      console.log("Stream finished.");
+        },
+        onError: (error) => {
+          console.error("Chatbot API Error:", error);
+          toast.error(`AI 응답 오류: ${error.message}`); // Korean
+          setIsLoading(false);
+          setStreamingResponse(""); // Clear potentially partial stream
+          // Optionally remove the user's last message or add an error message to history
+          setMessages((prev) => prev.slice(0, -1)); // Remove last user message on error
+        },
+        onComplete: () => {
+          console.log("Chatbot stream complete.");
+          if (accumulatedResponse) {
+            // Add the complete message from the stream to the history
+            setMessages((prevMessages) => [
+              ...prevMessages,
+              { role: "model", content: accumulatedResponse },
+            ]);
+          }
+          // Clear the streaming state and loading indicator
+          setStreamingResponse("");
+          setIsLoading(false);
+        },
+      });
     } catch (error) {
-      console.error("Error during Gemini stream:", error);
+      // Catch errors from streamChatbotResponse setup itself (e.g., auth error)
+      console.error("Error setting up chatbot stream:", error);
       toast.error(
-        `AI 오류: ${error instanceof Error ? error.message : "알 수 없는 오류"}`
-      ); // Korean
-      errorOccurred = true;
-    } finally {
+        `AI 연결 오류: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`
+      );
       setIsLoading(false);
-      // Add the complete assistant message if no error occurred and response exists
-      if (!errorOccurred && accumulatedResponse.trim()) {
-        setMessages((prevMessages) => [
-          ...prevMessages,
-          { role: "model", content: accumulatedResponse.trim() },
-        ]);
-      }
-      setStreamingResponse(""); // Clear the streaming area
+      setStreamingResponse("");
+      setMessages((prev) => prev.slice(0, -1)); // Remove last user message on setup error
     }
   };
 
+  // Key down handler for Enter key (Keep as is)
   const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Enter" && !event.shiftKey) {
-      event.preventDefault();
+      event.preventDefault(); // Prevent default form submission/newline
       handleSendMessage();
     }
   };
 
-  // Display initialization error if present
-  if (initError && !chatModel) {
-    return (
-      <div className="flex flex-col h-full bg-background border border-error rounded-lg items-center justify-center p-4">
-        <p className="text-error font-semibold">AI Assistant 오류</p>
-        <p className="text-error text-sm mt-1">{initError}</p>
-      </div>
-    );
-  }
-
+  // JSX Rendering (Update to display streamingResponse)
   return (
-    <div className="flex flex-col h-full bg-gray-50 border border-gray-300 rounded-lg">
-      {/* Header with Clear Button */}
-      <div className="p-3 border-b border-gray-300 bg-gray-100 rounded-t-lg flex-shrink-0 flex justify-between items-center">
-        <h2 className="text-lg font-semibold text-gray-700">AI Assistant</h2>
+    <div className="flex flex-col h-full bg-gray-50 border-l border-border relative">
+      {/* Header */}
+      <div className="flex items-center justify-between p-3 border-b border-border bg-white sticky top-0 z-10">
+        <h2 className="text-lg font-semibold text-textPrimary">AI Assistant</h2>
         <button
-          onClick={handleClearHistory} // Opens the modal
-          title="채팅 기록 삭제" // Korean
-          className="text-gray-500 hover:text-red-600 transition-colors duration-150 p-1 rounded-full hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-1"
-          disabled={messages.length === 0 && !streamingResponse} // Disable if already empty
+          onClick={handleClearHistory}
+          disabled={isLoading || messages.length === 0}
+          className="p-1.5 text-gray-500 rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+          aria-label="Clear chat history"
+          title="Clear chat history"
         >
-          {/* Simple Trash Icon SVG */}
           <svg
             xmlns="http://www.w3.org/2000/svg"
             className="h-5 w-5"
@@ -371,85 +311,82 @@ const Chatbot: React.FC<ChatbotProps> = ({ problemDetails, userCode }) => {
         </button>
       </div>
 
-      {/* Message List Area */}
-      <div className="flex-grow p-4 overflow-y-auto space-y-4">
-        {messages.map((msg, index) => (
+      {/* Message List */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {messages.map((message, index) => (
           <div
             key={index}
             className={`flex ${
-              msg.role === "user" ? "justify-end" : "justify-start"
+              message.role === "user" ? "justify-end" : "justify-start"
             }`}
           >
             <div
-              className={`p-3 rounded-lg max-w-xs lg:max-w-md break-words ${
-                msg.role === "user"
-                  ? "bg-blue-500 text-white" // User message style
-                  : "bg-gray-200 text-gray-800" // Model message style
+              className={`max-w-[80%] p-3 rounded-lg shadow-sm ${
+                message.role === "user"
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-white text-textPrimary border border-border"
               }`}
             >
-              {msg.content}
+              {/* Render content with preserved whitespace */}
+              <pre className="text-sm font-sans whitespace-pre-wrap break-words">
+                {message.content}
+              </pre>
             </div>
           </div>
         ))}
-        {/* Display streaming response from the model */}
-        {streamingResponse && (
+        {/* Display streaming response */}
+        {isLoading && streamingResponse && (
           <div className="flex justify-start">
-            <div className="p-3 rounded-lg max-w-xs lg:max-w-md bg-gray-200 text-gray-800 break-words">
-              {streamingResponse}
-              {/* Simple pulse for loading indicator during streaming */}
-              {isLoading && (
-                <span className="inline-block w-2 h-2 ml-1 bg-gray-500 rounded-full animate-pulse"></span>
-              )}
+            <div className="max-w-[80%] p-3 rounded-lg shadow-sm bg-white text-textPrimary border border-border">
+              <pre className="text-sm font-sans whitespace-pre-wrap break-words">
+                {streamingResponse}
+                <span className="inline-block w-2 h-4 ml-1 bg-gray-600 animate-pulse" />
+              </pre>
             </div>
           </div>
         )}
-        {/* Placeholder while waiting for the first token */}
-        {isLoading &&
-          !streamingResponse &&
-          messages.length > 0 &&
-          messages[messages.length - 1].role === "user" && (
-            <div className="flex justify-start">
-              <div className="p-3 rounded-lg max-w-xs lg:max-w-md bg-gray-200 text-gray-800">
-                <span className="animate-pulse">▮</span>{" "}
-                {/* Simple pulsing block */}
-              </div>
+        {/* Placeholder when loading starts but no response yet */}
+        {isLoading && !streamingResponse && (
+          <div className="flex justify-start">
+            <div className="max-w-[80%] p-3 rounded-lg shadow-sm bg-white text-textPrimary border border-border">
+              <span className="inline-block w-2 h-4 bg-gray-400 animate-pulse rounded-full" />
+              <span className="inline-block w-2 h-4 ml-1 bg-gray-400 animate-pulse rounded-full" />
+              <span className="inline-block w-2 h-4 ml-1 bg-gray-400 animate-pulse rounded-full" />
             </div>
-          )}
-        {/* Element to scroll to */}
-        <div ref={messagesEndRef} />
+          </div>
+        )}
+        <div ref={messagesEndRef} /> {/* Element to scroll to */}
       </div>
 
       {/* Input Area */}
-      <div className="p-3 border-t border-gray-300 bg-gray-100 rounded-b-lg flex-shrink-0">
-        <div className="flex space-x-2">
+      <div className="p-3 border-t border-border bg-white sticky bottom-0">
+        <div className="flex items-center space-x-2">
           <input
             type="text"
-            placeholder={initError ? "AI 사용 불가" : "질문을 입력하세요..."} // Korean
             value={userInput}
             onChange={handleInputChange}
             onKeyDown={handleKeyDown}
-            disabled={isLoading || !chatModel || !!initError}
-            className="flex-grow px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-200"
+            placeholder="AI에게 질문하세요..." // Korean placeholder
+            disabled={isLoading}
+            className="flex-1 px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-70 disabled:cursor-not-allowed"
           />
           <button
             onClick={handleSendMessage}
-            disabled={
-              isLoading || !chatModel || !userInput.trim() || !!initError
-            }
-            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:bg-blue-300 disabled:cursor-not-allowed"
+            disabled={isLoading || !userInput.trim()}
+            className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 focus:outline-none focus:ring-1 focus:ring-primary focus:ring-offset-1 disabled:opacity-70 disabled:cursor-not-allowed"
           >
             전송
           </button>
         </div>
       </div>
 
-      {/* Confirmation Modal (Korean Text) */}
+      {/* Confirmation Modal */}
       <ConfirmationModal
         isOpen={showClearConfirm}
         onClose={() => setShowClearConfirm(false)}
         onConfirm={confirmClearHistory}
-        title="채팅 기록 삭제"
-        message="이 문제에 대한 채팅 기록을 영구적으로 삭제하시겠습니까?"
+        title="기록 삭제 확인" // Korean
+        message="정말로 모든 채팅 기록을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다." // Korean
       />
     </div>
   );

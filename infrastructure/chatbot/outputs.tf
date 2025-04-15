@@ -16,8 +16,14 @@ output "chatbot_lambda_role_arn" {
   value       = aws_iam_role.chatbot_lambda_role.arn
 }
 
-# Output the Invoke URL for the HTTP API Gateway endpoint
-output "chatbot_api_invoke_url" {
-  description = "Invoke URL for the Chatbot HTTP API Gateway endpoint"
-  value       = aws_apigatewayv2_api.chatbot_api.api_endpoint # Use api_endpoint for HTTP API
+
+output "cloudfront_distribution_domain_name" {
+  description = "The domain name of the CloudFront distribution for the chatbot"
+  value       = aws_cloudfront_distribution.chatbot_distribution.domain_name
+}
+
+output "chatbot_lambda_function_url" {
+  description = "The direct URL of the Lambda function (should NOT be accessed directly)"
+  value       = aws_lambda_function_url.chatbot_url.function_url
+  sensitive   = true # Mark as sensitive as it shouldn't be used directly
 } 

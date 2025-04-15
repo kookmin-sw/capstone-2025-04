@@ -5,12 +5,12 @@ import { fetchAuthSession } from "aws-amplify/auth";
 interface ProblemDetailPlaceholder {
   id: string | number;
   title: string;
-  // Add other relevant fields
+  description?: string; // Add other relevant fields used in Lambda
 }
 
 // Define message structure (consistent with Chatbot.tsx)
 interface ChatMessage {
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "model"; // Add 'model' role if used
   content: string;
 }
 
@@ -21,128 +21,159 @@ interface ChatContext {
   history: ChatMessage[];
 }
 
-// Get API URL from environment variable
-const API_URL = process.env.NEXT_PUBLIC_CHATBOT_API_BASE_URL;
+// Define the structure of the data expected in an SSE message
+interface ChatStreamPayload {
+  token?: string;
+  error?: string;
+  details?: string;
+}
 
-if (!API_URL) {
+// Define the callback function types
+type OnDataCallback = (token: string) => void;
+type OnErrorCallback = (error: Error) => void;
+type OnCompleteCallback = () => void;
+
+// Get API URL from environment variable
+const API_ENDPOINT = process.env.NEXT_PUBLIC_CHATBOT_API_ENDPOINT;
+
+if (!API_ENDPOINT) {
   console.error(
-    "Error: NEXT_PUBLIC_CHATBOT_API_BASE_URL environment variable is not set."
+    "Error: NEXT_PUBLIC_CHATBOT_API_ENDPOINT environment variable is not set."
   );
-  // Potentially throw an error or provide a default mock URL for development
+  // Throw an error to prevent API calls without a configured endpoint
+  throw new Error("Chatbot API endpoint is not configured.");
 }
 
 /**
- * Sends a message to the chatbot backend API and streams the response.
+ * Calculates the SHA256 hash of a string.
+ * @param text The string to hash.
+ * @returns A promise that resolves to the hex-encoded SHA256 hash.
+ */
+async function calculateSHA256(text: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(text);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer)); // convert buffer to byte array
+  const hashHex = hashArray
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join(""); // convert bytes to hex string
+  return hashHex;
+}
+
+/**
+ * Sends a message to the chatbot backend and streams the response via SSE.
  *
  * @param context The chat context including problem details, user code, and history.
  * @param message The new message from the user.
- * @returns An async generator yielding the streamed tokens from the response.
+ * @param callbacks Object containing onData, onError, onComplete callbacks.
  */
-export async function* sendChatMessage(
+export const streamChatbotResponse = async (
   context: ChatContext,
-  message: string
-): AsyncGenerator<string, void, undefined> {
-  if (!API_URL) {
-    yield "Error: API URL not configured.";
-    return;
+  message: string,
+  callbacks: {
+    onData: OnDataCallback;
+    onError: OnErrorCallback;
+    onComplete: OnCompleteCallback;
   }
-
-  console.log("Sending request to:", API_URL);
+): Promise<void> => {
+  const { onData, onError, onComplete } = callbacks;
 
   try {
     // 1. Get JWT token
     const session = await fetchAuthSession();
     const idToken = session.tokens?.idToken?.toString();
-
     if (!idToken) {
       throw new Error("User is not authenticated or ID token is missing.");
     }
 
-    // 2. Construct Payload
+    // 2. Construct Payload & Calculate SHA256
     const payload = {
       ...context,
       newMessage: message,
     };
+    const payloadString = JSON.stringify(payload);
+    const sha256Hash = await calculateSHA256(payloadString);
+    console.log("Payload SHA256:", sha256Hash);
 
-    // 3. Make Fetch Call
-    const fullApiUrl = `${API_URL}/query`; // Construct the full URL
-    console.log("Sending POST request to:", fullApiUrl);
-    const response = await fetch(fullApiUrl, {
+    // 3. Use Fetch API for SSE Streaming
+    console.log("Connecting to SSE endpoint:", API_ENDPOINT);
+    const response = await fetch(API_ENDPOINT, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${idToken}`,
+        "x-amz-content-sha256": sha256Hash,
       },
-      body: JSON.stringify(payload),
+      body: payloadString,
     });
 
     if (!response.ok) {
+      // Handle non-2xx errors (e.g., 401 Unauthorized, 500 Internal Server Error)
       const errorText = await response.text();
       throw new Error(
         `API request failed with status ${response.status}: ${errorText}`
       );
     }
 
-    // 4. Process Stream
     if (!response.body) {
-      throw new Error("Response body is missing.");
+      throw new Error("Response body is missing for streaming.");
     }
 
+    // 4. Process SSE Stream
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
-    let buffer = "";
+    let buffer = ""; // Buffer to handle partial messages
 
     while (true) {
       const { done, value } = await reader.read();
       if (done) {
+        console.log("SSE stream finished.");
         break;
       }
 
       buffer += decoder.decode(value, { stream: true });
 
-      // Process buffer line by line (assuming newline-delimited JSON)
-      const lines = buffer.split("\n");
-      buffer = lines.pop() || ""; // Keep the last partial line in the buffer
+      // Process buffer line by line for SSE messages (data: ...\n\n)
+      let eolIndex; // End Of Line index for \n\n
+      while ((eolIndex = buffer.indexOf("\n\n")) >= 0) {
+        const message = buffer.substring(0, eolIndex).trim();
+        buffer = buffer.substring(eolIndex + 2); // Remove message and \n\n from buffer
 
-      for (const line of lines) {
-        if (line.trim() === "") continue;
-        try {
-          const parsed = JSON.parse(line);
-          if (parsed.token) {
-            yield parsed.token;
-          } else if (parsed.error) {
-            // Handle potential errors streamed from the backend
-            console.error("Backend error:", parsed.error);
-            yield `Error: ${parsed.error}`; // Or handle differently
-            // Potentially break or throw depending on desired behavior
+        if (message.startsWith("data:")) {
+          const dataContent = message.substring(5).trim(); // Get content after "data:"
+
+          if (dataContent === "[DONE]") {
+            console.log("Received [DONE] signal.");
+            // The stream might end naturally after this, but we handle it explicitly
+            // No further 'onData' calls expected.
+            continue; // Process next message in buffer if any
           }
-          // Handle other potential message types if needed
-        } catch (e) {
-          console.error("Failed to parse streamed chunk:", line, e);
-          // Decide how to handle parsing errors (e.g., yield an error message, skip)
-        }
-      }
-    }
 
-    // Process any remaining data in the buffer (if the stream doesn't end with a newline)
-    if (buffer.trim() !== "") {
-      try {
-        const parsed = JSON.parse(buffer);
-        if (parsed.token) {
-          yield parsed.token;
-        } else if (parsed.error) {
-          console.error("Backend error:", parsed.error);
-          yield `Error: ${parsed.error}`;
+          try {
+            const parsed: ChatStreamPayload = JSON.parse(dataContent);
+            if (parsed.token) {
+              onData(parsed.token);
+            } else if (parsed.error) {
+              console.error("Backend SSE error message:", parsed);
+              onError(new Error(parsed.details || parsed.error));
+              // Consider closing the connection / stopping further processing on backend error
+            }
+          } catch (e) {
+            console.error("Failed to parse SSE data content:", dataContent, e);
+            onError(new Error(`Failed to parse stream data: ${dataContent}`));
+          }
         }
-      } catch (e) {
-        console.error("Failed to parse final streamed chunk:", buffer, e);
+        // Ignore non-data lines (comments starting with ':') if any
       }
     }
+    // End of stream
+    onComplete();
   } catch (error) {
-    console.error("Error in sendChatMessage:", error);
-    const errorMessage =
-      error instanceof Error ? error.message : "An unknown error occurred";
-    yield `Error: ${errorMessage}`;
-    // Consider re-throwing or handling the error appropriately for the UI
+    console.error("Error in streamChatbotResponse:", error);
+    const err =
+      error instanceof Error ? error : new Error("An unknown error occurred");
+    onError(err);
+    // Ensure completion is called even on error to stop loading states etc.
+    onComplete();
   }
-}
+};

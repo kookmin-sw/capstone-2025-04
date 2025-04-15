@@ -1,11 +1,4 @@
 terraform {
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 5.0" # Match version used in other modules like cognito
-    }
-  }
-
   backend "s3" {
     bucket         = "alpaco-tfstate-bucket-kmu" # From backend-setup output
     key            = "chatbot/terraform.tfstate" # Specific key for this module

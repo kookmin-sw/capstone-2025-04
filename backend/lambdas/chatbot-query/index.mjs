@@ -1,201 +1,255 @@
-import { BedrockRuntimeClient } from "@aws-sdk/client-bedrock-runtime";
+import { createRemoteJWKSet, jwtVerify } from "jose";
 import { ChatBedrockConverse } from "@langchain/aws";
 import {
   HumanMessage,
   AIMessage,
   SystemMessage,
 } from "@langchain/core/messages";
-import { PassThrough } from "stream";
 
-// AWS SDK v3 Streaming helper
-// Note: The 'awslambda' global is provided by the AWS Lambda Node.js runtime environment
-// when the function is configured for response streaming. No explicit declaration is needed.
+// Helper function to validate JWT
+// Caching JWKS fetching is important for performance
+let jwksClient = null;
+const getJwksClient = (jwksUrl) => {
+  if (!jwksClient) {
+    jwksClient = createRemoteJWKSet(new URL(jwksUrl));
+    console.log("Created JWKS client for:", jwksUrl);
+  }
+  return jwksClient;
+};
+
+const validateJwt = async (token, jwksUrl, issuerUrl, audience) => {
+  if (!token) {
+    throw new Error("Authorization token missing");
+  }
+  if (!jwksUrl || !issuerUrl || !audience) {
+    throw new Error("Missing Cognito configuration for JWT validation");
+  }
+
+  try {
+    const client = getJwksClient(jwksUrl);
+    const { payload, protectedHeader } = await jwtVerify(token, client, {
+      issuer: issuerUrl,
+      audience: audience,
+    });
+    console.log("JWT validated successfully. Payload:", payload);
+    // You can return the payload if needed, e.g., payload.sub for user ID
+    return payload;
+  } catch (err) {
+    console.error("JWT Validation Error:", err);
+    throw new Error(`JWT validation failed: ${err.message}`);
+  }
+};
 
 /**
- * Placeholder Lambda handler for the chatbot query function.
+ * Lambda handler for the chatbot query function with SSE streaming.
  */
 export const handler = awslambda.streamifyResponse(
   async (event, responseStream, context) => {
     console.log("Received event:", JSON.stringify(event, null, 2));
 
-    let requestBody;
+    // --- JWT Validation ---
+    const region = process.env.COGNITO_REGION || process.env.AWS_REGION; // Use specific Cognito region or default AWS region
+    const jwksUrl = process.env.COGNITO_JWKS_URL;
+    const issuerUrl = process.env.COGNITO_ISSUER_URL;
+    const audience = process.env.COGNITO_APP_CLIENT_ID;
+
     try {
-      // Handle direct invoke (event is the payload) vs API Gateway (event.body is the payload)
-      if (event.body) {
-        // API Gateway: Parse the stringified body
-        requestBody =
-          typeof event.body === "string" ? JSON.parse(event.body) : event.body;
-      } else {
-        // Direct Invoke: Event itself is the payload
-        requestBody = event;
+      const authHeader =
+        event.headers?.Authorization || event.headers?.authorization; // Handle case-insensitivity
+      if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        throw new Error("Missing or invalid Authorization header");
       }
-
-      // Check if the determined requestBody is valid and has the essential field
-      if (!requestBody || typeof requestBody !== "object") {
-        throw new Error("Request body is missing, empty, or not an object.");
-      }
-      if (!requestBody.newMessage) {
-        throw new Error("Missing required field: newMessage");
-      }
-      // Optional: Add checks for problemDetails, history if they are strictly required
+      const token = authHeader.substring(7); // Remove "Bearer " prefix
+      await validateJwt(token, jwksUrl, issuerUrl, audience);
+      console.log("JWT is valid.");
     } catch (error) {
-      console.error("Error parsing request body:", error);
-      // Fix: Write error to stream and end it properly for streamifyResponse
-      try {
-        responseStream.write(
-          JSON.stringify({
-            error: "Invalid request body.",
-            details: error.message,
-          }) + "\n"
-        );
-      } catch (writeError) {
-        console.error("Failed to write parsing error to stream:", writeError);
-      } finally {
-        responseStream.end();
-      }
-      return; // Stop further execution after handling the parsing error
-    }
-
-    const { problemDetails, userCode, history, newMessage } = requestBody;
-
-    // --- Langchain/Bedrock Initialization ---
-
-    // Check for required environment variables
-    const region = process.env.AWS_REGION;
-    const modelId = process.env.BEDROCK_MODEL_ID;
-
-    if (!region || !modelId) {
-      console.error(
-        "Missing required environment variables: AWS_REGION or BEDROCK_MODEL_ID"
+      console.error("Authentication Error:", error);
+      // Set HTTP status code for unauthorized - requires metadata wrapper
+      const metadata = {
+        statusCode: 401, // Or 403
+        headers: {
+          "Content-Type": "application/json", // Error is JSON
+        },
+      };
+      // Apply metadata before writing
+      responseStream = awslambda.HttpResponseStream.from(
+        responseStream,
+        metadata
       );
-      // Write error to stream and exit
       responseStream.write(
         JSON.stringify({
-          error: "Configuration error: Missing required environment variables.",
-        }) + "\n"
+          error: "Unauthorized",
+          details: error.message,
+        })
       );
       responseStream.end();
       return; // Stop execution
     }
 
-    // Note: BedrockRuntimeClient might not be explicitly needed by ChatBedrockConverse
-    // if it internally uses the default credential provider chain. Let's keep it for now.
-    // const client = new BedrockRuntimeClient({ region });
+    // --- Set SSE Headers ---
+    // IMPORTANT: Headers must be set *before* writing the first chunk
+    const sseMetadata = {
+      statusCode: 200,
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+        // Add CORS headers if needed, although CloudFront might handle this
+        // "Access-Control-Allow-Origin": "*"
+      },
+    };
+    responseStream = awslambda.HttpResponseStream.from(
+      responseStream,
+      sseMetadata
+    );
 
-    // Instantiate ChatBedrockConverse
+    // --- Request Body Parsing ---
+    let requestBody;
+    try {
+      // CloudFront invoking Function URL passes body directly
+      if (event.body) {
+        requestBody =
+          typeof event.body === "string" ? JSON.parse(event.body) : event.body;
+      } else {
+        // Fallback for direct invoke testing?
+        requestBody = event;
+      }
+
+      if (
+        !requestBody ||
+        typeof requestBody !== "object" ||
+        !requestBody.newMessage
+      ) {
+        throw new Error(
+          "Request body is missing, invalid, or missing 'newMessage' field."
+        );
+      }
+    } catch (error) {
+      console.error("Error parsing request body:", error);
+      // Format error as SSE event
+      const errorPayload = JSON.stringify({
+        error: "Invalid request body.",
+        details: error.message,
+      });
+      responseStream.write(`data: ${errorPayload}\n\n`);
+      responseStream.end();
+      return; // Stop further execution
+    }
+
+    const { problemDetails, userCode, history, newMessage } = requestBody;
+
+    // --- Langchain/Bedrock Initialization ---
+    const modelId = process.env.BEDROCK_MODEL_ID;
+
+    if (!modelId) {
+      console.error("Missing required environment variable: BEDROCK_MODEL_ID");
+      const errorPayload = JSON.stringify({
+        error: "Configuration error: Missing Bedrock model ID.",
+      });
+      responseStream.write(`data: ${errorPayload}\n\n`);
+      responseStream.end();
+      return; // Stop execution
+    }
+
     const llm = new ChatBedrockConverse({
       model: modelId,
       streaming: true,
       region: region,
-      // Add modelKwargs to control generation parameters
       modelKwargs: {
-        max_tokens: 1024, // Limit output tokens to prevent timeouts
-        // temperature: 0.7, // Optional: Adjust creativity
+        max_tokens: 1024, // Limit output tokens
+        // temperature: 0.7,
       },
+      // Credentials are automatically handled by the Lambda execution role
     });
 
     // --- Prompt Construction Logic ---
-
-    // 1. Define the System Prompt
     const systemPrompt = `You are an AI assistant embedded in a coding test platform called ALPACO. Your goal is to help users solve programming problems without giving away the direct solution or writing complete code for them. Focus on providing hints, explaining concepts, clarifying problem statements, and suggesting debugging strategies based on the user's code and the problem description. Do NOT provide the final answer or complete code snippets that solve the problem. Be encouraging and supportive. The user is currently working on the problem titled '${
       problemDetails?.title || "Unknown Problem"
     }'.`;
 
-    // 2. Format Chat History (Placeholder for now, will integrate with Langchain later)
-    const formattedHistory = history || []; // Assuming history is already in [{ role: 'user' | 'assistant', content: '...' }] format
+    const formattedHistory = history || [];
+    const contextString = `Problem Description:\n${
+      problemDetails?.description || "Not available"
+    }\n\nUser Code:\n${userCode || "Not provided"}`;
 
-    // 3. Format the latest User Message
-    const formattedUserMessage = newMessage || "";
-
-    // 4. Combine Context (Logging for now)
-    console.log("--- Prompt Components ---");
-    console.log("System Prompt:", systemPrompt);
-    console.log("Problem Details:", JSON.stringify(problemDetails, null, 2));
-    console.log("User Code:", userCode);
-    console.log(
-      "Formatted History:",
-      JSON.stringify(formattedHistory, null, 2)
+    const chatHistoryMessages = formattedHistory.map((msg) =>
+      msg.role === "user"
+        ? new HumanMessage(msg.content)
+        : new AIMessage(msg.content)
     );
-    console.log("Formatted User Message:", formattedUserMessage);
-    console.log("--- End Prompt Components ---");
-
-    // --- Prepare Messages for Langchain ---
-    const systemMessage = new SystemMessage(systemPrompt);
-
-    // Combine problem details and user code into a context string
-    // TODO: Add smarter context inclusion/summarization if needed for token limits
-    const contextString = `Problem Description:
-${problemDetails?.description || "Not available"}
-
-User Code:
-${userCode || "Not provided"}`;
-
-    // Convert history to AIMessage and HumanMessage objects
-    const chatHistoryMessages = formattedHistory.map((msg) => {
-      if (msg.role === "user") {
-        return new HumanMessage(msg.content);
-      }
-      // Assuming any non-user role is 'assistant'
-      return new AIMessage(msg.content);
-    });
 
     const latestUserMessage = new HumanMessage(
       `${newMessage}\n\nContext:\n${contextString}`
     );
 
-    const messages = [systemMessage, ...chatHistoryMessages, latestUserMessage];
+    const messages = [
+      new SystemMessage(systemPrompt),
+      ...chatHistoryMessages,
+      latestUserMessage,
+    ];
 
-    console.log("--- Langchain Messages ---");
-    console.log(JSON.stringify(messages, null, 2));
-    console.log("--- End Langchain Messages ---");
+    console.log("--- Langchain Messages Prepared ---");
+    // console.log(JSON.stringify(messages, null, 2)); // Can be verbose
 
-    // --- LLM Invocation and Streaming Response ---
+    // --- LLM Invocation and SSE Streaming Response ---
     try {
-      console.log("Attempting to call llm.stream...");
+      console.log(`Invoking Bedrock model: ${modelId} via Langchain...`);
       const stream = await llm.stream(messages);
-      console.log("llm.stream call succeeded, starting stream processing.");
+      console.log("Streaming response from Bedrock...");
 
-      // Iterate through the stream from Langchain/Bedrock
       for await (const chunk of stream) {
-        if (chunk?.content) {
-          const token = chunk.content;
-          // Format the chunk as JSON and write to the response stream
-          const responseChunk = {
-            token: token, // Use the extracted token
-          };
-          const chunkString = JSON.stringify(responseChunk) + "\n";
-          console.log("Writing chunk to stream:", chunkString.trim()); // Log the actual string being written
-          responseStream.write(chunkString);
+        // Check content format - ChatBedrockConverse stream chunks might be different
+        // Assuming chunk.content is the text part based on Langchain docs/previous attempt
+        let textContent = "";
+        if (typeof chunk.content === "string") {
+          textContent = chunk.content;
+        } else if (
+          Array.isArray(chunk.content) &&
+          chunk.content.length > 0 &&
+          typeof chunk.content[0] === "object" &&
+          chunk.content[0].type === "text"
+        ) {
+          // Handle structure like [{ type: 'text', text: '...' }]
+          textContent = chunk.content[0].text || "";
         } else {
-          console.log("Received empty chunk from stream."); // Log if chunk or chunk.content is empty/null
+          // Handle other potential structures or log unexpected format
+          console.log(
+            "Received chunk with unexpected content format:",
+            chunk.content
+          );
+        }
+
+        if (textContent) {
+          const ssePayload = JSON.stringify({ token: textContent });
+          const sseMessage = `data: ${ssePayload}\n\n`;
+          // console.log("Writing SSE chunk:", sseMessage.trim()); // Log SSE message
+          responseStream.write(sseMessage);
+        } else {
+          // console.log("Received chunk without printable content:", chunk);
         }
       }
-      console.log("Stream finished.");
+      console.log("Bedrock stream finished.");
+      // Send a final [DONE] message (optional, depends on frontend implementation)
+      responseStream.write(`data: [DONE]\n\n`);
     } catch (error) {
       console.error(
-        "!!! Error during LLM stream invocation or processing:",
+        "!!! Error during LLM stream invocation/processing:",
         error
       );
-      // Write an error message to the stream if possible
-      // Note: Headers might already be sent
+      const errorPayload = JSON.stringify({
+        error: "Failed to get response from LLM.",
+        details: error.message || "Unknown error",
+      });
+      // Try writing error as SSE event, but headers might be sent
       try {
-        responseStream.write(
-          JSON.stringify({
-            error: "Failed to get response from LLM.",
-            details: error.message || "Unknown error",
-          }) + "\n"
-        );
+        responseStream.write(`data: ${errorPayload}\n\n`);
       } catch (writeError) {
-        console.error("Failed to write error to stream:", writeError);
+        console.error("Failed to write final error to stream:", writeError);
       }
     } finally {
-      // End the response stream
-      console.log("Executing finally block, ending response stream.");
+      console.log("Ending response stream.");
       responseStream.end();
     }
-
-    // Note: No return value needed for streamifyResponse handlers
-    // The response is written directly to responseStream
   }
 );
 

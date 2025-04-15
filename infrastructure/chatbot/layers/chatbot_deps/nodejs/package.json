@@ -1,7 +1,7 @@
 {
-  "name": "chatbot-query-lambda",
+  "name": "chatbot-deps-layer",
   "version": "1.0.0",
-  "description": "Lambda function for handling chatbot queries",
+  "description": "Lambda layer dependencies for chatbot query",
   "main": "index.mjs",
   "type": "module",
   "scripts": {
@@ -11,13 +11,15 @@
     "lambda",
     "chatbot",
     "bedrock",
-    "langchain"
+    "langchain",
+    "layer"
   ],
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@aws-sdk/client-bedrock-runtime": "^3.787.0",
     "@langchain/aws": "^0.1.8",
+    "@langchain/core": "^0.2.13",
+    "jose": "^5.4.0",
     "langchain": "^0.3.21"
   }
 }

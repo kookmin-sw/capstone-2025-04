@@ -1,42 +1,83 @@
-# Plan Summary: AI Chatbot Assistant (Client-Side Gemini)
+# Plan Summary: AI Chatbot Assistant (Lambda + CloudFront OAC)
 
-**Version:** 2.0
-**Date:** 2025-04-13
+**Version:** 3.1
+**Date:** 2025-04-14
 **Author:** pwh9882
 
 ## 1. Objective
 
-Implement an AI-powered chatbot assistant within the coding test solving page (`/coding-test/solve`) using a **client-side approach**. The chatbot will run directly in the user's browser, leveraging the **Google Generative AI SDK** to interact with a **Gemini model** (e.g., Gemini Pro) via an API key. This approach eliminates the need for dedicated backend infrastructure (Lambda, API Gateway) for the chatbot functionality.
+Implement an AI-powered chatbot assistant within the coding test solving page (`/coding-test/solve`) using a secure backend architecture. The feature will leverage an **AWS Lambda function** invoked via its **Function URL**, with access restricted exclusively through an **Amazon CloudFront distribution using Origin Access Control (OAC)**. The Lambda function will **validate user JWTs** from the existing Cognito User Pool and interact with the AI model (e.g., Google Gemini), protecting API keys. Responses will be streamed back using **Server-Sent Events (SSE)**.
 
 ## 2. High-Level Plan
 
-1.  **Documentation:** Update Feature Specification, PRD, and To-Do list to reflect the client-side architecture. (In Progress)
-2.  **API Key Setup:** Obtain a Google AI API key for the Gemini model and configure it securely for the frontend (e.g., via `NEXT_PUBLIC_` environment variable, acknowledging security implications).
-3.  **Frontend Implementation:**
-    - Update the existing `Chatbot.tsx` component.
-    - Install and integrate the **`@langchain/google-genai`** SDK (and `langchain` core if needed).
-    - Implement logic within `Chatbot.tsx` to:
-      - Gather context (problem details, user code, history).
-      - Construct a non-spoiling prompt suitable for Gemini using Langchain message formats.
-      - Call the Langchain Gemini model's `.stream()` method using the SDK and API key.
-    - Remove the backend API client (`chatbotApi.ts`).
-4.  **Backend/Infrastructure Removal:**
-    - Delete the `backend/lambdas/chatbot-query/` directory and its contents.
-    - Delete the `infrastructure/chatbot/` directory and its contents.
-    - Remove any related deployment steps from GitHub Actions workflows (e.g., `deploy-chatbot.yml`).
-5.  **Integration & Testing:** Test the client-side chatbot interaction, streaming, and error handling thoroughly.
+1.  **Documentation:** Update Feature Specification, PRD, and To-Do list to reflect the Lambda + CloudFront OAC architecture with Terraform, JWT auth, and SSE. (In Progress)
+2.  **Infrastructure Setup (`infrastructure/chatbot/` using Terraform):**
+    - Configure Terraform S3 backend and provider.
+    - Use `terraform_remote_state` to get Cognito outputs (User Pool ID/Provider URL, Client ID).
+    - Define resources:
+      - Lambda Function (`chatbot-query`) with IAM Role (passing Cognito details as env vars).
+      - Lambda Function URL (IAM Auth, Response Streaming).
+      - CloudFront OAC (for Lambda).
+      - CloudFront Distribution (using OAC, **forwarding Auth header**, CachingDisabled, POST allowed).
+      - Lambda Resource Policy granting invoke permission _only_ to the CloudFront distribution.
+3.  **Backend Implementation (`backend/lambdas/chatbot-query/`):**
+    - Develop the Lambda function handler (Node.js/Python).
+    - Implement logic to:
+      - **Validate incoming JWT** (using Cognito User Pool details from env vars).
+      - Parse request body if JWT is valid.
+      - Securely retrieve AI API Key.
+      - Interact with the AI Model API.
+      - **Stream response back using SSE format (`text/event-stream`)**.
+4.  **Frontend Implementation (`Chatbot.tsx`):**
+    - Update the `Chatbot.tsx` component.
+    - Configure the CloudFront distribution URL.
+    - Implement logic to:
+      - Get user JWT from Amplify Auth.
+      - Construct JSON payload.
+      - **Calculate SHA256 hash of the payload and add `x-amz-content-sha256` header.**
+      - Make the **POST request with `Authorization: Bearer <jwt>` header.**
+      - **Use `EventSource` API to handle the SSE response stream.**
+    - Update API client (`chatbotApi.ts`).
+5.  **Deployment:**
+    - Deploy backend Lambda code.
+    - Apply Terraform changes (`terraform apply`).
+    - Deploy updated frontend.
+    - Update GitHub Actions workflow for Terraform & Lambda deployment.
+6.  **Testing:** End-to-end testing including JWT auth, OAC security, SSE streaming, and error handling.
 
 ## 3. Data Flow Diagram
 
 ```mermaid
 graph TD
-    subgraph Frontend [User Browser]
-        A["User Input in Chat"] --> B["Chatbot Component (Chatbot.tsx)"]
-        B -- "Build Prompt (Langchain Messages)" --> C{"Langchain SDK (@langchain/google-genai)"}
-        C -- "Send Prompt + API Key via .stream()" --> D[Google Gemini API]
-        D -- "Stream LLM Response (AIMessageChunks)" --> C
-        C -- "Streamed Content" --> B
-        B --> E["Update Chat UI"]
+    A[User @ Browser] --> B{Frontend (Chatbot.tsx)};
+    B -- "1. Get JWT (Amplify Auth)" --> Cognito[(Existing Cognito User Pool)];
+    Cognito -- "JWT" --> B;
+    B -- "2. POST /chatbot\nBody: {context...}\nHeaders: Auth JWT, x-amz-content-sha256" --> C[CloudFront Distribution];
+    C -- "3. OAC (SigV4) + Fwd Headers" --> D[Lambda Function URL];
+    D -- "4. Invoke" --> E[Lambda: chatbot-query];
+    subgraph "Lambda Execution"
+        E -- "5. Validate JWT" --> Cognito_Validate{Cognito JWKS};
+        Cognito_Validate -- "Valid/Invalid" --> E;
+        E -- "6. Get AI Key" --> F(Secure Store: Env Var/SSM);
+        E -- "7. Send Prompt" --> G[AI Model API (e.g., Gemini)];
+        G -- "8. (Streamed) Response" --> E;
+        E -- "9. Format as SSE" --> E_SSE_Format;
+    end
+    E_SSE_Format -- "10. Stream SSE Chunks" --> D;
+    D -- "11. Response" --> C;
+    C -- "12. Stream SSE Chunks" --> B;
+    B -- "13. Process SSE (EventSource) & Update UI" --> A;
+
+    subgraph "AWS Cloud (Chatbot Infra - Terraform)"
+        C
+        D
+        E
+        F
+        E_SSE_Format
+    end
+    subgraph "AWS Cloud (Existing Infra)"
+        Cognito
+        Cognito_Validate
     end
 
     style Frontend fill:#f9f,stroke:#333,stroke-width:2px
@@ -44,11 +85,15 @@ graph TD
 
 ## 4. Key Considerations
 
-- **API Key Security:** Storing and using API keys on the client-side requires careful consideration. Using `NEXT_PUBLIC_` environment variables makes the key visible in the browser's source code. For production, a backend proxy or other more secure methods might be needed, but for this project phase, we'll proceed with the environment variable approach.
-- **Client-Side Performance:** All processing (prompt building, API calls, stream handling) occurs in the user's browser. Performance impact should be monitored.
-- **Spoiler Prevention:** Prompt engineering remains critical to ensure the chatbot provides helpful hints without giving away solutions.
-- **Context Management:** Handling potentially large context (code, history, problem details) within LLM token limits still needs consideration, now managed entirely by the frontend.
+- **Security:** API Key secured backend. User auth via Cognito JWT validation. Lambda endpoint protected by CloudFront OAC.
+- **IaC:** Use **Terraform** for chatbot infrastructure, integrating with existing remote state (Cognito).
+- **Streaming:** Use **Server-Sent Events (SSE)** for better user experience.
+- **`x-amz-content-sha256` Header:** Mandatory for frontend.
+- **JWT Validation:** Lambda needs Cognito User Pool details (Provider URL/JWKS URL, Audience/Client ID) and a validation library.
+- **Header Forwarding:** CloudFront must forward `Authorization` and other necessary headers.
+- **Cold Starts:** Lambda cold starts might impact initial response time. Consider provisioned concurrency if latency is critical (though likely overkill initially).
+- **Cost:** Introduces costs for Lambda execution, data transfer, and CloudFront requests (though often within free tiers for moderate usage).
 
 ## 5. Next Steps
 
-Update the remaining documentation (Feature Spec, PRD, To-Do), configure the API key, remove backend/infrastructure, and implement the client-side Gemini integration in `Chatbot.tsx`.
+Rewrite the To-Do list (`chatbot-todo.md`) based on this updated plan (Terraform, JWT, SSE). Then, proceed with Infrastructure Setup.
