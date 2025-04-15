@@ -221,8 +221,17 @@ const Chatbot: React.FC<ChatbotProps> = ({ problemDetails, userCode }) => {
       (msg) => msg.role !== "model" || msg.content !== "..."
     ); // Exclude placeholder if needed
 
+    // Map ProblemDetailAPI to ProblemDetailPlaceholder for backend compatibility
+    const mappedProblemDetails = problemDetails
+      ? {
+          id: problemDetails.problemId || "",
+          title: problemDetails.title,
+          description: problemDetails.description,
+        }
+      : null;
+
     const context = {
-      problemDetails: problemDetails,
+      problemDetails: mappedProblemDetails,
       userCode: userCode,
       history: historyForBackend, // Send previous messages
     };
@@ -526,8 +535,24 @@ const Chatbot: React.FC<ChatbotProps> = ({ problemDetails, userCode }) => {
             onClick={handleSendMessage}
             disabled={isLoading || !userInput.trim()}
             className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 focus:outline-none focus:ring-1 focus:ring-primary focus:ring-offset-1 disabled:opacity-70 disabled:cursor-not-allowed"
+            aria-label="메시지 전송"
+            title="메시지 전송"
           >
-            전송
+            {/* Modern send icon (paper plane) */}
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              strokeWidth={2}
+              stroke="white"
+              className="w-5 h-5"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M3 20l18-8-18-8v7l13 1-13 1v7z"
+              />
+            </svg>
           </button>
         </div>
       </div>
