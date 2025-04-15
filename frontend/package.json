@@ -13,6 +13,7 @@
     "@langchain/google-genai": "^0.2.3",
     "@monaco-editor/react": "^4.7.0",
     "aws-amplify": "^6.9.5",
+    "framer-motion": "^12.6.5",
     "next": "^15.2.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

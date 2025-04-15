@@ -1,8 +1,9 @@
 // src/components/Header.tsx
 "use client";
 import Link from "next/link";
-import React from "react";
+import React, { useState, useEffect } from "react"; // Import useState, useEffect
 import { useAuthenticator } from "@aws-amplify/ui-react"; // Import the hook
+import { fetchUserAttributes } from "aws-amplify/auth"; // Import fetchUserAttributes
 
 import AlpacoLogo from "./AlpacoLogo";
 import AlpacoWordLogo from "./AlpacoWordLogo";
@@ -17,10 +18,36 @@ const Header: React.FC = () => {
   const isAuthenticated = authStatus === "authenticated";
   console.log("context: ", user, authStatus); // Debugging line
 
+  const [givenName, setGivenName] = useState<string | null>(null); // State for given_name
+
+  useEffect(() => {
+    const fetchAttributes = async () => {
+      if (isAuthenticated && user) {
+        try {
+          const attributes = await fetchUserAttributes();
+          console.log("Fetched attributes:", attributes); // Debugging
+          setGivenName(attributes.given_name || null);
+        } catch (error) {
+          console.error("Error fetching user attributes:", error);
+          setGivenName(null); // Reset on error
+        }
+      } else {
+        setGivenName(null); // Reset if not authenticated
+      }
+    };
+
+    fetchAttributes();
+  }, [isAuthenticated, user]); // Re-run effect if auth status or user changes
+
   // Function to get user identifier (e.g., email or username)
   const getUserIdentifier = () => {
+    // Prioritize fetched given_name from state
+    if (givenName) return givenName;
+
+    // Fallback logic if given_name is not available or not fetched yet
     if (!user) return "사용자";
-    // Use signInDetails.loginId (often email) or fallback to username
+    console.log("user (fallback): ", user); // Debugging line for fallback
+
     return user.signInDetails?.loginId || user.username || "사용자";
   };
 

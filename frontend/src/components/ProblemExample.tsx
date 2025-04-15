@@ -17,7 +17,7 @@ const ProblemExample: React.FC = () => {
   };
 
   return (
-    <div className="py-8 max-w-3xl mx-auto">
+    <div className="p-16  bg-white rounded-lg shadow-sm w-full">
       <div className="text-center mb-8">
         <h2 className="text-2xl font-semibold text-gray-900 mb-2">
           어떤 알고리즘 문제를 원하시나요?
