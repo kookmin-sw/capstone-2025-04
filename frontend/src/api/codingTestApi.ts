@@ -1,6 +1,7 @@
 // frontend/src/api/codingTestApi.ts
 
 import { getStaticProblem, isStaticProblemId } from "./staticProblems";
+import type { ProblemDetailAPI } from "./dummy/generateProblemApi";
 
 // Base URL for the coding test mock API server
 const API_BASE_URL = "http://localhost:3002"; // Point to mock server
@@ -75,7 +76,7 @@ const handleApiResponse = async (response: Response) => {
  * Checks for static problems (ID 1-6) first, otherwise fetches from the API.
  * GET /coding-test/problem/{id} (for non-static IDs)
  */
-export const getProblemById = async (id: string): Promise<ProblemDetail> => {
+export const getProblemById = async (id: string): Promise<ProblemDetailAPI> => {
   if (!id) throw new Error("Problem ID is required.");
 
   // 1. Check if it's a static problem ID (1-6)
@@ -83,7 +84,7 @@ export const getProblemById = async (id: string): Promise<ProblemDetail> => {
     console.log(`[CodingTest API] Requested static problem: ${id}`);
     const staticProblem = getStaticProblem(id);
     if (staticProblem) {
-      // Return static data immediately, wrapped in a resolved promise
+      // Return static data as ProblemDetailAPI
       return Promise.resolve(staticProblem);
     } else {
       // This shouldn't happen if isStaticProblemId is correct, but handle defensively

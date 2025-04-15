@@ -197,3 +197,122 @@ export const generateProblemsDummyAPI_NonStreaming = async (
   console.log("Dummy Non-Streaming API returning:", dummyProblems);
   return dummyProblems;
 };
+
+// ===================== 실제 Problem Generator API 연동 =====================
+
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_PROBLEM_GENERATION_API_BASE_URL ||
+  (typeof window !== "undefined"
+    ? (
+        window as unknown as {
+          NEXT_PUBLIC_PROBLEM_GENERATION_API_BASE_URL?: string;
+        }
+      ).NEXT_PUBLIC_PROBLEM_GENERATION_API_BASE_URL
+    : undefined);
+
+// --- API 타입 정의 (명세 기반) ---
+export type ProblemDifficulty = "튜토리얼" | "쉬움" | "보통" | "어려움";
+
+export interface CreateProblemRequest {
+  prompt: string;
+  difficulty: ProblemDifficulty;
+}
+
+export interface CreateProblemResponse {
+  problemId: string;
+  message: string; // "Problem generation request accepted and is processing in the background."
+}
+
+export interface ProblemSummary {
+  problemId: string;
+  title: string;
+  difficulty: ProblemDifficulty;
+  algorithmType: string;
+}
+
+export interface GetProblemsResponse {
+  problems: ProblemSummary[];
+}
+
+export interface ProblemExampleIO {
+  input: string | Record<string, unknown>;
+  output: string | Record<string, unknown>;
+}
+
+export interface ProblemDetailAPI {
+  problemId: string;
+  title: string;
+  description: string;
+  input_format: string;
+  output_format: string;
+  constraints: string;
+  example_input?: string | Record<string, unknown>;
+  example_output?: string | Record<string, unknown>;
+  testcases?: ProblemExampleIO[];
+  difficulty: ProblemDifficulty;
+  algorithmType: string;
+  likesCount: number;
+  creatorId: string;
+  genStatus: string;
+  createdAt: string;
+  updatedAt: string;
+  language?: string;
+  solution_code?: string;
+  test_case_generation_code?: string;
+  template_source?: string;
+  algorithm_hint?: string;
+}
+
+// --- 실제 API 호출 함수 ---
+
+/**
+ * 문제 생성 요청 (POST /problems)
+ */
+export async function createProblemAPI(
+  params: CreateProblemRequest
+): Promise<CreateProblemResponse> {
+  const res = await fetch(`${API_BASE_URL}/problems`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+  if (!res.ok) {
+    const error = await res.text();
+    throw new Error(`문제 생성 실패: ${res.status} ${error}`);
+  }
+  return res.json();
+}
+
+/**
+ * 문제 목록 조회 (GET /problems)
+ */
+export async function getProblemsAPI(): Promise<GetProblemsResponse> {
+  const res = await fetch(`${API_BASE_URL}/problems`, {
+    method: "GET",
+  });
+  if (!res.ok) {
+    const error = await res.text();
+    throw new Error(`문제 목록 조회 실패: ${res.status} ${error}`);
+  }
+  return res.json();
+}
+
+/**
+ * 문제 상세 조회 (GET /problems/{problemId})
+ */
+export async function getProblemDetailAPI(
+  problemId: string
+): Promise<ProblemDetailAPI> {
+  const res = await fetch(`${API_BASE_URL}/problems/${problemId}`, {
+    method: "GET",
+  });
+  if (!res.ok) {
+    const error = await res.text();
+    throw new Error(`문제 상세 조회 실패: ${res.status} ${error}`);
+  }
+  return res.json();
+}
+
+// ===================== 더미 함수 DEPRECATED 처리 =====================
+// ... 기존 더미 함수 및 타입은 deprecated 주석 추가 ...
+// ... existing code ...

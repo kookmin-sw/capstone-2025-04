@@ -15,13 +15,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneLight } from "react-syntax-highlighter/dist/esm/styles/prism";
-
-// Placeholder type - Define properly later
-interface ProblemDetailPlaceholder {
-  id: string | number;
-  title: string;
-  description?: string;
-}
+import type { ProblemDetailAPI } from "@/api/dummy/generateProblemApi";
 
 // Define message structure - Use 'model' for AI role
 interface ChatMessage {
@@ -31,7 +25,7 @@ interface ChatMessage {
 
 // Define component props
 interface ChatbotProps {
-  problemDetails: ProblemDetailPlaceholder | null;
+  problemDetails: ProblemDetailAPI | null;
   userCode: string;
 }
 
@@ -96,8 +90,10 @@ const Chatbot: React.FC<ChatbotProps> = ({ problemDetails, userCode }) => {
   const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   const localStorageKey = useMemo(() => {
-    return problemDetails?.id ? `chatbotHistory_${problemDetails.id}` : null;
-  }, [problemDetails?.id]);
+    return problemDetails?.problemId
+      ? `chatbotHistory_${problemDetails.problemId}`
+      : null;
+  }, [problemDetails?.problemId]);
 
   // Remove Langchain model initialization useEffect
   // useEffect(() => { ... }, []);

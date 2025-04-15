@@ -20,11 +20,11 @@ import {
   PanelResizeHandle,
   ImperativePanelHandle,
 } from "react-resizable-panels";
-import {
-  getProblemById,
-  ProblemDetail,
-  ProblemExample,
-} from "@/api/codingTestApi";
+import { getProblemById } from "@/api/codingTestApi";
+import type {
+  ProblemDetailAPI,
+  ProblemExampleIO,
+} from "@/api/dummy/generateProblemApi";
 import { toast } from "sonner";
 import Chatbot from "@/components/Chatbot";
 import { CODE_TEMPLATES } from "@/components/CodeEditor";
@@ -52,7 +52,7 @@ const CodingTestContent: React.FC = () => {
   const id = searchParams.get("id");
 
   // State
-  const [problemDetails, setProblemDetails] = useState<ProblemDetail | null>(
+  const [problemDetails, setProblemDetails] = useState<ProblemDetailAPI | null>(
     null
   );
   const [isLoadingProblem, setIsLoadingProblem] = useState(true);
@@ -76,10 +76,10 @@ const CodingTestContent: React.FC = () => {
 
   // Generate unique key for editor code local storage
   const editorLocalStorageKey = useMemo(() => {
-    return problemDetails?.id
-      ? `editorCode_${problemDetails.id}_${language}`
+    return problemDetails?.problemId
+      ? `editorCode_${problemDetails.problemId}_${language}`
       : null;
-  }, [problemDetails?.id, language]);
+  }, [problemDetails?.problemId, language]);
 
   // --- Handlers ---
   const handleLanguageChange = (e: ChangeEvent<HTMLSelectElement>) => {
@@ -470,7 +470,7 @@ const CodingTestContent: React.FC = () => {
 // --- Child Components ---
 
 // Problem Panel (Left)
-const ProblemPanel: React.FC<{ problemDetails: ProblemDetail }> = ({
+const ProblemPanel: React.FC<{ problemDetails: ProblemDetailAPI }> = ({
   problemDetails,
 }) => {
   // Added dark mode text colors
@@ -480,9 +480,9 @@ const ProblemPanel: React.FC<{ problemDetails: ProblemDetail }> = ({
       <h2 className="text-xl font-semibold mb-2">{problemDetails.title}</h2>
       <span
         className={`inline-block px-2 py-0.5 text-xs font-medium rounded-full mb-4 ${
-          problemDetails.difficulty === "Easy"
+          problemDetails.difficulty === "쉬움"
             ? "bg-green-100 text-green-800"
-            : problemDetails.difficulty === "Medium"
+            : problemDetails.difficulty === "보통"
             ? "bg-yellow-100 text-yellow-800"
             : "bg-red-100 text-red-800"
         }`}
@@ -521,13 +521,13 @@ const ProblemPanel: React.FC<{ problemDetails: ProblemDetail }> = ({
           </>
         )}
       </div>
-      {problemDetails.examples && problemDetails.examples.length > 0 && (
+      {problemDetails.testcases && problemDetails.testcases.length > 0 && (
         <div className="mb-6">
           <h3 className="text-md font-medium text-gray-800 mb-2">
             입출력 예제
           </h3>
-          {problemDetails.examples.map(
-            (example: ProblemExample, index: number) => (
+          {problemDetails.testcases.map(
+            (example: ProblemExampleIO, index: number) => (
               <div key={index} className="mb-3 last:mb-0">
                 <h4 className="text-sm font-semibold text-gray-600 mb-1">
                   예제 {index + 1}
@@ -536,14 +536,18 @@ const ProblemPanel: React.FC<{ problemDetails: ProblemDetail }> = ({
                 <pre className="bg-gray-50 p-3 rounded-md text-gray-700 font-mono text-xs mb-1">
                   <strong className="font-medium text-gray-600">Input:</strong>{" "}
                   <span className="block mt-1 whitespace-pre-wrap">
-                    {example.input}
+                    {typeof example.input === "string"
+                      ? example.input
+                      : JSON.stringify(example.input, null, 2)}
                   </span>
                 </pre>
                 {/* Use light theme background and text */}
                 <pre className="bg-gray-100 p-3 rounded-md text-gray-800 font-mono text-xs">
                   <strong className="font-medium text-gray-600">Output:</strong>{" "}
                   <span className="block mt-1 whitespace-pre-wrap">
-                    {example.output}
+                    {typeof example.output === "string"
+                      ? example.output
+                      : JSON.stringify(example.output, null, 2)}
                   </span>
                 </pre>
               </div>
@@ -678,7 +682,7 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
 // Results Panel (Center Bottom)
 type ResultsTab = "examples" | "custom" | "submission";
 
-const ResultsPanel: React.FC<{ problemDetails: ProblemDetail }> = ({
+const ResultsPanel: React.FC<{ problemDetails: ProblemDetailAPI }> = ({
   problemDetails,
 }) => {
   const [activeTab, setActiveTab] = useState<ResultsTab>("examples");
@@ -688,32 +692,41 @@ const ResultsPanel: React.FC<{ problemDetails: ProblemDetail }> = ({
       case "examples":
         return (
           <div className="mt-4 space-y-4">
-            {problemDetails.examples?.length > 0 ? (
-              problemDetails.examples.map((example, index) => (
-                <div key={index} className="border border-gray-200 rounded p-3">
-                  <h4 className="text-sm font-semibold text-gray-700 mb-2">
-                    Example {index + 1}
-                  </h4>
-                  <div className="space-y-2">
-                    <pre className="bg-gray-50 p-3 rounded-md text-gray-700 font-mono text-xs">
-                      <strong className="font-medium text-gray-600">
-                        Input:
-                      </strong>
-                      <span className="block mt-1 whitespace-pre-wrap">
-                        {example.input}
-                      </span>
-                    </pre>
-                    <pre className="bg-gray-100 p-3 rounded-md text-gray-800 font-mono text-xs">
-                      <strong className="font-medium text-gray-600">
-                        Output:
-                      </strong>
-                      <span className="block mt-1 whitespace-pre-wrap">
-                        {example.output}
-                      </span>
-                    </pre>
+            {problemDetails.testcases && problemDetails.testcases.length > 0 ? (
+              problemDetails.testcases.map(
+                (example: ProblemExampleIO, index: number) => (
+                  <div
+                    key={index}
+                    className="border border-gray-200 rounded p-3"
+                  >
+                    <h4 className="text-sm font-semibold text-gray-700 mb-2">
+                      Example {index + 1}
+                    </h4>
+                    <div className="space-y-2">
+                      <pre className="bg-gray-50 p-3 rounded-md text-gray-700 font-mono text-xs">
+                        <strong className="font-medium text-gray-600">
+                          Input:
+                        </strong>
+                        <span className="block mt-1 whitespace-pre-wrap">
+                          {typeof example.input === "string"
+                            ? example.input
+                            : JSON.stringify(example.input, null, 2)}
+                        </span>
+                      </pre>
+                      <pre className="bg-gray-100 p-3 rounded-md text-gray-800 font-mono text-xs">
+                        <strong className="font-medium text-gray-600">
+                          Output:
+                        </strong>
+                        <span className="block mt-1 whitespace-pre-wrap">
+                          {typeof example.output === "string"
+                            ? example.output
+                            : JSON.stringify(example.output, null, 2)}
+                        </span>
+                      </pre>
+                    </div>
                   </div>
-                </div>
-              ))
+                )
+              )
             ) : (
               <p className="text-gray-500 text-sm">No examples provided.</p>
             )}
