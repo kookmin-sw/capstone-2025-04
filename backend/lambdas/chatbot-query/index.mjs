@@ -54,10 +54,12 @@ export const handler = awslambda.streamifyResponse(
     const audience = process.env.COGNITO_APP_CLIENT_ID;
 
     try {
+      // Read JWT from the custom header (access case-insensitively)
       const authHeader =
-        event.headers?.Authorization || event.headers?.authorization; // Handle case-insensitivity
+        event.headers?.["x-custom-auth-token"] ||
+        event.headers?.["X-Custom-Auth-Token"];
       if (!authHeader || !authHeader.startsWith("Bearer ")) {
-        throw new Error("Missing or invalid Authorization header");
+        throw new Error("Missing or invalid X-Custom-Auth-Token header");
       }
       const token = authHeader.substring(7); // Remove "Bearer " prefix
       await validateJwt(token, jwksUrl, issuerUrl, audience);

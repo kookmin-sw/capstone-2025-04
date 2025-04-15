@@ -3,7 +3,7 @@
 import Link from "next/link";
 import React, { useState, useEffect } from "react"; // Import useState, useEffect
 import { useAuthenticator } from "@aws-amplify/ui-react"; // Import the hook
-import { fetchUserAttributes } from "aws-amplify/auth"; // Import fetchUserAttributes
+import { fetchAuthSession } from "aws-amplify/auth"; // Import fetchAuthSession
 
 import AlpacoLogo from "./AlpacoLogo";
 import AlpacoWordLogo from "./AlpacoWordLogo";
@@ -21,23 +21,33 @@ const Header: React.FC = () => {
   const [givenName, setGivenName] = useState<string | null>(null); // State for given_name
 
   useEffect(() => {
-    const fetchAttributes = async () => {
-      if (isAuthenticated && user) {
+    const fetchAttributesFromToken = async () => {
+      if (isAuthenticated) {
         try {
-          const attributes = await fetchUserAttributes();
-          console.log("Fetched attributes:", attributes); // Debugging
-          setGivenName(attributes.given_name || null);
+          const session = await fetchAuthSession();
+          const idTokenPayload = session.tokens?.idToken?.payload;
+          console.log("ID Token Payload:", idTokenPayload); // Debug: See what's in the token
+          if (idTokenPayload && typeof idTokenPayload.given_name === "string") {
+            setGivenName(idTokenPayload.given_name);
+          } else {
+            // Fallback or handle missing attribute
+            console.warn("given_name not found in ID token payload.");
+            setGivenName(null); // Explicitly set to null if not found
+          }
         } catch (error) {
-          console.error("Error fetching user attributes:", error);
-          setGivenName(null); // Reset on error
+          console.error(
+            "Error fetching auth session or parsing ID token:",
+            error
+          );
+          setGivenName(null);
         }
       } else {
-        setGivenName(null); // Reset if not authenticated
+        setGivenName(null); // Clear name when not authenticated
       }
     };
 
-    fetchAttributes();
-  }, [isAuthenticated, user]); // Re-run effect if auth status or user changes
+    fetchAttributesFromToken();
+  }, [isAuthenticated]); // Re-run only when auth status changes
 
   // Function to get user identifier (e.g., email or username)
   const getUserIdentifier = () => {

@@ -101,7 +101,8 @@ export const streamChatbotResponse = async (
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${idToken}`,
+        Authorization: `Bearer ${idToken}`, // Standard header (commented out)
+        "X-Custom-Auth-Token": `Bearer ${idToken}`, // Use custom header for JWT
         "x-amz-content-sha256": sha256Hash,
       },
       body: payloadString,
