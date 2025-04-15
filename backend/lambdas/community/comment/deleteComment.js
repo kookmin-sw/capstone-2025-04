@@ -1,12 +1,16 @@
-const AWS = require("aws-sdk");
-const dynamoDB = new AWS.DynamoDB.DocumentClient();
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { DynamoDBDocumentClient, GetCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 
-exports.handler = async (event) => {
+// 클라이언트 설정
+const client = new DynamoDBClient({});
+const dynamoDB = DynamoDBDocumentClient.from(client);
+
+export const handler = async (event) => {
     try {
-        const { postId, commentId } = event.pathParameters; // 요청 URL에서 postId와 commentId 추출
+        const { postId, commentId } = event.pathParameters || {}; // 요청 URL에서 postId와 commentId 추출
 
         // API Gateway JWT Authorizer에서 전달된 유저 정보 가져오기
-        const claims = event.requestContext.authorizer.claims;
+        const claims = event?.requestContext?.authorizer?.claims;
         if (!claims || !claims.username) {
             return {
                 statusCode: 401,
@@ -17,17 +21,17 @@ exports.handler = async (event) => {
         const author = claims.username;
 
         // 댓글 조회
-        const getCommentParams = {
+        const getCommand = new GetCommand({
             TableName: "Community",
             Key: {
-                PK: postId,
-                SK: `COMMENT#${commentId}`,
+              PK: postId,
+              SK: `COMMENT#${commentId}`,
             },
-        };
-
-        const commentResult = await dynamoDB.get(getCommentParams).promise();
+        });
+      
+        const commentResult = await dynamoDB.send(getCommand);
         const comment = commentResult.Item;
-
+     
         if (!comment) {
             return {
                 statusCode: 404,
@@ -43,7 +47,7 @@ exports.handler = async (event) => {
         }
 
         // 트랜잭션으로 댓글 삭제 + 댓글 수 감소
-        await dynamoDB.transactWrite({
+        const deleteCommand = new TransactWriteCommand({
             TransactItems: [
                 {
                     Delete: {
@@ -71,14 +75,16 @@ exports.handler = async (event) => {
                     },
                 },
             ],
-        }).promise();
+        });
+
+        await dynamoDB.send(deleteCommand);
 
         return {
             statusCode: 200,
             body: JSON.stringify({
                 message: "댓글이 성공적으로 삭제되었습니다.",
-                commentId,
                 postId,
+                commentId,
             }),
         };
         

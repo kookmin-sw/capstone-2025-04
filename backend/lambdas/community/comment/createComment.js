@@ -1,11 +1,15 @@
-const AWS = require("aws-sdk");
-const dynamoDB = new AWS.DynamoDB.DocumentClient();
-const { v4: uuidv4 } = require("uuid");
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { DynamoDBDocumentClient, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
+import { v4 as uuidv4 } from 'uuid';
 
-exports.handler = async (event) => {
+// 클라이언트 설정
+const client = new DynamoDBClient({});
+const dynamoDB = DynamoDBDocumentClient.from(client);
+
+export const handler = async (event) => {
     try {
-        const { postId } = event.pathParameters; // 요청 URL에서 postId 추출
-        const body = JSON.parse(event.body);
+        const { postId } = event.pathParameters || {}; // 요청 URL에서 postId 추출
+        const body = JSON.parse(event.body || "{}");
         const { content } = body; // 댓글 내용은 body에서 추출
 
         if (!content) {
@@ -16,7 +20,7 @@ exports.handler = async (event) => {
         }
 
         // API Gateway JWT Authorizer에서 전달된 유저 정보 가져오기
-        const claims = event.requestContext.authorizer.claims;
+        const claims = event?.requestContext?.authorizer?.claims;
         if (!claims || !claims.username) {
             return {
                 statusCode: 401,
@@ -29,34 +33,37 @@ exports.handler = async (event) => {
         const createdAt = new Date().toISOString();
 
         // 트랜잭션으로 댓글 생성 + 댓글 수 증가
-        await dynamoDB.transactWrite({
+        const command = new TransactWriteCommand({
         TransactItems: [
             {
-            Put: { // DynamoDB에 저장할 데이터
-                TableName: "Community",
-                Item: {
-                PK: postId,
-                SK: `COMMENT#${commentId}`,
-                commentId,
-                author,
-                content,
-                createdAt,
+                Put: { // DynamoDB에 저장할 데이터
+                    TableName: "Community",
+                    Item: {
+                        PK: postId,
+                        SK: `COMMENT#${commentId}`,
+                        commentId,
+                        author,
+                        content,
+                        createdAt,
+                    },
                 },
-            },
             },
             {
-            Update: { // 댓글 수 증가
-                TableName: "Community",
-                Key: { PK: postId, SK: "POST" },
-                UpdateExpression: "SET commentCount = if_not_exists(commentCount, :zero) + :inc",
-                ExpressionAttributeValues: {
-                ":inc": 1,
-                ":zero": 0,
+                Update: {
+                    TableName: "Community",
+                    Key: { PK: postId, SK: "POST" },
+                    UpdateExpression:
+                        "SET commentCount = if_not_exists(commentCount, :zero) + :inc",
+                    ExpressionAttributeValues: {
+                        ":zero": 0,
+                        ":inc": 1,
+                    },
                 },
             },
-            },
-        ],
-        }).promise();
+           ],
+        });
+       
+        await dynamoDB.send(command);
 
         // 댓글 생성 성공 응답, 카운트는 원한다면 할게요,,,
         return {
