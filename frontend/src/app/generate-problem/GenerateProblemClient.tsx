@@ -1,6 +1,7 @@
 // src/app/generate-problem/GenerateProblemClient.tsx
 "use client";
 import React, { useState, useRef, useEffect, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 // Import the STREAMING dummy API function and types
 import {
   // streamGenerationStatusDummyAPI, // 더미 API 제거
@@ -71,6 +72,7 @@ const difficultyMap: Record<string, ProblemDifficulty> = {
 };
 
 const GenerateProblemClient = () => {
+  const searchParams = useSearchParams();
   const [prompt, setPrompt] = useState("");
   const [difficulty, setDifficulty] = useState<"Easy" | "Medium" | "Hard">(
     "Medium"
@@ -93,6 +95,9 @@ const GenerateProblemClient = () => {
   );
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
   const prevDetailRef = useRef<ProblemDetailAPI | null>(null);
+
+  // Ref to track if initial prompt from URL has been handled
+  const initialPromptHandledRef = useRef(false);
 
   // --- Presets ---
   const problemTypePresets: ProblemTypePreset[] = [
@@ -147,23 +152,27 @@ const GenerateProblemClient = () => {
     }
   }, [statusMessages]);
 
+  // Session Storage Logic (modified slightly to integrate with URL param loading)
   useEffect(() => {
-    const savedProblems = sessionStorage.getItem(SESSION_STORAGE_KEY);
-    if (savedProblems) {
-      try {
-        const parsedProblems = JSON.parse(savedProblems);
-        if (Array.isArray(parsedProblems)) {
-          setGeneratedProblem(parsedProblems[parsedProblems.length - 1]);
-        } else {
+    // Only load from session storage if no prompt came from URL initially
+    if (!initialPromptHandledRef.current) {
+      const savedProblems = sessionStorage.getItem(SESSION_STORAGE_KEY);
+      if (savedProblems) {
+        try {
+          const parsedProblems = JSON.parse(savedProblems);
+          if (Array.isArray(parsedProblems)) {
+            setGeneratedProblem(parsedProblems[parsedProblems.length - 1]);
+          } else {
+            sessionStorage.removeItem(SESSION_STORAGE_KEY);
+          }
+        } catch (e) {
+          console.error("Failed to parse problems from sessionStorage:", e);
           sessionStorage.removeItem(SESSION_STORAGE_KEY);
         }
-      } catch (e) {
-        console.error("Failed to parse problems from sessionStorage:", e);
-        sessionStorage.removeItem(SESSION_STORAGE_KEY);
       }
     }
     setHasInitiallyLoaded(true);
-  }, []);
+  }, []); // Runs once on mount
 
   useEffect(() => {
     if (hasInitiallyLoaded) {
@@ -243,49 +252,66 @@ const GenerateProblemClient = () => {
   }, [problemId]);
 
   // --- Main Generation Logic ---
-  const handleGenerate = async (e?: React.FormEvent) => {
-    e?.preventDefault();
-    const currentPrompt = prompt.trim();
-    if (!currentPrompt || isLoading) return;
-    setIsLoading(true);
-    setError(null);
-    setGeneratedProblem(null);
-    setProblemId(null);
-    setProblemDetail(null);
-    prevDetailRef.current = null;
-    setStatusMessages([
-      `요청 시작: '${currentPrompt}' (${difficultyMap[difficulty]})`,
-    ]);
-    textareaRef.current?.blur();
-    try {
-      // 1. 문제 생성 요청
-      const res = await createProblemAPI({
-        prompt: currentPrompt,
-        difficulty: difficultyMap[difficulty],
-      });
-      const problemId = res.problemId as string;
-      if (problemId) {
-        setProblemId(problemId);
-        setStatusMessages((prev) => [
-          ...prev,
-          `문제 생성 요청이 접수됨 (ID: ${problemId})`,
-        ]);
-      } else {
-        setStatusMessages((prev) => [
-          ...prev,
-          "문제 생성 요청이 접수되었으나, problemId를 받지 못했습니다.",
-        ]);
+  const handleGenerate = useCallback(
+    async (e?: React.FormEvent, promptOverride?: string) => {
+      e?.preventDefault();
+      // Use override if provided, otherwise use state
+      const currentPrompt = (promptOverride ?? prompt).trim();
+      if (!currentPrompt || isLoading) return;
+
+      setIsLoading(true);
+      setError(null);
+      setGeneratedProblem(null); // Clear previous results immediately
+      setProblemId(null);
+      setProblemDetail(null);
+      prevDetailRef.current = null;
+      setStatusMessages([
+        `요청 시작: '${currentPrompt}' (${difficultyMap[difficulty]})`,
+      ]);
+      textareaRef.current?.blur();
+
+      try {
+        const res = await createProblemAPI({
+          prompt: currentPrompt,
+          difficulty: difficultyMap[difficulty],
+        });
+        const newProblemId = res.problemId as string; // Use a different variable name
+        if (newProblemId) {
+          setProblemId(newProblemId); // Update state with the new ID
+          setStatusMessages((prev) => [
+            ...prev,
+            `문제 생성 요청이 접수됨 (ID: ${newProblemId})`,
+          ]);
+        } else {
+          setStatusMessages((prev) => [
+            ...prev,
+            "문제 생성 요청이 접수되었으나, problemId를 받지 못했습니다.",
+          ]);
+          setIsLoading(false);
+          return;
+        }
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : "알 수 없는 오류";
+        setError(errorMsg);
+        setStatusMessages((prev) => [...prev, `❌ 오류: ${errorMsg}`]);
         setIsLoading(false);
         return;
       }
-    } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : "알 수 없는 오류";
-      setError(errorMsg);
-      setStatusMessages((prev) => [...prev, `❌ 오류: ${errorMsg}`]);
-      setIsLoading(false);
-      return;
+      // No need to manually set isLoading false here if polling starts
+    },
+    [prompt, isLoading, difficulty] // Dependencies for handleGenerate
+  ); // Added prompt and isLoading as dependencies
+
+  // Effect to handle initial prompt from URL
+  useEffect(() => {
+    const initialPrompt = searchParams.get("prompt");
+    if (initialPrompt && !initialPromptHandledRef.current) {
+      initialPromptHandledRef.current = true; // Mark as handled
+      const decodedPrompt = decodeURIComponent(initialPrompt);
+      setPrompt(decodedPrompt); // Set the state
+      handleGenerate(undefined, decodedPrompt);
     }
-  };
+  }, [searchParams, handleGenerate]);
 
   // Simplified abort cleanup for dummy
   useEffect(() => {

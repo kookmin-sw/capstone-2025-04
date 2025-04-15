@@ -1,18 +1,36 @@
 "use client";
 import React, { useState } from "react";
+import { useRouter } from "next/navigation";
 
 const ProblemExample: React.FC = () => {
   const [query, setQuery] = useState("");
+  const router = useRouter();
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setQuery(e.target.value);
   };
 
-  const handleSearch = () => {
-    console.log("검색어:", query);
+  // Function to handle navigation
+  const navigateToGenerate = () => {
+    const trimmedQuery = query.trim();
+    if (trimmedQuery) {
+      const encodedQuery = encodeURIComponent(trimmedQuery);
+      router.push(`/generate-problem?prompt=${encodedQuery}`);
+    } else {
+      router.push(`/generate-problem`);
+    }
+  };
 
-    if (false) {
-      // 더미 로직 (나중에 필요할 경우를 위해 유지)
+  // Handle button click
+  const handleSearch = () => {
+    navigateToGenerate();
+  };
+
+  // Handle Enter key press in input
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      navigateToGenerate();
     }
   };
 
@@ -34,6 +52,7 @@ const ProblemExample: React.FC = () => {
           placeholder="알고리즘 문제를 입력하세요"
           value={query}
           onChange={handleInputChange}
+          onKeyDown={handleKeyDown}
         />
         <button
           className="bg-primary text-white border-none rounded-r-lg px-6 font-medium cursor-pointer transition-colors duration-200 hover:bg-primary-hover"
