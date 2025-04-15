@@ -2,6 +2,79 @@
 
 이 문서는 `@problem-generator-aws` 및 `@problem-grader`를 포함하는 전체 백엔드 인프라(`problem-infra`)를 AWS SAM을 사용하여 배포하는 간결 가이드입니다.
 
+## 아키텍처 개요
+
+다음 다이어그램은 이 SAM 템플릿으로 배포되는 주요 AWS 리소스와 그 상호작용을 보여줍니다. `@problem-grader` 관련 컴포넌트는 현재 미완성 상태입니다.
+
+```mermaid
+graph TD
+    subgraph "User / Client"
+        UserClient[Client]
+    end
+
+    subgraph "AWS API Gateway"
+        APIGW[API Gateway: HTTP API]
+        APIGW_Problems["/problems (POST, GET)"]
+        APIGW_ProblemId["/problems/{problemId} (GET)"]
+        APIGW_Submissions["/submissions (POST, GET - Grader - TBD)"]
+    end
+
+    subgraph "Problem Generator (aws)"
+        Lambda_ApiHandler["ProblemApiHandlerFunction (Lambda)"]
+        Lambda_Generator["ProblemGeneratorAWSFunction (Lambda)"]
+        GoogleAI["(Google AI API (Gemini))"]
+    end
+
+    subgraph "Problem Grader (- Incomplete)"
+        Lambda_GraderApi["ProblemGraderApiHandlerFunction (Lambda - Placeholder)"]
+        StepFunctions["GraderStateMachine (Step Functions - Placeholder)"]
+        Lambda_ResultProcessor["ResultProcessorFunction (Lambda - Placeholder)"]
+        subgraph "Code Execution (Fargate/ECS - Placeholder)"
+            ECSCluster["ECS Cluster"]
+            FargateTask["CodeRunner Task (Fargate)"]
+            ECR["ECR: CodeRunner Image"]
+        end
+    end
+
+    subgraph "Data Stores & Layers"
+        DynamoDB_Problems["Problems Table (DynamoDB)"]
+        DynamoDB_Submissions["Submissions Table (DynamoDB - Grader)"]
+        S3Bucket["S3 Bucket (problem-solver-results)"]
+        LambdaLayers["Lambda Layers (Langchain, Google, Utils)"]
+    end
+
+    %% Connections
+    UserClient -- "POST /problems" --> APIGW_Problems
+    UserClient -- "GET /problems, /problems/{id}" --> APIGW_Problems & APIGW_ProblemId
+    UserClient -- "POST /submissions (TBD)" --> APIGW_Submissions
+
+    APIGW_Problems & APIGW_ProblemId -- Invoke --> Lambda_ApiHandler
+    APIGW_Submissions -- Invoke (TBD) --> Lambda_GraderApi
+
+    Lambda_ApiHandler -- "Async Invoke" --> Lambda_Generator
+    Lambda_ApiHandler -- "Read Data" --> DynamoDB_Problems
+
+    Lambda_Generator -- "Use LLM" --> GoogleAI
+    Lambda_Generator -- "Write Problem" --> DynamoDB_Problems
+    Lambda_Generator -- "Uses Layers" --> LambdaLayers
+
+    Lambda_GraderApi -- "Read Problem" --> DynamoDB_Problems
+    Lambda_GraderApi -- "Start Workflow (TBD)" --> StepFunctions
+    Lambda_GraderApi -- "Uses Layers" --> LambdaLayers
+
+    StepFunctions -- "Run Task (TBD)" --> FargateTask
+    StepFunctions -- "Invoke Processor (TBD)" --> Lambda_ResultProcessor
+
+    FargateTask -- "Runs on" --> ECSCluster
+    FargateTask -- "Pulls Image" --> ECR
+    FargateTask -- "Write/Read Results (Maybe S3?)" --> S3Bucket
+
+    Lambda_ResultProcessor -- "Write Submission (TBD)" --> DynamoDB_Submissions
+    Lambda_ResultProcessor -- "Uses Layers" --> LambdaLayers
+
+    Lambda_ApiHandler -- "Uses Layers" --> LambdaLayers
+```
+
 ## 1. 사전 준비
 
 - AWS 계정
@@ -125,8 +198,8 @@ Fargate Task(`code-runner`)가 사용할 이미지를 ECR에 업로드합니다.
         GraderS3BucketName=problem-solver-results \\
         CodeRunnerImageUri=897722694537.dkr.ecr.ap-northeast-2.amazonaws.com/problem-grader/code-runner:latest \\
         EcsClusterName=code-runner-cluster \\
-        VpcSubnetIds=\"subnet-017ce875f56125b56,subnet-0749f96b14750c07c,subnet-07957a2efb3216fd6,subnet-0e8f7de3277620546\" \\
-        VpcSecurityGroupIds=\"sg-0f95a4abfc6e0046a\" \\
+        VpcSubnetIds="subnet-017ce875f56125b56,subnet-0749f96b14750c07c,subnet-07957a2efb3216fd6,subnet-0e8f7de3277620546" \\
+        VpcSecurityGroupIds="sg-0f95a4abfc6e0046a" \\
         GoogleAiApiKey=<YOUR_GOOGLE_AI_API_KEY> \\
       --no-confirm-changeset
     ```
