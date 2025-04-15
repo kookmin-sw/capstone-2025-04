@@ -14,7 +14,12 @@ import CodeEditor from "@/components/CodeEditor";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuthenticator } from "@aws-amplify/ui-react";
-import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
+import {
+  Panel,
+  PanelGroup,
+  PanelResizeHandle,
+  ImperativePanelHandle,
+} from "react-resizable-panels";
 import {
   getProblemById,
   ProblemDetail,
@@ -23,6 +28,20 @@ import {
 import { toast } from "sonner";
 import Chatbot from "@/components/Chatbot";
 import { CODE_TEMPLATES } from "@/components/CodeEditor";
+import {
+  ChevronDoubleLeftIcon,
+  ChevronDoubleRightIcon,
+  ChevronDoubleUpIcon,
+  ComputerDesktopIcon,
+  CommandLineIcon,
+  ChatBubbleLeftRightIcon,
+} from "@heroicons/react/24/outline";
+
+// Constants for default panel sizes
+const PROBLEM_DEFAULT_SIZE = 30;
+const EDITOR_DEFAULT_SIZE = 45; // Base for vertical group
+const CHATBOT_DEFAULT_SIZE = 25;
+const RESULTS_DEFAULT_SIZE_PERCENT_OF_VERTICAL = 35; // Results panel size within its group
 
 // --- Main Content Component ---
 const CodingTestContent: React.FC = () => {
@@ -44,6 +63,16 @@ const CodingTestContent: React.FC = () => {
   >("python");
   const [editorResetKey, setEditorResetKey] = useState(0);
   const hasLoadedInitialCode = useRef(false);
+
+  // State for panel collapse status
+  const [isProblemCollapsed, setIsProblemCollapsed] = useState(false);
+  const [isResultsCollapsed, setIsResultsCollapsed] = useState(false);
+  const [isChatbotCollapsed, setIsChatbotCollapsed] = useState(false);
+
+  // Refs for panels
+  const problemPanelRef = useRef<ImperativePanelHandle>(null);
+  const resultsPanelRef = useRef<ImperativePanelHandle>(null);
+  const chatbotPanelRef = useRef<ImperativePanelHandle>(null);
 
   // Generate unique key for editor code local storage
   const editorLocalStorageKey = useMemo(() => {
@@ -83,6 +112,88 @@ const CodingTestContent: React.FC = () => {
   const handleSubmit = () => {
     console.log("Submitting code (mock):", code, language);
     router.push(`/coding-test/result?id=${id}`);
+  };
+
+  // --- Panel Toggle Functions ---
+  const togglePanelToDefaultSize = (
+    panelRef: React.RefObject<ImperativePanelHandle>,
+    isCollapsed: boolean,
+    defaultSize: number
+  ) => {
+    const panel = panelRef.current;
+    if (!panel) return;
+    if (isCollapsed) {
+      panel.expand();
+      panel.resize(defaultSize);
+    } else {
+      panel.collapse();
+    }
+  };
+
+  const togglePanelPreserveSize = (
+    panelRef: React.RefObject<ImperativePanelHandle>,
+    isCollapsed: boolean
+  ) => {
+    const panel = panelRef.current;
+    if (!panel) return;
+    if (isCollapsed) {
+      panel.expand();
+    } else {
+      panel.collapse();
+    }
+  };
+
+  const toggleProblemPanel = () => {
+    if (problemPanelRef.current) {
+      togglePanelToDefaultSize(
+        problemPanelRef as React.RefObject<ImperativePanelHandle>,
+        isProblemCollapsed,
+        PROBLEM_DEFAULT_SIZE
+      );
+    }
+  };
+  const toggleResultsPanel = () => {
+    if (resultsPanelRef.current) {
+      togglePanelToDefaultSize(
+        resultsPanelRef as React.RefObject<ImperativePanelHandle>,
+        isResultsCollapsed,
+        RESULTS_DEFAULT_SIZE_PERCENT_OF_VERTICAL
+      );
+    }
+  };
+  const toggleChatbotPanel = () => {
+    if (chatbotPanelRef.current) {
+      togglePanelToDefaultSize(
+        chatbotPanelRef as React.RefObject<ImperativePanelHandle>,
+        isChatbotCollapsed,
+        CHATBOT_DEFAULT_SIZE
+      );
+    }
+  };
+
+  const toggleProblemPanelPreserveSize = () => {
+    if (problemPanelRef.current) {
+      togglePanelPreserveSize(
+        problemPanelRef as React.RefObject<ImperativePanelHandle>,
+        isProblemCollapsed
+      );
+    }
+  };
+  const toggleResultsPanelPreserveSize = () => {
+    if (resultsPanelRef.current) {
+      togglePanelPreserveSize(
+        resultsPanelRef as React.RefObject<ImperativePanelHandle>,
+        isResultsCollapsed
+      );
+    }
+  };
+  const toggleChatbotPanelPreserveSize = () => {
+    if (chatbotPanelRef.current) {
+      togglePanelPreserveSize(
+        chatbotPanelRef as React.RefObject<ImperativePanelHandle>,
+        isChatbotCollapsed
+      );
+    }
   };
 
   // --- Effects ---
@@ -192,19 +303,14 @@ const CodingTestContent: React.FC = () => {
 
   // --- Main Layout ---
   return (
-    // Use theme text
-    <div className="flex h-[calc(100vh-var(--header-height,64px)-var(--footer-height,64px))] flex-grow flex-col">
+    <div className="relative flex h-[calc(100vh-var(--header-height,64px)-var(--footer-height,64px))] flex-grow flex-col">
       {/* Top Bar */}
       {/* Use theme background/border */}
-      <div className="flex flex-shrink-0 items-center justify-between border-b border-gray-200 bg-white px-4 py-2">
-        {/* Use theme text */}
-        <h1 className="truncate text-xl font-semibold text-gray-800">
-          {problemDetails.title || "문제 풀이"}
-        </h1>
-        <div className="flex items-center space-x-4">
+      <div className="flex flex-shrink-0  border-b border-gray-200 bg-white px-4 pt-3 pb-2">
+        <div className="flex items-center justify-end w-full space-x-4">
           <Link
             href="/coding-test/selection"
-            className="inline-flex items-center px-3 py-1 border border-gray-300 text-sm font-medium rounded-md bg-white text-gray-700 hover:bg-gray-50 transition"
+            className="inline-flex items-center px-3 py-1 border border-gray-300 rounded-md bg-white text-gray-700 hover:bg-gray-50 transition"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -226,32 +332,64 @@ const CodingTestContent: React.FC = () => {
       </div>
 
       {/* VSCode-like Layout: [Problem | Editor / Results | Chat] */}
+      {/* Panel Toggle Buttons Container */}
+      <div className="absolute inset-0 pointer-events-none z-10">
+        {/* Left Panel Toggle */}
+        {isProblemCollapsed && (
+          <button
+            onClick={toggleProblemPanel}
+            className="pointer-events-auto absolute left-1 top-1/2 -translate-y-1/2 rounded border border-gray-300 bg-white p-1 text-gray-600 shadow-md hover:bg-gray-100 hover:text-gray-800 focus:outline-none focus:ring-1 focus:ring-primary"
+            aria-label="Open Problem Panel"
+            title="Open Problem Panel"
+          >
+            <ChevronDoubleRightIcon className="h-4 w-4" />
+          </button>
+        )}
+
+        {/* Right Panel Toggle */}
+        {isChatbotCollapsed && (
+          <button
+            onClick={toggleChatbotPanel}
+            className="pointer-events-auto absolute right-1 top-1/2 -translate-y-1/2 rounded border border-gray-300 bg-white p-1 text-gray-600 shadow-md hover:bg-gray-100 hover:text-gray-800 focus:outline-none focus:ring-1 focus:ring-primary"
+            aria-label="Open Chatbot Panel"
+            title="Open Chatbot Panel"
+          >
+            <ChevronDoubleLeftIcon className="h-4 w-4" />
+          </button>
+        )}
+      </div>
+
       <PanelGroup direction="horizontal" className="flex-grow">
         {/* Left Panel: Problem Description */}
         <Panel
-          defaultSize={30}
+          ref={problemPanelRef}
+          defaultSize={PROBLEM_DEFAULT_SIZE}
           minSize={20}
           collapsible={true}
           collapsedSize={0}
           order={1}
           id="problem-panel"
           className="bg-white border-r border-gray-200"
+          onCollapse={() => setIsProblemCollapsed(true)}
+          onExpand={() => setIsProblemCollapsed(false)}
         >
-          <ProblemPanel problemDetails={problemDetails} />
+          {!isProblemCollapsed && (
+            <ProblemPanel problemDetails={problemDetails} />
+          )}
         </Panel>
         <PanelResizeHandle className="w-1 bg-gray-200 hover:bg-primary transition-colors data-[resize-handle-active]:bg-primary" />
 
         {/* Center Panel: Editor + Results */}
         <Panel
-          defaultSize={45}
+          defaultSize={EDITOR_DEFAULT_SIZE}
           minSize={30}
           order={2}
           id="editor-results-panel"
         >
-          <PanelGroup direction="vertical">
+          <PanelGroup direction="vertical" className="relative h-full">
             {/* Top: Editor */}
             <Panel
-              defaultSize={65}
+              defaultSize={100 - RESULTS_DEFAULT_SIZE_PERCENT_OF_VERTICAL}
               minSize={20}
               id="editor-panel"
               className="bg-gray-50"
@@ -264,19 +402,44 @@ const CodingTestContent: React.FC = () => {
                 onResetClick={handleResetCode}
                 editorKey={editorResetKey}
                 codeValue={code}
+                toggleProblemPanelPreserveSize={toggleProblemPanelPreserveSize}
+                toggleResultsPanelPreserveSize={toggleResultsPanelPreserveSize}
+                toggleChatbotPanelPreserveSize={toggleChatbotPanelPreserveSize}
+                isProblemCollapsed={isProblemCollapsed}
+                isResultsCollapsed={isResultsCollapsed}
+                isChatbotCollapsed={isChatbotCollapsed}
               />
             </Panel>
-            <PanelResizeHandle className="h-1 bg-gray-200 hover:bg-primary transition-colors data-[resize-handle-active]:bg-primary" />
+            <PanelResizeHandle className="h-1 bg-gray-200 hover:bg-primary transition-colors data-[resize-handle-active]:bg-primary relative z-10" />
             {/* Bottom: Results */}
             <Panel
-              defaultSize={35}
+              ref={resultsPanelRef}
+              defaultSize={RESULTS_DEFAULT_SIZE_PERCENT_OF_VERTICAL}
               minSize={10}
               collapsible={true}
               collapsedSize={0}
               id="results-panel"
               className="bg-white"
+              onCollapse={() => setIsResultsCollapsed(true)}
+              onExpand={() => setIsResultsCollapsed(false)}
             >
-              <ResultsPanel problemDetails={problemDetails} />
+              {!isResultsCollapsed && problemDetails && (
+                <ResultsPanel problemDetails={problemDetails} />
+              )}
+              {isResultsCollapsed && (
+                <div className="h-full w-full bg-white"></div>
+              )}
+
+              {isResultsCollapsed && (
+                <button
+                  onClick={toggleResultsPanel}
+                  className="pointer-events-auto absolute bottom-2 left-1/2 z-50 -translate-x-1/2 transform rounded border border-gray-300 bg-white p-1 text-gray-600 shadow-md hover:bg-gray-100 hover:text-gray-800 focus:outline-none focus:ring-1 focus:ring-primary"
+                  aria-label="Open Results Panel"
+                  title="Open Results Panel"
+                >
+                  <ChevronDoubleUpIcon className="h-4 w-4" />
+                </button>
+              )}
             </Panel>
           </PanelGroup>
         </Panel>
@@ -284,15 +447,20 @@ const CodingTestContent: React.FC = () => {
 
         {/* Right Panel: Chatbot */}
         <Panel
-          defaultSize={25}
+          ref={chatbotPanelRef}
+          defaultSize={CHATBOT_DEFAULT_SIZE}
           minSize={15}
           collapsible={true}
           collapsedSize={0}
           order={3}
           id="chatbot-panel"
           className="bg-gray-50 border-l border-gray-200"
+          onCollapse={() => setIsChatbotCollapsed(true)}
+          onExpand={() => setIsChatbotCollapsed(false)}
         >
-          <Chatbot problemDetails={problemDetails} userCode={code} />
+          {!isChatbotCollapsed && (
+            <Chatbot problemDetails={problemDetails} userCode={code} />
+          )}
         </Panel>
       </PanelGroup>
     </div>
@@ -396,6 +564,12 @@ interface EditorPanelProps {
   onResetClick: () => void;
   editorKey: number;
   codeValue: string;
+  toggleProblemPanelPreserveSize: () => void;
+  toggleResultsPanelPreserveSize: () => void;
+  toggleChatbotPanelPreserveSize: () => void;
+  isProblemCollapsed: boolean;
+  isResultsCollapsed: boolean;
+  isChatbotCollapsed: boolean;
 }
 
 const EditorPanel: React.FC<EditorPanelProps> = ({
@@ -406,6 +580,12 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
   onResetClick,
   editorKey,
   codeValue,
+  toggleProblemPanelPreserveSize,
+  toggleResultsPanelPreserveSize,
+  toggleChatbotPanelPreserveSize,
+  isProblemCollapsed,
+  isResultsCollapsed,
+  isChatbotCollapsed,
 }) => {
   return (
     <div className="flex flex-col h-full text-gray-900">
@@ -434,6 +614,42 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
         >
           Reset
         </button>
+        {/* Inserted Panel Toggle Buttons */}
+        <div className="flex items-center space-x-1 mx-2">
+          {/* Problem Panel Toggle */}
+          <button
+            onClick={toggleProblemPanelPreserveSize}
+            title={isProblemCollapsed ? "Show Problem" : "Hide Problem"}
+            className={`rounded p-1.5 hover:bg-gray-100 focus:outline-none ${
+              !isProblemCollapsed ? "bg-gray-100 text-primary" : "text-gray-500"
+            }`}
+            aria-pressed={!isProblemCollapsed ? "true" : "false"}
+          >
+            <ComputerDesktopIcon className="h-5 w-5" />
+          </button>
+          {/* Results Panel Toggle */}
+          <button
+            onClick={toggleResultsPanelPreserveSize}
+            title={isResultsCollapsed ? "Show Results" : "Hide Results"}
+            className={`rounded p-1.5 hover:bg-gray-100 focus:outline-none ${
+              !isResultsCollapsed ? "bg-gray-100 text-primary" : "text-gray-500"
+            }`}
+            aria-pressed={!isResultsCollapsed ? "true" : "false"}
+          >
+            <CommandLineIcon className="h-5 w-5" />
+          </button>
+          {/* Chatbot Panel Toggle */}
+          <button
+            onClick={toggleChatbotPanelPreserveSize}
+            title={isChatbotCollapsed ? "Show Chatbot" : "Hide Chatbot"}
+            className={`rounded p-1.5 hover:bg-gray-100 focus:outline-none ${
+              !isChatbotCollapsed ? "bg-gray-100 text-primary" : "text-gray-500"
+            }`}
+            aria-pressed={!isChatbotCollapsed ? "true" : "false"}
+          >
+            <ChatBubbleLeftRightIcon className="h-5 w-5" />
+          </button>
+        </div>
         <div className="flex-grow"></div>
         <button className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-100">
           Run Code

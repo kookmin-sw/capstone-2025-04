@@ -323,7 +323,7 @@ const Chatbot: React.FC<ChatbotProps> = ({ problemDetails, userCode }) => {
             <div
               className={`max-w-[80%] p-3 rounded-lg shadow-sm ${
                 message.role === "user"
-                  ? "bg-primary text-primary-foreground"
+                  ? "bg-primary-200 text-neutral-700"
                   : "bg-white text-textPrimary border border-border"
               }`}
             >
