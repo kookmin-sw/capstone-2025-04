@@ -1,3 +1,12 @@
+data "terraform_remote_state" "cognito" {
+  backend = "s3"
+  config = {
+    bucket = "alpaco-tfstate-bucket-kmu"
+    key    = "cognito/terraform.tfstate" # Key for the Cognito state file
+    region = var.aws_region             # Ensure region matches
+  }
+} 
+
 # 1. Package ONLY the Lambda function handler code
 data "archive_file" "chatbot_lambda_function_zip" {
   type        = "zip"

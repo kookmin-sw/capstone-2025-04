@@ -37,30 +37,6 @@ variable "bedrock_model_id" {
   default     = "anthropic.claude-3-haiku-20240307-v1:0" # Default based on old variables
 }
 
-/* Removed api_stage_name variable; stage now uses var.environment
-variable "api_stage_name" {
-  description = "Name for the API Gateway deployment stage"
-  type        = string
-  default     = "production" # Align with environment variable
-}
-*/
-
-/* Removed tf_state_bucket variable as the bucket name is hardcoded in the remote state data source
-variable "tf_state_bucket" {
-  description = "Name of the S3 bucket used for Terraform state storage"
-  type        = string
-  # No default, should be provided via configuration
-}
-*/
-
-/* Removing ai_api_key variable as Bedrock uses IAM permissions
-variable "ai_api_key" {
-  description = "API Key for the AI service (e.g., Google AI)"
-  type        = string
-  sensitive   = true
-}
-*/
-
 variable "lambda_runtime" {
   description = "Lambda function runtime (ensure it matches layer compatibility)"
   type        = string
