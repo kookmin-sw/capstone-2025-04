@@ -11,6 +11,10 @@ import { toast } from "sonner";
 //   HumanMessage,
 //   AIMessage,
 // } from "@langchain/core/messages";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
+import { oneLight } from "react-syntax-highlighter/dist/esm/styles/prism";
 
 // Placeholder type - Define properly later
 interface ProblemDetailPlaceholder {
@@ -327,10 +331,86 @@ const Chatbot: React.FC<ChatbotProps> = ({ problemDetails, userCode }) => {
                   : "bg-white text-textPrimary border border-border"
               }`}
             >
-              {/* Render content with preserved whitespace */}
-              <pre className="text-sm font-sans whitespace-pre-wrap break-words">
-                {message.content}
-              </pre>
+              {/* Render content with markdown support */}
+              <div className="text-sm font-sans whitespace-pre-wrap break-words">
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
+                  components={{
+                    code({
+                      inline,
+                      className,
+                      children,
+                      ...props
+                    }: {
+                      inline?: boolean;
+                      className?: string;
+                      children?: React.ReactNode;
+                    } & React.HTMLAttributes<HTMLElement>) {
+                      const match = /language-(\w+)/.exec(className || "");
+                      if (!inline && match) {
+                        return (
+                          <SyntaxHighlighter
+                            {...props}
+                            style={oneLight}
+                            language={match[1]}
+                            PreTag="div"
+                          >
+                            {String(children).replace(/\n$/, "")}
+                          </SyntaxHighlighter>
+                        );
+                      }
+                      return (
+                        <code
+                          className="bg-gray-100 rounded px-1 py-0.5 text-sm"
+                          {...props}
+                        >
+                          {children}
+                        </code>
+                      );
+                    },
+                    table({ children }) {
+                      return (
+                        <table className="min-w-full border-collapse my-2">
+                          {children}
+                        </table>
+                      );
+                    },
+                    th({ children }) {
+                      return (
+                        <th className="border px-2 py-1 bg-gray-100 text-left font-semibold">
+                          {children}
+                        </th>
+                      );
+                    },
+                    td({ children }) {
+                      return <td className="border px-2 py-1">{children}</td>;
+                    },
+                    ul({ children, ...props }) {
+                      return (
+                        <ul className="list-disc pl-6 my-2" {...props}>
+                          {children}
+                        </ul>
+                      );
+                    },
+                    ol({ children, ...props }) {
+                      return (
+                        <ol className="list-decimal pl-6 my-2" {...props}>
+                          {children}
+                        </ol>
+                      );
+                    },
+                    li({ children, ...props }) {
+                      return (
+                        <li className="mb-1" {...props}>
+                          {children}
+                        </li>
+                      );
+                    },
+                  }}
+                >
+                  {message.content}
+                </ReactMarkdown>
+              </div>
             </div>
           </div>
         ))}
@@ -338,10 +418,86 @@ const Chatbot: React.FC<ChatbotProps> = ({ problemDetails, userCode }) => {
         {isLoading && streamingResponse && (
           <div className="flex justify-start">
             <div className="max-w-[80%] p-3 rounded-lg shadow-sm bg-white text-textPrimary border border-border">
-              <pre className="text-sm font-sans whitespace-pre-wrap break-words">
-                {streamingResponse}
+              <div className="text-sm font-sans whitespace-pre-wrap break-words">
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
+                  components={{
+                    code({
+                      inline,
+                      className,
+                      children,
+                      ...props
+                    }: {
+                      inline?: boolean;
+                      className?: string;
+                      children?: React.ReactNode;
+                    } & React.HTMLAttributes<HTMLElement>) {
+                      const match = /language-(\w+)/.exec(className || "");
+                      if (!inline && match) {
+                        return (
+                          <SyntaxHighlighter
+                            {...props}
+                            style={oneLight}
+                            language={match[1]}
+                            PreTag="div"
+                          >
+                            {String(children).replace(/\n$/, "")}
+                          </SyntaxHighlighter>
+                        );
+                      }
+                      return (
+                        <code
+                          className="bg-gray-100 rounded px-1 py-0.5 text-sm"
+                          {...props}
+                        >
+                          {children}
+                        </code>
+                      );
+                    },
+                    table({ children }) {
+                      return (
+                        <table className="min-w-full border-collapse my-2">
+                          {children}
+                        </table>
+                      );
+                    },
+                    th({ children }) {
+                      return (
+                        <th className="border px-2 py-1 bg-gray-100 text-left font-semibold">
+                          {children}
+                        </th>
+                      );
+                    },
+                    td({ children }) {
+                      return <td className="border px-2 py-1">{children}</td>;
+                    },
+                    ul({ children, ...props }) {
+                      return (
+                        <ul className="list-disc pl-6 my-2" {...props}>
+                          {children}
+                        </ul>
+                      );
+                    },
+                    ol({ children, ...props }) {
+                      return (
+                        <ol className="list-decimal pl-6 my-2" {...props}>
+                          {children}
+                        </ol>
+                      );
+                    },
+                    li({ children, ...props }) {
+                      return (
+                        <li className="mb-1" {...props}>
+                          {children}
+                        </li>
+                      );
+                    },
+                  }}
+                >
+                  {streamingResponse}
+                </ReactMarkdown>
                 <span className="inline-block w-2 h-4 ml-1 bg-gray-600 animate-pulse" />
-              </pre>
+              </div>
             </div>
           </div>
         )}
