@@ -80,6 +80,7 @@ jobs:
           # NODE_ENV: production # Optional: Explicitly set Node environment for build if needed
           NEXT_PUBLIC_CHATBOT_API_ENDPOINT: ${{ secrets.NEXT_PUBLIC_CHATBOT_API_ENDPOINT }}
           NEXT_PUBLIC_PROBLEM_GENERATION_API_BASE_URL: ${{ secrets.NEXT_PUBLIC_PROBLEM_GENERATION_API_BASE_URL }}
+          NEXT_PUBLIC_PROBLEM_API_BASE_URL: ${{ secrets.NEXT_PUBLIC_PROBLEM_API_BASE_URL }}
           # ---------------------------
 
       - name: Sync files to S3
