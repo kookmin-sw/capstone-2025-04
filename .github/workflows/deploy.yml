@@ -78,6 +78,8 @@ jobs:
           # API Gateway Invoke URL (Community API)
           NEXT_PUBLIC_COMMUNITY_API_BASE_URL: ${{ secrets.NEXT_PUBLIC_COMMUNITY_API_BASE_URL }} # GitHub Secret (API Gateway Invoke URL)
           # NODE_ENV: production # Optional: Explicitly set Node environment for build if needed
+          NEXT_PUBLIC_CHATBOT_API_ENDPOINT: ${{ secrets.NEXT_PUBLIC_CHATBOT_API_ENDPOINT }}
+          NEXT_PUBLIC_PROBLEM_GENERATION_API_BASE_URL: ${{ secrets.NEXT_PUBLIC_PROBLEM_GENERATION_API_BASE_URL }}
           # ---------------------------
 
       - name: Sync files to S3

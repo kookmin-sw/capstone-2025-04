@@ -28,7 +28,7 @@ export default function RootLayout({
   return (
     <html lang="ko">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-gray-50`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-gray-50 scroll-smooth:important`}
       >
         {/* Wrap children with AmplifyClientProvider */}
         <AmplifyClientProvider>

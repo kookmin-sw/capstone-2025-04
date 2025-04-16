@@ -1,5 +1,12 @@
 "use client";
-import React, { useState, useEffect, Suspense, ChangeEvent } from "react";
+import React, {
+  useState,
+  useEffect,
+  Suspense,
+  ChangeEvent,
+  useRef,
+  useMemo,
+} from "react";
 import Head from "next/head";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
@@ -7,13 +14,34 @@ import CodeEditor from "@/components/CodeEditor";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuthenticator } from "@aws-amplify/ui-react";
-import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import {
-  getProblemById,
-  ProblemDetail,
-  ProblemExample,
-} from "@/api/codingTestApi";
+  Panel,
+  PanelGroup,
+  PanelResizeHandle,
+  ImperativePanelHandle,
+} from "react-resizable-panels";
+import { getProblemById } from "@/api/codingTestApi";
+import type {
+  ProblemDetailAPI,
+  ProblemExampleIO,
+} from "@/api/dummy/generateProblemApi";
 import { toast } from "sonner";
+import Chatbot from "@/components/Chatbot";
+import { CODE_TEMPLATES } from "@/components/CodeEditor";
+import {
+  ChevronDoubleLeftIcon,
+  ChevronDoubleRightIcon,
+  ChevronDoubleUpIcon,
+  ComputerDesktopIcon,
+  CommandLineIcon,
+  ChatBubbleLeftRightIcon,
+} from "@heroicons/react/24/outline";
+
+// Constants for default panel sizes
+const PROBLEM_DEFAULT_SIZE = 30;
+const EDITOR_DEFAULT_SIZE = 45; // Base for vertical group
+const CHATBOT_DEFAULT_SIZE = 25;
+const RESULTS_DEFAULT_SIZE_PERCENT_OF_VERTICAL = 35; // Results panel size within its group
 
 // --- Main Content Component ---
 const CodingTestContent: React.FC = () => {
@@ -24,7 +52,7 @@ const CodingTestContent: React.FC = () => {
   const id = searchParams.get("id");
 
   // State
-  const [problemDetails, setProblemDetails] = useState<ProblemDetail | null>(
+  const [problemDetails, setProblemDetails] = useState<ProblemDetailAPI | null>(
     null
   );
   const [isLoadingProblem, setIsLoadingProblem] = useState(true);
@@ -33,24 +61,139 @@ const CodingTestContent: React.FC = () => {
   const [language, setLanguage] = useState<
     "python" | "javascript" | "java" | "cpp"
   >("python");
-  const [editorResetKey, setEditorResetKey] = useState(0); // Key to force editor reset
+  const [editorResetKey, setEditorResetKey] = useState(0);
+  const hasLoadedInitialCode = useRef(false);
+
+  // State for panel collapse status
+  const [isProblemCollapsed, setIsProblemCollapsed] = useState(false);
+  const [isResultsCollapsed, setIsResultsCollapsed] = useState(false);
+  const [isChatbotCollapsed, setIsChatbotCollapsed] = useState(false);
+
+  // Refs for panels
+  const problemPanelRef = useRef<ImperativePanelHandle>(null);
+  const resultsPanelRef = useRef<ImperativePanelHandle>(null);
+  const chatbotPanelRef = useRef<ImperativePanelHandle>(null);
+
+  // Generate unique key for editor code local storage
+  const editorLocalStorageKey = useMemo(() => {
+    return problemDetails?.problemId
+      ? `editorCode_${problemDetails.problemId}_${language}`
+      : null;
+  }, [problemDetails?.problemId, language]);
+
   // --- Handlers ---
   const handleLanguageChange = (e: ChangeEvent<HTMLSelectElement>) => {
-    setLanguage(e.target.value as "python" | "javascript" | "java" | "cpp");
-    setEditorResetKey((prev) => prev + 1); // Reset editor when language changes
+    const newLang = e.target.value as "python" | "javascript" | "java" | "cpp";
+    hasLoadedInitialCode.current = false;
+    setLanguage(newLang);
   };
 
   const handleCodeChange = (value: string) => {
-    setCode(value);
+    if (value !== code) {
+      setCode(value);
+    }
   };
 
   const handleResetCode = () => {
+    const defaultCode = CODE_TEMPLATES[language] || "";
+    console.log(`Resetting code to template for ${language}`);
+    setCode(defaultCode);
     setEditorResetKey((prev) => prev + 1);
+    if (editorLocalStorageKey) {
+      try {
+        localStorage.setItem(editorLocalStorageKey, defaultCode);
+        console.log(`Saved reset code to key: ${editorLocalStorageKey}`);
+      } catch (error) {
+        console.error("Failed to save reset code to localStorage:", error);
+      }
+    }
   };
 
   const handleSubmit = () => {
     console.log("Submitting code (mock):", code, language);
     router.push(`/coding-test/result?id=${id}`);
+  };
+
+  // --- Panel Toggle Functions ---
+  const togglePanelToDefaultSize = (
+    panelRef: React.RefObject<ImperativePanelHandle>,
+    isCollapsed: boolean,
+    defaultSize: number
+  ) => {
+    const panel = panelRef.current;
+    if (!panel) return;
+    if (isCollapsed) {
+      panel.expand();
+      panel.resize(defaultSize);
+    } else {
+      panel.collapse();
+    }
+  };
+
+  const togglePanelPreserveSize = (
+    panelRef: React.RefObject<ImperativePanelHandle>,
+    isCollapsed: boolean
+  ) => {
+    const panel = panelRef.current;
+    if (!panel) return;
+    if (isCollapsed) {
+      panel.expand();
+    } else {
+      panel.collapse();
+    }
+  };
+
+  const toggleProblemPanel = () => {
+    if (problemPanelRef.current) {
+      togglePanelToDefaultSize(
+        problemPanelRef as React.RefObject<ImperativePanelHandle>,
+        isProblemCollapsed,
+        PROBLEM_DEFAULT_SIZE
+      );
+    }
+  };
+  const toggleResultsPanel = () => {
+    if (resultsPanelRef.current) {
+      togglePanelToDefaultSize(
+        resultsPanelRef as React.RefObject<ImperativePanelHandle>,
+        isResultsCollapsed,
+        RESULTS_DEFAULT_SIZE_PERCENT_OF_VERTICAL
+      );
+    }
+  };
+  const toggleChatbotPanel = () => {
+    if (chatbotPanelRef.current) {
+      togglePanelToDefaultSize(
+        chatbotPanelRef as React.RefObject<ImperativePanelHandle>,
+        isChatbotCollapsed,
+        CHATBOT_DEFAULT_SIZE
+      );
+    }
+  };
+
+  const toggleProblemPanelPreserveSize = () => {
+    if (problemPanelRef.current) {
+      togglePanelPreserveSize(
+        problemPanelRef as React.RefObject<ImperativePanelHandle>,
+        isProblemCollapsed
+      );
+    }
+  };
+  const toggleResultsPanelPreserveSize = () => {
+    if (resultsPanelRef.current) {
+      togglePanelPreserveSize(
+        resultsPanelRef as React.RefObject<ImperativePanelHandle>,
+        isResultsCollapsed
+      );
+    }
+  };
+  const toggleChatbotPanelPreserveSize = () => {
+    if (chatbotPanelRef.current) {
+      togglePanelPreserveSize(
+        chatbotPanelRef as React.RefObject<ImperativePanelHandle>,
+        isChatbotCollapsed
+      );
+    }
   };
 
   // --- Effects ---
@@ -64,6 +207,7 @@ const CodingTestContent: React.FC = () => {
         try {
           const data = await getProblemById(id);
           setProblemDetails(data);
+          hasLoadedInitialCode.current = false;
         } catch (err) {
           console.error("Failed to fetch problem:", err);
           const errorMsg =
@@ -83,6 +227,42 @@ const CodingTestContent: React.FC = () => {
       setIsLoadingProblem(false);
     }
   }, [id]);
+
+  // Load editor code from Local Storage OR set template when key changes
+  useEffect(() => {
+    if (editorLocalStorageKey) {
+      hasLoadedInitialCode.current = false;
+      console.log(
+        `Attempting to load/set editor code for key: ${editorLocalStorageKey}`
+      );
+      let initialCode = CODE_TEMPLATES[language] || "";
+      try {
+        const savedCode = localStorage.getItem(editorLocalStorageKey);
+        if (savedCode !== null) {
+          initialCode = savedCode;
+          console.log(`Loaded saved code from localStorage.`);
+        } else {
+          console.log(`No saved code found, using template for ${language}.`);
+        }
+      } catch (error) {
+        console.error("Failed to load code from localStorage:", error);
+      }
+      setCode(initialCode);
+      hasLoadedInitialCode.current = true;
+    }
+  }, [editorLocalStorageKey, language]);
+
+  // Save editor code to Local Storage whenever it changes (after initial load attempt)
+  useEffect(() => {
+    if (editorLocalStorageKey && hasLoadedInitialCode.current) {
+      console.log(`Saving code to key: ${editorLocalStorageKey}`);
+      try {
+        localStorage.setItem(editorLocalStorageKey, code);
+      } catch (error) {
+        console.error("Failed to save code to localStorage:", error);
+      }
+    }
+  }, [code, editorLocalStorageKey]);
 
   // --- Render Logic ---
   if (isLoadingProblem) {
@@ -123,19 +303,14 @@ const CodingTestContent: React.FC = () => {
 
   // --- Main Layout ---
   return (
-    // Use theme text
-    <div className="flex h-[calc(100vh-var(--header-height,64px)-var(--footer-height,64px))] flex-grow flex-col">
+    <div className="relative flex h-[calc(100vh-var(--header-height,64px)-var(--footer-height,64px))] flex-grow flex-col">
       {/* Top Bar */}
       {/* Use theme background/border */}
-      <div className="flex flex-shrink-0 items-center justify-between border-b border-gray-200 bg-white px-4 py-2">
-        {/* Use theme text */}
-        <h1 className="truncate text-xl font-semibold text-gray-800">
-          {problemDetails.title || "문제 풀이"}
-        </h1>
-        <div className="flex items-center space-x-4">
+      <div className="flex flex-shrink-0  border-b border-gray-200 bg-white px-4 pt-3 pb-2">
+        <div className="flex items-center justify-end w-full space-x-4">
           <Link
             href="/coding-test/selection"
-            className="inline-flex items-center px-3 py-1 border border-gray-300 text-sm font-medium rounded-md bg-white text-gray-700 hover:bg-gray-50 transition"
+            className="inline-flex items-center px-3 py-1 border border-gray-300 rounded-md bg-white text-gray-700 hover:bg-gray-50 transition"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -157,32 +332,64 @@ const CodingTestContent: React.FC = () => {
       </div>
 
       {/* VSCode-like Layout: [Problem | Editor / Results | Chat] */}
+      {/* Panel Toggle Buttons Container */}
+      <div className="absolute inset-0 pointer-events-none z-10">
+        {/* Left Panel Toggle */}
+        {isProblemCollapsed && (
+          <button
+            onClick={toggleProblemPanel}
+            className="pointer-events-auto absolute left-1 top-1/2 -translate-y-1/2 rounded border border-gray-300 bg-white p-1 text-gray-600 shadow-md hover:bg-gray-100 hover:text-gray-800 focus:outline-none focus:ring-1 focus:ring-primary"
+            aria-label="Open Problem Panel"
+            title="Open Problem Panel"
+          >
+            <ChevronDoubleRightIcon className="h-4 w-4" />
+          </button>
+        )}
+
+        {/* Right Panel Toggle */}
+        {isChatbotCollapsed && (
+          <button
+            onClick={toggleChatbotPanel}
+            className="pointer-events-auto absolute right-1 top-1/2 -translate-y-1/2 rounded border border-gray-300 bg-white p-1 text-gray-600 shadow-md hover:bg-gray-100 hover:text-gray-800 focus:outline-none focus:ring-1 focus:ring-primary"
+            aria-label="Open Chatbot Panel"
+            title="Open Chatbot Panel"
+          >
+            <ChevronDoubleLeftIcon className="h-4 w-4" />
+          </button>
+        )}
+      </div>
+
       <PanelGroup direction="horizontal" className="flex-grow">
         {/* Left Panel: Problem Description */}
         <Panel
-          defaultSize={30}
+          ref={problemPanelRef}
+          defaultSize={PROBLEM_DEFAULT_SIZE}
           minSize={20}
           collapsible={true}
           collapsedSize={0}
           order={1}
           id="problem-panel"
           className="bg-white border-r border-gray-200"
+          onCollapse={() => setIsProblemCollapsed(true)}
+          onExpand={() => setIsProblemCollapsed(false)}
         >
-          <ProblemPanel problemDetails={problemDetails} />
+          {!isProblemCollapsed && (
+            <ProblemPanel problemDetails={problemDetails} />
+          )}
         </Panel>
         <PanelResizeHandle className="w-1 bg-gray-200 hover:bg-primary transition-colors data-[resize-handle-active]:bg-primary" />
 
         {/* Center Panel: Editor + Results */}
         <Panel
-          defaultSize={45}
+          defaultSize={EDITOR_DEFAULT_SIZE}
           minSize={30}
           order={2}
           id="editor-results-panel"
         >
-          <PanelGroup direction="vertical">
+          <PanelGroup direction="vertical" className="relative h-full">
             {/* Top: Editor */}
             <Panel
-              defaultSize={65}
+              defaultSize={100 - RESULTS_DEFAULT_SIZE_PERCENT_OF_VERTICAL}
               minSize={20}
               id="editor-panel"
               className="bg-gray-50"
@@ -194,19 +401,45 @@ const CodingTestContent: React.FC = () => {
                 handleSubmit={handleSubmit}
                 onResetClick={handleResetCode}
                 editorKey={editorResetKey}
+                codeValue={code}
+                toggleProblemPanelPreserveSize={toggleProblemPanelPreserveSize}
+                toggleResultsPanelPreserveSize={toggleResultsPanelPreserveSize}
+                toggleChatbotPanelPreserveSize={toggleChatbotPanelPreserveSize}
+                isProblemCollapsed={isProblemCollapsed}
+                isResultsCollapsed={isResultsCollapsed}
+                isChatbotCollapsed={isChatbotCollapsed}
               />
             </Panel>
-            <PanelResizeHandle className="h-1 bg-gray-200 hover:bg-primary transition-colors data-[resize-handle-active]:bg-primary" />
+            <PanelResizeHandle className="h-1 bg-gray-200 hover:bg-primary transition-colors data-[resize-handle-active]:bg-primary relative z-10" />
             {/* Bottom: Results */}
             <Panel
-              defaultSize={35}
+              ref={resultsPanelRef}
+              defaultSize={RESULTS_DEFAULT_SIZE_PERCENT_OF_VERTICAL}
               minSize={10}
               collapsible={true}
               collapsedSize={0}
               id="results-panel"
               className="bg-white"
+              onCollapse={() => setIsResultsCollapsed(true)}
+              onExpand={() => setIsResultsCollapsed(false)}
             >
-              <ResultsPanel problemDetails={problemDetails} />
+              {!isResultsCollapsed && problemDetails && (
+                <ResultsPanel problemDetails={problemDetails} />
+              )}
+              {isResultsCollapsed && (
+                <div className="h-full w-full bg-white"></div>
+              )}
+
+              {isResultsCollapsed && (
+                <button
+                  onClick={toggleResultsPanel}
+                  className="pointer-events-auto absolute bottom-2 left-1/2 z-50 -translate-x-1/2 transform rounded border border-gray-300 bg-white p-1 text-gray-600 shadow-md hover:bg-gray-100 hover:text-gray-800 focus:outline-none focus:ring-1 focus:ring-primary"
+                  aria-label="Open Results Panel"
+                  title="Open Results Panel"
+                >
+                  <ChevronDoubleUpIcon className="h-4 w-4" />
+                </button>
+              )}
             </Panel>
           </PanelGroup>
         </Panel>
@@ -214,15 +447,20 @@ const CodingTestContent: React.FC = () => {
 
         {/* Right Panel: Chatbot */}
         <Panel
-          defaultSize={25}
+          ref={chatbotPanelRef}
+          defaultSize={CHATBOT_DEFAULT_SIZE}
           minSize={15}
           collapsible={true}
           collapsedSize={0}
           order={3}
           id="chatbot-panel"
           className="bg-gray-50 border-l border-gray-200"
+          onCollapse={() => setIsChatbotCollapsed(true)}
+          onExpand={() => setIsChatbotCollapsed(false)}
         >
-          <RightSidebar />
+          {!isChatbotCollapsed && (
+            <Chatbot problemDetails={problemDetails} userCode={code} />
+          )}
         </Panel>
       </PanelGroup>
     </div>
@@ -232,7 +470,7 @@ const CodingTestContent: React.FC = () => {
 // --- Child Components ---
 
 // Problem Panel (Left)
-const ProblemPanel: React.FC<{ problemDetails: ProblemDetail }> = ({
+const ProblemPanel: React.FC<{ problemDetails: ProblemDetailAPI }> = ({
   problemDetails,
 }) => {
   // Added dark mode text colors
@@ -242,9 +480,9 @@ const ProblemPanel: React.FC<{ problemDetails: ProblemDetail }> = ({
       <h2 className="text-xl font-semibold mb-2">{problemDetails.title}</h2>
       <span
         className={`inline-block px-2 py-0.5 text-xs font-medium rounded-full mb-4 ${
-          problemDetails.difficulty === "Easy"
+          problemDetails.difficulty === "쉬움"
             ? "bg-green-100 text-green-800"
-            : problemDetails.difficulty === "Medium"
+            : problemDetails.difficulty === "보통"
             ? "bg-yellow-100 text-yellow-800"
             : "bg-red-100 text-red-800"
         }`}
@@ -283,13 +521,13 @@ const ProblemPanel: React.FC<{ problemDetails: ProblemDetail }> = ({
           </>
         )}
       </div>
-      {problemDetails.examples && problemDetails.examples.length > 0 && (
+      {problemDetails.testcases && problemDetails.testcases.length > 0 && (
         <div className="mb-6">
           <h3 className="text-md font-medium text-gray-800 mb-2">
             입출력 예제
           </h3>
-          {problemDetails.examples.map(
-            (example: ProblemExample, index: number) => (
+          {problemDetails.testcases.map(
+            (example: ProblemExampleIO, index: number) => (
               <div key={index} className="mb-3 last:mb-0">
                 <h4 className="text-sm font-semibold text-gray-600 mb-1">
                   예제 {index + 1}
@@ -298,14 +536,18 @@ const ProblemPanel: React.FC<{ problemDetails: ProblemDetail }> = ({
                 <pre className="bg-gray-50 p-3 rounded-md text-gray-700 font-mono text-xs mb-1">
                   <strong className="font-medium text-gray-600">Input:</strong>{" "}
                   <span className="block mt-1 whitespace-pre-wrap">
-                    {example.input}
+                    {typeof example.input === "string"
+                      ? example.input
+                      : JSON.stringify(example.input, null, 2)}
                   </span>
                 </pre>
                 {/* Use light theme background and text */}
                 <pre className="bg-gray-100 p-3 rounded-md text-gray-800 font-mono text-xs">
                   <strong className="font-medium text-gray-600">Output:</strong>{" "}
                   <span className="block mt-1 whitespace-pre-wrap">
-                    {example.output}
+                    {typeof example.output === "string"
+                      ? example.output
+                      : JSON.stringify(example.output, null, 2)}
                   </span>
                 </pre>
               </div>
@@ -325,6 +567,13 @@ interface EditorPanelProps {
   handleSubmit: () => void;
   onResetClick: () => void;
   editorKey: number;
+  codeValue: string;
+  toggleProblemPanelPreserveSize: () => void;
+  toggleResultsPanelPreserveSize: () => void;
+  toggleChatbotPanelPreserveSize: () => void;
+  isProblemCollapsed: boolean;
+  isResultsCollapsed: boolean;
+  isChatbotCollapsed: boolean;
 }
 
 const EditorPanel: React.FC<EditorPanelProps> = ({
@@ -334,6 +583,13 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
   handleSubmit,
   onResetClick,
   editorKey,
+  codeValue,
+  toggleProblemPanelPreserveSize,
+  toggleResultsPanelPreserveSize,
+  toggleChatbotPanelPreserveSize,
+  isProblemCollapsed,
+  isResultsCollapsed,
+  isChatbotCollapsed,
 }) => {
   return (
     <div className="flex flex-col h-full text-gray-900">
@@ -362,6 +618,42 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
         >
           Reset
         </button>
+        {/* Inserted Panel Toggle Buttons */}
+        <div className="flex items-center space-x-1 mx-2">
+          {/* Problem Panel Toggle */}
+          <button
+            onClick={toggleProblemPanelPreserveSize}
+            title={isProblemCollapsed ? "Show Problem" : "Hide Problem"}
+            className={`rounded p-1.5 hover:bg-gray-100 focus:outline-none ${
+              !isProblemCollapsed ? "bg-gray-100 text-primary" : "text-gray-500"
+            }`}
+            aria-pressed={!isProblemCollapsed ? "true" : "false"}
+          >
+            <ComputerDesktopIcon className="h-5 w-5" />
+          </button>
+          {/* Results Panel Toggle */}
+          <button
+            onClick={toggleResultsPanelPreserveSize}
+            title={isResultsCollapsed ? "Show Results" : "Hide Results"}
+            className={`rounded p-1.5 hover:bg-gray-100 focus:outline-none ${
+              !isResultsCollapsed ? "bg-gray-100 text-primary" : "text-gray-500"
+            }`}
+            aria-pressed={!isResultsCollapsed ? "true" : "false"}
+          >
+            <CommandLineIcon className="h-5 w-5" />
+          </button>
+          {/* Chatbot Panel Toggle */}
+          <button
+            onClick={toggleChatbotPanelPreserveSize}
+            title={isChatbotCollapsed ? "Show Chatbot" : "Hide Chatbot"}
+            className={`rounded p-1.5 hover:bg-gray-100 focus:outline-none ${
+              !isChatbotCollapsed ? "bg-gray-100 text-primary" : "text-gray-500"
+            }`}
+            aria-pressed={!isChatbotCollapsed ? "true" : "false"}
+          >
+            <ChatBubbleLeftRightIcon className="h-5 w-5" />
+          </button>
+        </div>
         <div className="flex-grow"></div>
         <button className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-100">
           Run Code
@@ -376,13 +668,11 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
       </div>
       {/* Code Editor Wrapper */}
       <div className="flex-grow h-full overflow-hidden p-2">
-        {" "}
-        {/* Removed themed background, editor handles it */}
         <CodeEditor
           key={editorKey}
           language={language}
           onChange={handleCodeChange}
-          // Assuming CodeEditor now uses global theme or has its own internal toggle
+          value={codeValue}
         />
       </div>
     </div>
@@ -392,7 +682,7 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
 // Results Panel (Center Bottom)
 type ResultsTab = "examples" | "custom" | "submission";
 
-const ResultsPanel: React.FC<{ problemDetails: ProblemDetail }> = ({
+const ResultsPanel: React.FC<{ problemDetails: ProblemDetailAPI }> = ({
   problemDetails,
 }) => {
   const [activeTab, setActiveTab] = useState<ResultsTab>("examples");
@@ -402,32 +692,41 @@ const ResultsPanel: React.FC<{ problemDetails: ProblemDetail }> = ({
       case "examples":
         return (
           <div className="mt-4 space-y-4">
-            {problemDetails.examples?.length > 0 ? (
-              problemDetails.examples.map((example, index) => (
-                <div key={index} className="border border-gray-200 rounded p-3">
-                  <h4 className="text-sm font-semibold text-gray-700 mb-2">
-                    Example {index + 1}
-                  </h4>
-                  <div className="space-y-2">
-                    <pre className="bg-gray-50 p-3 rounded-md text-gray-700 font-mono text-xs">
-                      <strong className="font-medium text-gray-600">
-                        Input:
-                      </strong>
-                      <span className="block mt-1 whitespace-pre-wrap">
-                        {example.input}
-                      </span>
-                    </pre>
-                    <pre className="bg-gray-100 p-3 rounded-md text-gray-800 font-mono text-xs">
-                      <strong className="font-medium text-gray-600">
-                        Output:
-                      </strong>
-                      <span className="block mt-1 whitespace-pre-wrap">
-                        {example.output}
-                      </span>
-                    </pre>
+            {problemDetails.testcases && problemDetails.testcases.length > 0 ? (
+              problemDetails.testcases.map(
+                (example: ProblemExampleIO, index: number) => (
+                  <div
+                    key={index}
+                    className="border border-gray-200 rounded p-3"
+                  >
+                    <h4 className="text-sm font-semibold text-gray-700 mb-2">
+                      Example {index + 1}
+                    </h4>
+                    <div className="space-y-2">
+                      <pre className="bg-gray-50 p-3 rounded-md text-gray-700 font-mono text-xs">
+                        <strong className="font-medium text-gray-600">
+                          Input:
+                        </strong>
+                        <span className="block mt-1 whitespace-pre-wrap">
+                          {typeof example.input === "string"
+                            ? example.input
+                            : JSON.stringify(example.input, null, 2)}
+                        </span>
+                      </pre>
+                      <pre className="bg-gray-100 p-3 rounded-md text-gray-800 font-mono text-xs">
+                        <strong className="font-medium text-gray-600">
+                          Output:
+                        </strong>
+                        <span className="block mt-1 whitespace-pre-wrap">
+                          {typeof example.output === "string"
+                            ? example.output
+                            : JSON.stringify(example.output, null, 2)}
+                        </span>
+                      </pre>
+                    </div>
                   </div>
-                </div>
-              ))
+                )
+              )
             ) : (
               <p className="text-gray-500 text-sm">No examples provided.</p>
             )}
@@ -508,30 +807,6 @@ const ResultsPanel: React.FC<{ problemDetails: ProblemDetail }> = ({
       </div>
       {/* Tab Content */}
       <div className="p-4 flex-grow overflow-y-auto">{renderTabContent()}</div>
-    </div>
-  );
-};
-
-// Right Sidebar (Chatbot)
-const RightSidebar: React.FC = () => {
-  return (
-    <div className="p-4 h-full flex flex-col text-gray-900">
-      <h3 className="text-lg font-semibold mb-3 border-b pb-2 flex-shrink-0 border-gray-200">
-        AI Assistant
-      </h3>
-      <div className="flex-grow bg-gray-100 rounded p-2 mb-3 overflow-y-auto">
-        <p className="text-sm text-gray-500">
-          Chat messages will appear here...
-        </p>
-      </div>
-      <textarea
-        className="w-full p-2 border border-gray-300 rounded-md text-sm mb-2 flex-shrink-0 bg-white text-gray-900"
-        rows={3}
-        placeholder="Ask the AI assistant..."
-      ></textarea>
-      <button className="px-4 py-1 bg-blue-500 text-white text-sm font-medium rounded-md hover:bg-blue-600 transition self-end flex-shrink-0">
-        Send
-      </button>
     </div>
   );
 };

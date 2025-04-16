@@ -1,26 +1,3 @@
-terraform {
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 5.0"
-    }
-  }
-
-  # ===> S3 백엔드 설정 추가! <===
-  backend "s3" {
-    # 아래 값들은 `backend-setup` 코드를 실행하여 생성된 리소스 이름으로 채워야 합니다.
-    # `terraform init` 시 -backend-config 옵션으로 전달하거나 하드코딩할 수 있습니다.
-    # bucket         = "alpaco-tfstate-bucket-kmu"       # backend-setup의 output.tfstate_bucket_name 값
-    # key            = "app/terraform.tfstate"           # 이 애플리케이션 상태 파일을 버킷 내에 저장할 경로
-    # region         = "ap-northeast-2"                  # backend-setup의 aws_region 값
-    # dynamodb_table = "alpaco-tfstate-lock-table"      # backend-setup의 output.tfstate_lock_table_name 값
-    # encrypt        = true                              # 상태 파일 암호화 (권장)
-  }
-}
-
-provider "aws" {
-  region = var.aws_region
-}
 # S3 버킷 생성 (정적 웹사이트 호스팅용이지만, CloudFront OAC를 통해 비공개 유지)
 resource "aws_s3_bucket" "website_bucket" {
   # Bucket 이름은 전역적으로 고유해야 함

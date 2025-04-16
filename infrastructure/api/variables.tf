@@ -26,16 +26,3 @@ variable "common_tags" {
     Service     = "CommunityAPI"
   }
 }
-
-# Variables needed for backend configuration (passed via CLI or secrets in CI/CD)
-variable "tf_state_bucket" {
-  description = "Name of the S3 bucket for Terraform state storage (from backend-setup)"
-  type        = string
-  # No default - must be provided
-}
-
-variable "tf_state_lock_table" {
-  description = "Name of the DynamoDB table for Terraform state locking (from backend-setup)"
-  type        = string
-  # No default - must be provided
-}

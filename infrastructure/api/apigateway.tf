@@ -4,7 +4,7 @@
 data "terraform_remote_state" "cognito" {
   backend = "s3"
   config = {
-    bucket = var.tf_state_bucket         # Provided via -backend-config or tfvars/secrets
+    bucket = "alpaco-tfstate-bucket-kmu"         # Provided via -backend-config or tfvars/secrets
     key    = "cognito/terraform.tfstate" # Key for the Cognito state file
     region = var.aws_region
   }
