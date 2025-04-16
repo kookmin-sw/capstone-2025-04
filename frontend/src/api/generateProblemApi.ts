@@ -67,7 +67,9 @@ export interface ProblemExampleIO {
 export interface ProblemDetailAPI {
   problemId: string;
   title: string; // Generated title
+  title_translated?: string; // Translated title (if targetLanguage is specified)
   description: string; // Markdown description including constraints section
+  description_translated?: string; // Translated description (if targetLanguage is specified)
   difficulty: string; // e.g., "Easy", "Medium", "Hard"
   constraints: string; // JSON *string* of constraint details (e.g., time/memory limits, input ranges)
   solutionCode?: string; // Optional as it might fail
@@ -76,6 +78,7 @@ export interface ProblemDetailAPI {
   testSpecifications?: string; // JSON *string* of test cases (e.g., '[{input: ..., output: ...}]')
   generationStatus: string; // e.g., "started", "stepN_complete", "completed", "failed"
   language: string; // e.g., "python3.12"
+  targetLanguage?: string; // Target language for translation (e.g., "ko")
   createdAt: string; // ISO Date string
   completedAt?: string; // ISO Date string (only when completed)
   userPrompt?: string; // The original prompt used for generation

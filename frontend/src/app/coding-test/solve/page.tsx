@@ -482,7 +482,11 @@ const ProblemPanel: React.FC<{ problemDetails: ProblemDetailAPI }> = ({
   return (
     // Example Tests Content
     <div className="p-4 overflow-y-auto h-full text-gray-900">
-      <h2 className="text-xl font-semibold mb-2">{problemDetails.title}</h2>
+      <h2 className="text-xl font-semibold mb-2">
+        {problemDetails.targetLanguage && problemDetails.title_translated
+          ? problemDetails.title_translated
+          : problemDetails.title}
+      </h2>
       <span
         className={`inline-block px-2 py-0.5 text-xs font-medium rounded-full mb-4 ${
           problemDetails.difficulty === "쉬움"
@@ -498,7 +502,12 @@ const ProblemPanel: React.FC<{ problemDetails: ProblemDetailAPI }> = ({
       {/* Removed dark:prose-invert and dark text color */}
       <div className="prose prose-sm max-w-none text-gray-700 mb-6">
         <h3 className="text-md font-medium text-gray-800 mb-1">문제 설명</h3>
-        <p className="whitespace-pre-wrap">{problemDetails.description}</p>
+        <p className="whitespace-pre-wrap">
+          {problemDetails.targetLanguage &&
+          problemDetails.description_translated
+            ? problemDetails.description_translated
+            : problemDetails.description}
+        </p>
         {problemDetails.constraints && (
           <>
             <h3 className="text-md font-medium text-gray-800 mt-4 mb-1">

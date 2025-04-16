@@ -439,7 +439,6 @@ const GenerateProblemClient = () => {
                 <strong>오류:</strong> {error}
               </div>
             )}
-            {/* Final Problem Detail Display (Updated for backend fields) */}
             {/* Final Problem Detail Display (Updated) */}
             {generatedProblem && !isLoading && (
               <div className="mt-5 space-y-4">
@@ -450,7 +449,10 @@ const GenerateProblemClient = () => {
                     <span className="font-semibold text-xl">
                       {" "}
                       {/* Larger Title */}
-                      {generatedProblem.title}
+                      {generatedProblem.targetLanguage &&
+                      generatedProblem.title_translated
+                        ? generatedProblem.title_translated
+                        : generatedProblem.title}
                     </span>
                   </div>
                   <div className="mb-3">
@@ -476,7 +478,10 @@ const GenerateProblemClient = () => {
                   <div className="mb-4 prose prose-sm max-w-none text-gray-700">
                     <h4 className="font-semibold mb-2 text-base">문제 내용:</h4>
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                      {generatedProblem.description}
+                      {generatedProblem.targetLanguage &&
+                      generatedProblem.description_translated
+                        ? generatedProblem.description_translated
+                        : generatedProblem.description}
                     </ReactMarkdown>
                   </div>
 
@@ -506,6 +511,14 @@ const GenerateProblemClient = () => {
                       </span>{" "}
                       {new Date(generatedProblem.createdAt).toLocaleString()}
                     </div>
+                    {generatedProblem.targetLanguage && (
+                      <div>
+                        <span className="font-medium text-gray-800">
+                          Translation:
+                        </span>{" "}
+                        {generatedProblem.targetLanguage}
+                      </div>
+                    )}
                     {generatedProblem.completedAt && (
                       <div>
                         <span className="font-medium text-gray-800">

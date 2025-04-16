@@ -27,7 +27,9 @@ export interface ProblemSummary {
 export interface ProblemDetail {
   problemId: string;
   title: string;
+  title_translated?: string; // Translated title if targetLanguage exists
   description: string;
+  description_translated?: string; // Translated description if targetLanguage exists
   difficulty: string;
   constraints: string; // JSON 문자열 형태의 제약 조건
   solutionCode: string;
@@ -36,6 +38,7 @@ export interface ProblemDetail {
   testSpecifications: string; // JSON 문자열 형태의 테스트 명세
   generationStatus: string;
   language: string;
+  targetLanguage?: string; // Translation target language (e.g., "ko")
   createdAt: string;
   completedAt?: string; // 완료 시 존재
   userPrompt?: string; // 생성 요청 시 사용된 프롬프트
