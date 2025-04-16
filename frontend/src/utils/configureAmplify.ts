@@ -5,6 +5,7 @@ import { Amplify, ResourcesConfig } from "aws-amplify";
 // These MUST be prefixed with NEXT_PUBLIC_ to be available client-side
 const cognitoUserPoolId = process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID;
 const cognitoClientId = process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID;
+
 const cognitoDomain = process.env.NEXT_PUBLIC_COGNITO_DOMAIN; // Full domain from Cognito (e.g., alpaco-auth-prod-kmu.auth.ap-northeast-2.amazoncognito.com)
 const awsRegion = process.env.NEXT_PUBLIC_AWS_REGION;
 const appBaseUrl = process.env.NEXT_PUBLIC_APP_BASE_URL;
@@ -45,12 +46,13 @@ const awsconfig: ResourcesConfig = {
 let configured = false;
 export const configureAmplify = () => {
   if (!configured && cognitoUserPoolId) {
+    // Check both
     console.log("Configuring Amplify with:", awsconfig);
     Amplify.configure(awsconfig);
     configured = true;
   } else if (!cognitoUserPoolId) {
     console.warn(
-      "Amplify configuration skipped: Missing environment variables."
+      "Amplify configuration skipped: Missing environment variables (User Pool or Identity Pool)."
     );
   }
 };

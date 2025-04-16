@@ -1,4 +1,11 @@
-# Configure the AWS Provider (main.tf 또는 별도 파일에 있을 수 있음)
+terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+  }
+}
 provider "aws" {
   region = var.aws_region
 }

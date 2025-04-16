@@ -1,0 +1,18 @@
+{
+  "problemDetails": {
+    "title": "두 수의 합",
+    "description": "주어진 정수 배열 nums와 정수 target에 대해, 두 숫자를 더해 target이 되는 인덱스를 반환하세요."
+  },
+  "userCode": "function solution(nums, target) {\n  // 여기에 코드를 작성하세요\n  return [];\n}",
+  "history": [
+    {
+      "role": "user",
+      "content": "시간 복잡도 제약 조건이 있나요?"
+    },
+    {
+      "role": "assistant",
+      "content": "네, 문제 설명에 시간 복잡도 제약 조건이 명시되어 있습니다. 확인해보세요."
+    }
+  ],
+  "newMessage": "제 코드가 왜 시간 초과가 나는지 모르겠어요. 힌트 좀 주세요."
+}

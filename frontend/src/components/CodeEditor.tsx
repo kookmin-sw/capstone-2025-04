@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import React from "react";
 import Editor from "@monaco-editor/react";
 
-const CODE_TEMPLATES = {
+export const CODE_TEMPLATES = {
   python: `def solution(input_data):
     # 여기에 코드를 작성하세요
     return
@@ -109,60 +109,39 @@ int main() {
 type CodeEditorProps = {
   language?: "python" | "javascript" | "java" | "cpp";
   onChange?: (value: string) => void;
-  initialCode?: string | null;
+  value?: string;
   readOnly?: boolean;
-  theme?: "light" | "dark"; // Add theme prop
+  theme?: "light" | "dark";
 };
 
 export default function CodeEditor({
   language = "python",
   onChange,
-  initialCode = null,
+  value = "",
   readOnly = false,
-  theme = "light", // Default to light theme
+  theme = "light",
 }: CodeEditorProps) {
-  const [code, setCode] = useState(
-    initialCode || CODE_TEMPLATES[language] || ""
-  );
-
-  useEffect(() => {
-    // Update code only if initialCode is not provided (use template)
-    // Or if the language changes and we were using the template
-    if (!initialCode || code === CODE_TEMPLATES[language]) {
-      setCode(CODE_TEMPLATES[language] || "");
-    }
-    // If initialCode IS provided, we assume it's controlled externally or set once
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [language, initialCode]); // Rerun when language or initialCode changes
-
-  const handleEditorChange = (value: string | undefined) => {
-    const newValue = value || "";
-    setCode(newValue);
+  const handleEditorChange = (newValue: string | undefined) => {
     if (onChange) {
-      onChange(newValue);
+      onChange(newValue || "");
     }
   };
 
   return (
-    // Make the root div take full height and flex column
     <div className="flex flex-col h-full w-full">
-      {/* Make this div grow to fill available space, add rounding and overflow hidden */}
       <div className="flex-grow border border-gray-300 rounded-md overflow-hidden">
         <Editor
-          // Ensure editor takes 100% height of its container
           height="100%"
           language={language === "cpp" ? "cpp" : language}
-          value={code}
+          value={value ?? CODE_TEMPLATES[language] ?? ""}
           onChange={handleEditorChange}
-          // Set Monaco theme based on prop
           theme={theme === "dark" ? "vs-dark" : "vs-light"}
-          // Removed duplicate theme prop, the one below handles it dynamically
           options={{
             minimap: { enabled: false },
             fontSize: 14,
             readOnly: readOnly,
             scrollBeyondLastLine: false,
-            automaticLayout: true, // Important for resizing
+            automaticLayout: true,
           }}
         />
       </div>

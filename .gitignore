@@ -99,3 +99,6 @@ infrastructure/cognito/post_confirmation_lambda.zip
 .cache/
 
 infrastructure/api/lambda_zips/*.zip
+
+# cursor
+.cursor/
