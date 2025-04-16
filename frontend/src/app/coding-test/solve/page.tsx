@@ -20,11 +20,8 @@ import {
   PanelResizeHandle,
   ImperativePanelHandle,
 } from "react-resizable-panels";
-import { getProblemById } from "@/api/codingTestApi";
-import type {
-  ProblemDetailAPI,
-  ProblemExampleIO,
-} from "@/api/generateProblemApi";
+
+import type { ProblemDetailAPI } from "@/api/generateProblemApi";
 import { toast } from "sonner";
 import Chatbot from "@/components/Chatbot";
 import { CODE_TEMPLATES } from "@/components/CodeEditor";
@@ -36,12 +33,19 @@ import {
   CommandLineIcon,
   ChatBubbleLeftRightIcon,
 } from "@heroicons/react/24/outline";
+import { getProblemById } from "@/api/problemApi";
 
 // Constants for default panel sizes
 const PROBLEM_DEFAULT_SIZE = 30;
 const EDITOR_DEFAULT_SIZE = 45; // Base for vertical group
 const CHATBOT_DEFAULT_SIZE = 25;
 const RESULTS_DEFAULT_SIZE_PERCENT_OF_VERTICAL = 35; // Results panel size within its group
+
+// Add a TestCase interface definition after the imports
+interface TestCase {
+  input: string | Record<string, unknown>;
+  output: string | unknown;
+}
 
 // --- Main Content Component ---
 const CodingTestContent: React.FC = () => {
@@ -502,57 +506,52 @@ const ProblemPanel: React.FC<{ problemDetails: ProblemDetailAPI }> = ({
             <p className="whitespace-pre-wrap">{problemDetails.constraints}</p>
           </>
         )}
-        {problemDetails.input_format && (
-          <>
-            <h3 className="text-md font-medium text-gray-800 mt-4 mb-1">
-              입력 형식
-            </h3>
-            <p className="whitespace-pre-wrap">{problemDetails.input_format}</p>
-          </>
-        )}
-        {problemDetails.output_format && (
-          <>
-            <h3 className="text-md font-medium text-gray-800 mt-4 mb-1">
-              출력 형식
-            </h3>
-            <p className="whitespace-pre-wrap">
-              {problemDetails.output_format}
-            </p>
-          </>
-        )}
       </div>
-      {problemDetails.testcases && problemDetails.testcases.length > 0 && (
+      {problemDetails.test_specifications && (
         <div className="mb-6">
           <h3 className="text-md font-medium text-gray-800 mb-2">
             입출력 예제
           </h3>
-          {problemDetails.testcases.map(
-            (example: ProblemExampleIO, index: number) => (
-              <div key={index} className="mb-3 last:mb-0">
-                <h4 className="text-sm font-semibold text-gray-600 mb-1">
-                  예제 {index + 1}
-                </h4>
-                {/* Use light theme background and text */}
-                <pre className="bg-gray-50 p-3 rounded-md text-gray-700 font-mono text-xs mb-1">
-                  <strong className="font-medium text-gray-600">Input:</strong>{" "}
-                  <span className="block mt-1 whitespace-pre-wrap">
-                    {typeof example.input === "string"
-                      ? example.input
-                      : JSON.stringify(example.input, null, 2)}
-                  </span>
-                </pre>
-                {/* Use light theme background and text */}
-                <pre className="bg-gray-100 p-3 rounded-md text-gray-800 font-mono text-xs">
-                  <strong className="font-medium text-gray-600">Output:</strong>{" "}
-                  <span className="block mt-1 whitespace-pre-wrap">
-                    {typeof example.output === "string"
-                      ? example.output
-                      : JSON.stringify(example.output, null, 2)}
-                  </span>
-                </pre>
-              </div>
-            )
-          )}
+          {(() => {
+            try {
+              // Parse the JSON string of test specifications
+              const testcases = JSON.parse(
+                problemDetails.test_specifications
+              ) as TestCase[];
+              return testcases.map((example: TestCase, index: number) => (
+                <div key={index} className="mb-3 last:mb-0">
+                  <h4 className="text-sm font-semibold text-gray-600 mb-1">
+                    예제 {index + 1}
+                  </h4>
+                  {/* Use light theme background and text */}
+                  <pre className="bg-gray-50 p-3 rounded-md text-gray-700 font-mono text-xs mb-1">
+                    <strong className="font-medium text-gray-600">
+                      Input:
+                    </strong>{" "}
+                    <span className="block mt-1 whitespace-pre-wrap">
+                      {typeof example.input === "string"
+                        ? example.input
+                        : JSON.stringify(example.input, null, 2)}
+                    </span>
+                  </pre>
+                  {/* Use light theme background and text */}
+                  <pre className="bg-gray-100 p-3 rounded-md text-gray-800 font-mono text-xs">
+                    <strong className="font-medium text-gray-600">
+                      Output:
+                    </strong>{" "}
+                    <span className="block mt-1 whitespace-pre-wrap">
+                      {typeof example.output === "string"
+                        ? example.output
+                        : JSON.stringify(example.output, null, 2)}
+                    </span>
+                  </pre>
+                </div>
+              ));
+            } catch (error) {
+              console.error("Failed to parse test specifications:", error);
+              return <p className="text-red-500">Failed to load test cases</p>;
+            }
+          })()}
         </div>
       )}
     </div>
@@ -692,41 +691,58 @@ const ResultsPanel: React.FC<{ problemDetails: ProblemDetailAPI }> = ({
       case "examples":
         return (
           <div className="mt-4 space-y-4">
-            {problemDetails.testcases && problemDetails.testcases.length > 0 ? (
-              problemDetails.testcases.map(
-                (example: ProblemExampleIO, index: number) => (
-                  <div
-                    key={index}
-                    className="border border-gray-200 rounded p-3"
-                  >
-                    <h4 className="text-sm font-semibold text-gray-700 mb-2">
-                      Example {index + 1}
-                    </h4>
-                    <div className="space-y-2">
-                      <pre className="bg-gray-50 p-3 rounded-md text-gray-700 font-mono text-xs">
-                        <strong className="font-medium text-gray-600">
-                          Input:
-                        </strong>
-                        <span className="block mt-1 whitespace-pre-wrap">
-                          {typeof example.input === "string"
-                            ? example.input
-                            : JSON.stringify(example.input, null, 2)}
-                        </span>
-                      </pre>
-                      <pre className="bg-gray-100 p-3 rounded-md text-gray-800 font-mono text-xs">
-                        <strong className="font-medium text-gray-600">
-                          Output:
-                        </strong>
-                        <span className="block mt-1 whitespace-pre-wrap">
-                          {typeof example.output === "string"
-                            ? example.output
-                            : JSON.stringify(example.output, null, 2)}
-                        </span>
-                      </pre>
-                    </div>
-                  </div>
-                )
-              )
+            {problemDetails.test_specifications ? (
+              (() => {
+                try {
+                  // Parse the JSON string of test specifications
+                  const testcases = JSON.parse(
+                    problemDetails.test_specifications
+                  ) as TestCase[];
+                  return testcases.length > 0 ? (
+                    testcases.map((example: TestCase, index: number) => (
+                      <div
+                        key={index}
+                        className="border border-gray-200 rounded p-3"
+                      >
+                        <h4 className="text-sm font-semibold text-gray-700 mb-2">
+                          Example {index + 1}
+                        </h4>
+                        <div className="space-y-2">
+                          <pre className="bg-gray-50 p-3 rounded-md text-gray-700 font-mono text-xs">
+                            <strong className="font-medium text-gray-600">
+                              Input:
+                            </strong>
+                            <span className="block mt-1 whitespace-pre-wrap">
+                              {typeof example.input === "string"
+                                ? example.input
+                                : JSON.stringify(example.input, null, 2)}
+                            </span>
+                          </pre>
+                          <pre className="bg-gray-100 p-3 rounded-md text-gray-800 font-mono text-xs">
+                            <strong className="font-medium text-gray-600">
+                              Output:
+                            </strong>
+                            <span className="block mt-1 whitespace-pre-wrap">
+                              {typeof example.output === "string"
+                                ? example.output
+                                : JSON.stringify(example.output, null, 2)}
+                            </span>
+                          </pre>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-gray-500 text-sm">
+                      No examples provided.
+                    </p>
+                  );
+                } catch (error) {
+                  console.error("Failed to parse test specifications:", error);
+                  return (
+                    <p className="text-red-500">Failed to load test cases</p>
+                  );
+                }
+              })()
             ) : (
               <p className="text-gray-500 text-sm">No examples provided.</p>
             )}

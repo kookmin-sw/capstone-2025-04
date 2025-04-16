@@ -5,6 +5,7 @@ import time
 import uuid
 import traceback
 import boto3
+
 # from langchain_aws import BedrockLLM
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import PromptTemplate
@@ -33,7 +34,7 @@ if GOOGLE_AI_API_KEY:
     from langchain_google_genai import ChatGoogleGenerativeAI
 
     llm = ChatGoogleGenerativeAI(
-        model="gemini-1.5-flash",  # Consider making model name configurable
+        model="gemini-2.5-pro-exp-03-25",  # Consider making model name configurable
         google_api_key=GOOGLE_AI_API_KEY,
         # Add temperature or other generation settings if needed
     )
@@ -383,6 +384,21 @@ def lambda_handler(event, context):
     # This handler is designed for AWS Lambda Function URL with RESPONSE_STREAM (SSE)
     print("Event Received:", event)  # Log the event for debugging
 
+    # --- Write SSE Headers FIRST ---
+    # For Function URL Streaming, headers go to stdout before body goes to stdout.buffer
+    try:
+        sys.stdout.write("HTTP/1.1 200 OK\r\n")
+        sys.stdout.write("Content-Type: text/event-stream\r\n")
+        sys.stdout.write("Cache-Control: no-cache\r\n")
+        sys.stdout.write("Connection: keep-alive\r\n")
+        sys.stdout.write("\r\n")  # End of headers
+        sys.stdout.flush()  # Ensure headers are sent
+        print("SSE Headers written to stdout.")
+    except Exception as header_err:
+        # If headers fail, we probably can't send a useful error response via stream
+        print(f"FATAL: Could not write headers to stdout: {header_err}")
+        return  # Exit early
+
     problem_id = None  # Initialize problem_id
     problems_table = None  # Initialize table
 
@@ -680,9 +696,6 @@ def lambda_handler(event, context):
         except Exception as send_err:
             print(f"Failed to send error SSE: {send_err}")
 
-    # The final return is not used by the client for SSE, but good practice
-    return {
-        "statusCode": 200,
-        "headers": {"Content-Type": "text/event-stream"},
-        "body": "",
-    }
+    # For Function URL Streaming, the return value is NOT used for the response body.
+    # The response body is entirely what's written to sys.stdout/sys.stdout.buffer.
+    return "test"

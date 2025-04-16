@@ -1,3 +1,5 @@
+import { fetchAuthSession } from "aws-amplify/auth";
+
 // Define the structure for the expected input (payload)
 export interface GenerateProblemParams {
   prompt: string;
@@ -150,6 +152,11 @@ export const streamProblemGeneration = async (
 
   try {
     // 1. Construct Payload & Calculate SHA256
+    const session = await fetchAuthSession();
+    const idToken = session.tokens?.idToken?.toString();
+    if (!idToken) {
+      throw new Error("User is not authenticated or ID token is missing.");
+    }
     const payloadString = JSON.stringify(params);
     const sha256Hash = await calculateSHA256(payloadString);
     console.log("Problem Gen Payload SHA256:", sha256Hash);
@@ -164,6 +171,8 @@ export const streamProblemGeneration = async (
       headers: {
         "Content-Type": "application/json",
         // No Authorization header needed for this endpoint (IAM auth via CloudFront OAC)
+        Authorization: `Bearer ${idToken}`, // Standard header (commented out)
+
         "x-amz-content-sha256": sha256Hash, // Required for SigV4 signing by CloudFront/Lambda URL
       },
       body: payloadString,
@@ -193,6 +202,12 @@ export const streamProblemGeneration = async (
         break;
       }
 
+      // Add debug logging for raw chunk data
+      console.log(
+        "Raw SSE chunk received:",
+        decoder.decode(value.slice(0, 100)) + (value.length > 100 ? "..." : "")
+      );
+
       buffer += decoder.decode(value, { stream: true });
 
       // Process buffer line by line for SSE messages (event: ...\ndata: ...\n\n)
@@ -202,6 +217,9 @@ export const streamProblemGeneration = async (
         if (eventEndIndex === -1) break; // Wait for more data if no full event found
 
         const eventBlock = buffer.substring(eventStartIndex, eventEndIndex);
+        // Add debug logging for event blocks
+        console.log("Processing event block:", eventBlock);
+
         eventStartIndex = eventEndIndex + 2; // Move past the processed block
 
         let eventType = "message"; // Default event type
@@ -226,11 +244,25 @@ export const streamProblemGeneration = async (
                 onStatus(parsedData as ProblemStreamStatus);
                 break;
               case "result":
-                onResult(parsedData as ProblemStreamResult);
+                console.log("Received result event with data:", parsedData);
+                if (parsedData && typeof parsedData === "object") {
+                  // Some implementations might wrap in 'payload' property, others might not
+                  const resultData = parsedData.payload
+                    ? parsedData.payload
+                    : parsedData;
+                  onResult({ payload: resultData } as ProblemStreamResult);
+                } else {
+                  console.error(
+                    "Received invalid result data format:",
+                    parsedData
+                  );
+                  onError({
+                    payload: "Invalid result data format received",
+                  } as ProblemStreamError);
+                }
                 break;
               case "error":
                 onError(parsedData as ProblemStreamError);
-                // Consider stopping further processing on backend error
                 break;
               default:
                 console.warn("Received unknown SSE event type:", eventType);

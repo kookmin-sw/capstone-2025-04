@@ -23,9 +23,6 @@ resource "aws_cloudfront_distribution" "chatbot_distribution" {
       https_port               = 443
       origin_protocol_policy   = "https-only"
       origin_ssl_protocols     = ["TLSv1.2"]
-      # Set Keepalive timeouts if needed, defaults are usually fine
-      # origin_read_timeout      = 30
-      # origin_keepalive_timeout = 5
     }
 
     # Attach the OAC to this origin

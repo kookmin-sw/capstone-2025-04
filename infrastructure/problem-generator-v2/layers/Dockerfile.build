@@ -1,24 +1,30 @@
+# capstone-2025-04/infrastructure/problem-generator-v2/layers/Dockerfile.build
 
-# Use the official AWS Lambda Python base image for arm64
-FROM public.ecr.aws/lambda/python:3.12-arm64
+# Use an official AWS Lambda Node.js base image for arm64 matching the runtime
+FROM public.ecr.aws/lambda/nodejs:20-arm64
 
-# Copy requirements file
-COPY requirements.txt /tmp/requirements.txt
+# Set the working directory for installation
+WORKDIR /opt
 
-# Install findutils using microdnf (common in Amazon Linux minimal images)
-# Clean up cache afterwards to minimize layer size
-# Note: microdnf doesn't usually require an 'update' step like apt-get
-RUN microdnf install -y findutils && \
-    microdnf clean all
+# Copy package files
+COPY package.json package-lock.json ./
 
-# Install Python dependencies from requirements.txt into the target directory
-# Use --no-cache-dir to reduce layer size
-RUN pip install \
-    --requirement /tmp/requirements.txt \
-    --target /opt/python/lib/python3.12/site-packages/ \
-    --no-cache-dir
+# Install production dependencies using npm ci (clean install)
+# This installs into /opt/node_modules, Lambda expects /opt/nodejs/node_modules
+# We will move it in the build script or adjust structure here if needed
+RUN npm ci --omit=dev
 
-# Clean up __pycache__ directories and pip cache
-# Now the find command should work
-RUN find /opt/python/lib/python3.12/site-packages/ -name '__pycache__' -type d -exec rm -rf {} + \
-    && rm -rf /root/.cache/pip
+# Lambda expects layers in /opt/nodejs/node_modules
+# Create the directory and move installed modules there
+RUN mkdir -p nodejs && mv node_modules nodejs/
+
+# Optional: Clean up package files and cache to reduce layer size
+RUN rm package.json package-lock.json \
+    && rm -rf /root/.npm /tmp/*
+
+# Ensure findutils is available if needed for further cleanup (less critical for node_modules)
+# RUN microdnf install -y findutils && microdnf clean all
+# RUN find /opt/nodejs/node_modules/ -type f -name '*.js.map' -delete
+# RUN find /opt/nodejs/node_modules/ -type f -name '*.d.ts' -delete
+# RUN find /opt/nodejs/node_modules/ -type d -name 'docs' -exec rm -rf {} +
+# RUN find /opt/nodejs/node_modules/ -type d -name 'test*' -exec rm -rf {} +

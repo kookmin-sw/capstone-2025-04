@@ -2,6 +2,7 @@
 "use client";
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useSearchParams } from "next/navigation"; // Added useRouter
+import Link from "next/link"; // Add import for Link
 // Import the REAL STREAMING API function and types
 import {
   streamProblemGeneration, // Import the real streaming function
@@ -223,20 +224,51 @@ const GenerateProblemClient = () => {
         await streamProblemGeneration(params, {
           onStatus: (status: ProblemStreamStatus) => {
             setStatusMessages((prev) => [...prev, status.message]);
+            console.log("Status update:", status);
           },
           onResult: (result: ProblemStreamResult) => {
-            setGeneratedProblem(result.payload); // Set the final detailed problem
-            // Optionally add a final success message to status
-            setStatusMessages((prev) => [...prev, "✅ 생성 완료!"]);
+            console.log("Received final result:", result);
+            if (result && result.payload) {
+              setGeneratedProblem(result.payload); // Set the final detailed problem
+              // Optionally add a final success message to status
+              setStatusMessages((prev) => [...prev, "✅ 생성 완료!"]);
+            } else {
+              console.error(
+                "Received empty or invalid result payload:",
+                result
+              );
+              setError("문제 생성 결과가 비어있거나 형식이 잘못되었습니다.");
+              setStatusMessages((prev) => [
+                ...prev,
+                "❌ 문제 생성 결과가 잘못되었습니다.",
+              ]);
+            }
           },
           onError: (error: ProblemStreamError) => {
+            console.error("Generation error:", error);
             setError(error.payload);
             setStatusMessages((prev) => [...prev, `❌ 오류: ${error.payload}`]);
             setIsLoading(false); // Stop loading on error
           },
           onComplete: () => {
             setIsLoading(false); // Stop loading when stream completes
-            console.log("SSE Stream Completed.");
+            // Use function state reference instead of closure to avoid dependency issues
+            setTimeout(() => {
+              // Get current state via setGeneratedProblem's functional form
+              setGeneratedProblem((currentProblem) => {
+                if (!currentProblem) {
+                  console.warn(
+                    "Stream completed but generatedProblem is still null. This might indicate the 'result' event was never received."
+                  );
+                } else {
+                  console.log(
+                    "SSE Stream Completed with valid generatedProblem:",
+                    currentProblem
+                  );
+                }
+                return currentProblem; // Return same value to not change state
+              });
+            }, 100);
           },
         });
       } catch (err) {
@@ -474,6 +506,16 @@ const GenerateProblemClient = () => {
                   <div className="mb-2">
                     <span className="font-semibold">완료일:</span>{" "}
                     {generatedProblem.completedAt || ""}
+                  </div>
+
+                  {/* Add Go to Solve button */}
+                  <div className="mt-6 flex justify-center">
+                    <Link
+                      href={`/coding-test/solve?id=${generatedProblem.problemId}`}
+                      className="inline-block px-6 py-3 bg-primary text-white font-medium rounded-md hover:bg-primary-hover transition text-center"
+                    >
+                      풀러가기
+                    </Link>
                   </div>
                 </div>
               </div>

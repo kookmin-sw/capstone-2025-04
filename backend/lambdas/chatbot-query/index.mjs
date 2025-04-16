@@ -1,5 +1,5 @@
 import { createRemoteJWKSet, jwtVerify } from "jose";
-import { ChatBedrockConverse } from "@langchain/aws";
+import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
 import {
   HumanMessage,
   AIMessage,
@@ -140,28 +140,25 @@ export const handler = awslambda.streamifyResponse(
 
     const { problemDetails, userCode, history, newMessage } = requestBody;
 
-    // --- Langchain/Bedrock Initialization ---
-    const modelId = process.env.BEDROCK_MODEL_ID;
+    // --- Langchain/Google Initialization ---
+    const googleApiKey = process.env.GOOGLE_API_KEY;
+    const modelName = process.env.GOOGLE_MODEL_NAME || "gemini-pro";
 
-    if (!modelId) {
-      console.error("Missing required environment variable: BEDROCK_MODEL_ID");
+    if (!googleApiKey) {
+      console.error("Missing required environment variable: GOOGLE_API_KEY");
       const errorPayload = JSON.stringify({
-        error: "Configuration error: Missing Bedrock model ID.",
+        error: "Configuration error: Missing Google API key.",
       });
       responseStream.write(`data: ${errorPayload}\n\n`);
       responseStream.end();
       return; // Stop execution
     }
 
-    const llm = new ChatBedrockConverse({
-      model: modelId,
+    const llm = new ChatGoogleGenerativeAI({
+      apiKey: googleApiKey,
+      modelName: modelName,
+      maxOutputTokens: 9126,
       streaming: true,
-      region: region,
-      modelKwargs: {
-        max_tokens: 1024, // Limit output tokens
-        // temperature: 0.7,
-      },
-      // Credentials are automatically handled by the Lambda execution role
     });
 
     // --- Prompt Construction Logic ---
@@ -195,51 +192,84 @@ export const handler = awslambda.streamifyResponse(
 
     // --- LLM Invocation and SSE Streaming Response ---
     try {
-      console.log(`Invoking Bedrock model: ${modelId} via Langchain...`);
-      const stream = await llm.stream(messages);
-      console.log("Streaming response from Bedrock...");
+      console.log(`Invoking Google model: ${modelName} via Langchain...`);
 
-      for await (const chunk of stream) {
-        // Check content format - ChatBedrockConverse stream chunks might be different
-        // Assuming chunk.content is the text part based on Langchain docs/previous attempt
-        let textContent = "";
-        if (typeof chunk.content === "string") {
-          textContent = chunk.content;
-        } else if (
-          Array.isArray(chunk.content) &&
-          chunk.content.length > 0 &&
-          typeof chunk.content[0] === "object" &&
-          chunk.content[0].type === "text"
-        ) {
-          // Handle structure like [{ type: 'text', text: '...' }]
-          textContent = chunk.content[0].text || "";
-        } else {
-          // Handle other potential structures or log unexpected format
-          console.log(
-            "Received chunk with unexpected content format:",
-            chunk.content
-          );
-        }
+      // Add retry mechanism with exponential backoff
+      let retryCount = 0;
+      const maxRetries = 5;
+      let lastError = null;
 
-        if (textContent) {
-          const ssePayload = JSON.stringify({ token: textContent });
-          const sseMessage = `data: ${ssePayload}\n\n`;
-          // console.log("Writing SSE chunk:", sseMessage.trim()); // Log SSE message
-          responseStream.write(sseMessage);
-        } else {
-          // console.log("Received chunk without printable content:", chunk);
+      while (retryCount <= maxRetries) {
+        try {
+          if (retryCount > 0) {
+            console.log(`Retry attempt ${retryCount}/${maxRetries}...`);
+            // Add exponential backoff (100ms, 200ms, 400ms, 800ms, 1600ms)
+            const backoffTime = Math.min(
+              100 * Math.pow(2, retryCount - 1),
+              1600
+            );
+            await new Promise((resolve) => setTimeout(resolve, backoffTime));
+          }
+
+          const stream = await llm.stream(messages);
+          console.log("Streaming response from Google model...");
+
+          for await (const chunk of stream) {
+            // Check content format
+            let textContent = "";
+            if (typeof chunk.content === "string") {
+              textContent = chunk.content;
+            } else if (
+              Array.isArray(chunk.content) &&
+              chunk.content.length > 0 &&
+              typeof chunk.content[0] === "object" &&
+              chunk.content[0].type === "text"
+            ) {
+              // Handle structure like [{ type: 'text', text: '...' }]
+              textContent = chunk.content[0].text || "";
+            } else {
+              // Handle other potential structures or log unexpected format
+              console.log(
+                "Received chunk with unexpected content format:",
+                chunk.content
+              );
+            }
+
+            if (textContent) {
+              const ssePayload = JSON.stringify({ token: textContent });
+              const sseMessage = `data: ${ssePayload}\n\n`;
+              // console.log("Writing SSE chunk:", sseMessage.trim()); // Log SSE message
+              responseStream.write(sseMessage);
+            } else {
+              // console.log("Received chunk without printable content:", chunk);
+            }
+          }
+          console.log("Google model stream finished.");
+          // Send a final [DONE] message (optional, depends on frontend implementation)
+          responseStream.write(`data: [DONE]\n\n`);
+
+          // If we get here, the stream completed successfully, so exit the retry loop
+          break;
+        } catch (error) {
+          lastError = error;
+          console.error(`Attempt ${retryCount + 1} failed:`, error);
+          retryCount++;
+
+          // If we've exhausted all retries, throw the last error
+          if (retryCount > maxRetries) {
+            throw lastError;
+          }
+
+          // Otherwise, continue to the next retry attempt
         }
       }
-      console.log("Bedrock stream finished.");
-      // Send a final [DONE] message (optional, depends on frontend implementation)
-      responseStream.write(`data: [DONE]\n\n`);
     } catch (error) {
       console.error(
-        "!!! Error during LLM stream invocation/processing:",
+        "!!! All retry attempts failed during LLM stream invocation/processing:",
         error
       );
       const errorPayload = JSON.stringify({
-        error: "Failed to get response from LLM.",
+        error: "Failed to get response from LLM after multiple attempts.",
         details: error.message || "Unknown error",
       });
       // Try writing error as SSE event, but headers might be sent

@@ -31,10 +31,10 @@ variable "common_tags" {
   }
 }
 
-variable "bedrock_model_id" {
-  description = "The ID of the Bedrock model to use for the chatbot"
+variable "google_model_id" {
+  description = "The ID of the Google model to use for the chatbot"
   type        = string
-  default     = "anthropic.claude-3-haiku-20240307-v1:0" # Default based on old variables
+  default     = "gemini-2.5-pro-exp-03-25"
 }
 
 variable "lambda_runtime" {

@@ -8,9 +8,8 @@ resource "aws_cloudfront_origin_access_control" "problem_generator_v2_oac" {
 
 resource "aws_cloudfront_distribution" "problem_generator_v2" {
   enabled             = true
-  is_ipv6_enabled     = true
   comment             = "Problem Generator V2 SSE Distribution"
-  default_root_object = ""
+
 
   origin {
     domain_name              = split("/", replace(aws_lambda_function_url.problem_generator_v2_url.function_url, "https://", ""))[0]
@@ -27,12 +26,13 @@ resource "aws_cloudfront_distribution" "problem_generator_v2" {
   }
 
   default_cache_behavior {
-    allowed_methods  = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
-    cached_methods   = ["GET", "HEAD"]
     target_origin_id = "problem-generator-v2-lambda-url"
 
+    allowed_methods  = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
+    cached_methods   = ["GET", "HEAD", "OPTIONS"]
+
     viewer_protocol_policy = "redirect-to-https"
-    compress              = true
+
 
     # Use data sources to look up managed policy IDs
     cache_policy_id            = data.aws_cloudfront_cache_policy.caching_disabled.id

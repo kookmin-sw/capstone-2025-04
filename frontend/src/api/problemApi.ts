@@ -1,4 +1,5 @@
 // src/api/problemApi.ts
+import { getStaticProblem, isStaticProblemId } from "./staticProblems";
 
 // Base URL for your API Gateway stage for Problems API
 // Use environment variable, fallback for local development
@@ -155,6 +156,22 @@ export const getProblemById = async (
   if (!problemId) {
     throw new Error("problemId is required to fetch problem details.");
   }
+  // 1. Check if it's a static problem ID (1-6)
+  if (isStaticProblemId(problemId)) {
+    console.log(`[CodingTest API] Requested static problem: ${problemId}`);
+    const staticProblem = getStaticProblem(problemId);
+    if (staticProblem) {
+      // Return static data as ProblemDetailAPI
+      return Promise.resolve(staticProblem as ProblemDetail);
+    } else {
+      // This shouldn't happen if isStaticProblemId is correct, but handle defensively
+      console.error(`Static problem data not found for ID: ${problemId}`);
+      throw new ApiError(
+        `Static problem data missing for ID ${problemId}`,
+        404
+      );
+    }
+  }
   const response = await fetch(`${API_BASE_URL}/problems/${problemId}`, {
     method: "GET",
     headers: {
@@ -163,6 +180,7 @@ export const getProblemById = async (
     },
   });
   // handleApiResponse는 파싱된 객체를 반환할 것으로 예상됨
+  console.log(response);
   return handleApiResponse(response) as Promise<ProblemDetail>;
 };
 

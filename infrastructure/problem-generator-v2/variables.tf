@@ -30,45 +30,43 @@ variable "common_tags" {
   }
 }
 
-variable "bedrock_model_id" {
-  description = "The ID of the Bedrock model to use for the problem generator"
-  type        = string
-  default     = "" # "anthropic.claude-3-haiku-20240307-v1:0"
-}
+# variable "bedrock_model_id" { ... } # Optional: keep if might add bedrock later
 
 variable "lambda_runtime" {
   description = "Lambda function runtime (ensure it matches layer compatibility)"
   type        = string
-  default     = "python3.12"
+  default     = "nodejs20.x"
 }
 
 variable "lambda_handler" {
-  description = "Lambda function handler (e.g., lambda_function.lambda_handler)"
+  description = "Lambda function handler (e.g., index.handler)"
   type        = string
-  default     = "lambda_function.lambda_handler"
+  default     = "index.handler"
 }
 
 variable "lambda_code_path" {
   description = "Path to the Lambda function handler code (relative to this module)"
   type        = string
-  default     = "../../backend/lambdas/problem-generator-v2/lambda_function.py"
+  default     = "../../backend/lambdas/problem-generator-v2/index.mjs"
 }
 
-variable "lambda_layer_path" {
-  description = "Path to the directory containing layer contents (e.g., ./layers/problem_generator_deps/)"
-  type        = string
-  default     = "./layers/problem_generator_deps"
-}
-
+# lambda_layer_path is now handled by the build script output path
 
 variable "google_ai_api_key" {
-  description = "API key for Google AI (Gemini) or other LLMs"
+  description = "API key for Google AI (Gemini)"
   type        = string
   default     = ""
+  sensitive   = true # Mark API key as sensitive
 }
 
 variable "generator_verbose" {
   description = "Enable verbose logging in the problem generator Lambda"
   type        = bool
   default     = false
+}
+
+variable "gemini_model_name" {
+  description = "The specific Gemini model to use (e.g., gemini-1.5-flash, gemini-pro)"
+  type        = string
+  default     = "gemini-1.5-flash" # A cost-effective choice
 }
