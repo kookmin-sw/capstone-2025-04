@@ -20,11 +20,12 @@ import {
   PanelResizeHandle,
   ImperativePanelHandle,
 } from "react-resizable-panels";
-import { getProblemById } from "@/api/codingTestApi";
-import type {
-  ProblemDetailAPI,
-  ProblemExampleIO,
-} from "@/api/dummy/generateProblemApi";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
+import { oneLight } from "react-syntax-highlighter/dist/esm/styles/prism";
+
+import type { ProblemDetailAPI } from "@/api/generateProblemApi";
 import { toast } from "sonner";
 import Chatbot from "@/components/Chatbot";
 import { CODE_TEMPLATES } from "@/components/CodeEditor";
@@ -36,12 +37,28 @@ import {
   CommandLineIcon,
   ChatBubbleLeftRightIcon,
 } from "@heroicons/react/24/outline";
+import { getProblemById } from "@/api/problemApi";
 
 // Constants for default panel sizes
 const PROBLEM_DEFAULT_SIZE = 30;
 const EDITOR_DEFAULT_SIZE = 45; // Base for vertical group
 const CHATBOT_DEFAULT_SIZE = 25;
 const RESULTS_DEFAULT_SIZE_PERCENT_OF_VERTICAL = 35; // Results panel size within its group
+
+// Update the TestCase interface to be more type-safe
+interface TestCase {
+  input: string | number[] | Record<string, unknown>;
+  output?: string | number | boolean | number[] | Record<string, unknown>;
+  expected_output?:
+    | string
+    | number
+    | boolean
+    | number[]
+    | Record<string, unknown>;
+  description?: string;
+  target_sum?: number;
+  [key: string]: unknown; // Allow for additional properties with unknown type
+}
 
 // --- Main Content Component ---
 const CodingTestContent: React.FC = () => {
@@ -205,7 +222,8 @@ const CodingTestContent: React.FC = () => {
         setIsLoadingProblem(true);
         setErrorProblem(null);
         try {
-          const data = await getProblemById(id);
+          // getProblemById returns ProblemDetail which is ProblemDetailAPI
+          const data: ProblemDetailAPI = await getProblemById(id);
           setProblemDetails(data);
           hasLoadedInitialCode.current = false;
         } catch (err) {
@@ -473,11 +491,27 @@ const CodingTestContent: React.FC = () => {
 const ProblemPanel: React.FC<{ problemDetails: ProblemDetailAPI }> = ({
   problemDetails,
 }) => {
-  // Added dark mode text colors
+  // Determine if constraints and examples are already embedded in the description
+  const descriptionContent =
+    problemDetails.targetLanguage && problemDetails.description_translated
+      ? problemDetails.description_translated
+      : problemDetails.description;
+
+  // Check if description already contains constraints and examples sections
+  const hasEmbeddedConstraints =
+    descriptionContent.toLowerCase().includes("제약 조건") ||
+    descriptionContent.toLowerCase().includes("constraints");
+  const hasEmbeddedExamples =
+    descriptionContent.toLowerCase().includes("예시") ||
+    descriptionContent.toLowerCase().includes("examples");
+
   return (
-    // Example Tests Content
     <div className="p-4 overflow-y-auto h-full text-gray-900">
-      <h2 className="text-xl font-semibold mb-2">{problemDetails.title}</h2>
+      <h2 className="text-xl font-semibold mb-2">
+        {problemDetails.targetLanguage && problemDetails.title_translated
+          ? problemDetails.title_translated
+          : problemDetails.title}
+      </h2>
       <span
         className={`inline-block px-2 py-0.5 text-xs font-medium rounded-full mb-4 ${
           problemDetails.difficulty === "쉬움"
@@ -489,70 +523,236 @@ const ProblemPanel: React.FC<{ problemDetails: ProblemDetailAPI }> = ({
       >
         {problemDetails.difficulty}
       </span>
-      {/* Added dark mode prose styles */}
-      {/* Removed dark:prose-invert and dark text color */}
       <div className="prose prose-sm max-w-none text-gray-700 mb-6">
         <h3 className="text-md font-medium text-gray-800 mb-1">문제 설명</h3>
-        <p className="whitespace-pre-wrap">{problemDetails.description}</p>
-        {problemDetails.constraints && (
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
+          components={{
+            code({
+              inline,
+              className,
+              children,
+              ...props
+            }: {
+              inline?: boolean;
+              className?: string;
+              children?: React.ReactNode;
+            } & React.HTMLAttributes<HTMLElement>) {
+              const match = /language-(\w+)/.exec(className || "");
+              if (!inline && match) {
+                return (
+                  <SyntaxHighlighter
+                    {...props}
+                    style={oneLight}
+                    language={match[1]}
+                    PreTag="div"
+                  >
+                    {String(children).replace(/\n$/, "")}
+                  </SyntaxHighlighter>
+                );
+              }
+              return (
+                <code
+                  className="bg-gray-100 rounded px-1 py-0.5 text-sm"
+                  {...props}
+                >
+                  {children}
+                </code>
+              );
+            },
+            table({ children }) {
+              return (
+                <table className="min-w-full border-collapse my-2">
+                  {children}
+                </table>
+              );
+            },
+            th({ children }) {
+              return (
+                <th className="border px-2 py-1 bg-gray-100 text-left font-semibold">
+                  {children}
+                </th>
+              );
+            },
+            td({ children }) {
+              return <td className="border px-2 py-1">{children}</td>;
+            },
+            ul({ children, ...props }) {
+              return (
+                <ul className="list-disc pl-6 my-2" {...props}>
+                  {children}
+                </ul>
+              );
+            },
+            ol({ children, ...props }) {
+              return (
+                <ol className="list-decimal pl-6 my-2" {...props}>
+                  {children}
+                </ol>
+              );
+            },
+            li({ children, ...props }) {
+              return (
+                <li className="mb-1" {...props}>
+                  {children}
+                </li>
+              );
+            },
+            p({ children }) {
+              return <p className="mb-2">{children}</p>;
+            },
+          }}
+        >
+          {problemDetails.targetLanguage &&
+          problemDetails.description_translated
+            ? problemDetails.description_translated
+            : problemDetails.description}
+        </ReactMarkdown>
+
+        {/* Only show separate constraints if not already in the description */}
+        {!hasEmbeddedConstraints && problemDetails.constraints && (
           <>
             <h3 className="text-md font-medium text-gray-800 mt-4 mb-1">
               제약 조건
             </h3>
-            <p className="whitespace-pre-wrap">{problemDetails.constraints}</p>
-          </>
-        )}
-        {problemDetails.input_format && (
-          <>
-            <h3 className="text-md font-medium text-gray-800 mt-4 mb-1">
-              입력 형식
-            </h3>
-            <p className="whitespace-pre-wrap">{problemDetails.input_format}</p>
-          </>
-        )}
-        {problemDetails.output_format && (
-          <>
-            <h3 className="text-md font-medium text-gray-800 mt-4 mb-1">
-              출력 형식
-            </h3>
-            <p className="whitespace-pre-wrap">
-              {problemDetails.output_format}
-            </p>
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              components={{
+                code({
+                  inline,
+                  className,
+                  children,
+                  ...props
+                }: {
+                  inline?: boolean;
+                  className?: string;
+                  children?: React.ReactNode;
+                } & React.HTMLAttributes<HTMLElement>) {
+                  const match = /language-(\w+)/.exec(className || "");
+                  if (!inline && match) {
+                    return (
+                      <SyntaxHighlighter
+                        {...props}
+                        style={oneLight}
+                        language={match[1]}
+                        PreTag="div"
+                      >
+                        {String(children).replace(/\n$/, "")}
+                      </SyntaxHighlighter>
+                    );
+                  }
+                  return (
+                    <code
+                      className="bg-gray-100 rounded px-1 py-0.5 text-sm"
+                      {...props}
+                    >
+                      {children}
+                    </code>
+                  );
+                },
+                ul({ children, ...props }) {
+                  return (
+                    <ul className="list-disc pl-6 my-2" {...props}>
+                      {children}
+                    </ul>
+                  );
+                },
+                ol({ children, ...props }) {
+                  return (
+                    <ol className="list-decimal pl-6 my-2" {...props}>
+                      {children}
+                    </ol>
+                  );
+                },
+                li({ children, ...props }) {
+                  return (
+                    <li className="mb-1" {...props}>
+                      {children}
+                    </li>
+                  );
+                },
+                p({ children }) {
+                  return <p className="mb-2">{children}</p>;
+                },
+              }}
+            >
+              {problemDetails.constraints}
+            </ReactMarkdown>
           </>
         )}
       </div>
-      {problemDetails.testcases && problemDetails.testcases.length > 0 && (
+
+      {/* Only show test examples if not already in the description */}
+      {!hasEmbeddedExamples && problemDetails.testSpecifications && (
         <div className="mb-6">
           <h3 className="text-md font-medium text-gray-800 mb-2">
             입출력 예제
           </h3>
-          {problemDetails.testcases.map(
-            (example: ProblemExampleIO, index: number) => (
-              <div key={index} className="mb-3 last:mb-0">
-                <h4 className="text-sm font-semibold text-gray-600 mb-1">
-                  예제 {index + 1}
-                </h4>
-                {/* Use light theme background and text */}
-                <pre className="bg-gray-50 p-3 rounded-md text-gray-700 font-mono text-xs mb-1">
-                  <strong className="font-medium text-gray-600">Input:</strong>{" "}
-                  <span className="block mt-1 whitespace-pre-wrap">
-                    {typeof example.input === "string"
-                      ? example.input
-                      : JSON.stringify(example.input, null, 2)}
-                  </span>
-                </pre>
-                {/* Use light theme background and text */}
-                <pre className="bg-gray-100 p-3 rounded-md text-gray-800 font-mono text-xs">
-                  <strong className="font-medium text-gray-600">Output:</strong>{" "}
-                  <span className="block mt-1 whitespace-pre-wrap">
-                    {typeof example.output === "string"
-                      ? example.output
-                      : JSON.stringify(example.output, null, 2)}
-                  </span>
-                </pre>
-              </div>
-            )
-          )}
+          {(() => {
+            try {
+              // Parse the JSON string of test specifications
+              const testcases = JSON.parse(
+                problemDetails.testSpecifications
+              ) as TestCase[];
+              return testcases.map((example: TestCase, index: number) => (
+                <div key={index} className="mb-3 last:mb-0">
+                  <h4 className="text-sm font-semibold text-gray-600 mb-1">
+                    예제 {index + 1}
+                  </h4>
+                  {/* Input block */}
+                  <pre className="bg-gray-50 p-3 rounded-md text-gray-700 font-mono text-xs mb-1">
+                    <strong className="font-medium text-gray-600 block mb-1">
+                      Input:
+                    </strong>
+                    <span className="block whitespace-pre-wrap">
+                      {(() => {
+                        const inputValue = example.input;
+                        if (inputValue === undefined)
+                          return "No input provided";
+                        if (typeof inputValue === "string") return inputValue;
+                        if (Array.isArray(inputValue)) {
+                          // Clean array formatting with consistent indentation
+                          if (inputValue.length === 0) return "[]";
+
+                          return `[
+  ${inputValue.join(",\n  ")}
+]`;
+                        }
+                        return JSON.stringify(inputValue, null, 2);
+                      })()}
+                    </span>
+                  </pre>
+                  {/* Output block */}
+                  <pre className="bg-gray-100 p-3 rounded-md text-gray-800 font-mono text-xs">
+                    <strong className="font-medium text-gray-600 block mb-1">
+                      Output:
+                    </strong>
+                    <span className="block whitespace-pre-wrap">
+                      {(() => {
+                        const outputValue =
+                          example.output || example.expected_output;
+                        if (outputValue === undefined)
+                          return "No output provided";
+                        if (typeof outputValue === "string") return outputValue;
+                        if (Array.isArray(outputValue)) {
+                          // Clean array formatting with consistent indentation
+                          if (outputValue.length === 0) return "[]";
+
+                          return `[
+  ${outputValue.join(",\n  ")}
+]`;
+                        }
+                        return JSON.stringify(outputValue, null, 2);
+                      })()}
+                    </span>
+                  </pre>
+                </div>
+              ));
+            } catch (error) {
+              console.error("Failed to parse test specifications:", error);
+              return <p className="text-red-500">Failed to load test cases</p>;
+            }
+          })()}
         </div>
       )}
     </div>
@@ -692,41 +892,85 @@ const ResultsPanel: React.FC<{ problemDetails: ProblemDetailAPI }> = ({
       case "examples":
         return (
           <div className="mt-4 space-y-4">
-            {problemDetails.testcases && problemDetails.testcases.length > 0 ? (
-              problemDetails.testcases.map(
-                (example: ProblemExampleIO, index: number) => (
-                  <div
-                    key={index}
-                    className="border border-gray-200 rounded p-3"
-                  >
-                    <h4 className="text-sm font-semibold text-gray-700 mb-2">
-                      Example {index + 1}
-                    </h4>
-                    <div className="space-y-2">
-                      <pre className="bg-gray-50 p-3 rounded-md text-gray-700 font-mono text-xs">
-                        <strong className="font-medium text-gray-600">
-                          Input:
-                        </strong>
-                        <span className="block mt-1 whitespace-pre-wrap">
-                          {typeof example.input === "string"
-                            ? example.input
-                            : JSON.stringify(example.input, null, 2)}
-                        </span>
-                      </pre>
-                      <pre className="bg-gray-100 p-3 rounded-md text-gray-800 font-mono text-xs">
-                        <strong className="font-medium text-gray-600">
-                          Output:
-                        </strong>
-                        <span className="block mt-1 whitespace-pre-wrap">
-                          {typeof example.output === "string"
-                            ? example.output
-                            : JSON.stringify(example.output, null, 2)}
-                        </span>
-                      </pre>
-                    </div>
-                  </div>
-                )
-              )
+            {problemDetails.testSpecifications ? (
+              (() => {
+                try {
+                  // Parse the JSON string of test specifications
+                  const testcases = JSON.parse(
+                    problemDetails.testSpecifications
+                  ) as TestCase[];
+                  return testcases.length > 0 ? (
+                    testcases.map((example: TestCase, index: number) => (
+                      <div
+                        key={index}
+                        className="border border-gray-200 rounded p-3"
+                      >
+                        <h4 className="text-sm font-semibold text-gray-700 mb-2">
+                          Example {index + 1}
+                        </h4>
+                        <div className="space-y-2">
+                          <pre className="bg-gray-50 p-3 rounded-md text-gray-700 font-mono text-xs">
+                            <strong className="font-medium text-gray-600">
+                              Input:
+                            </strong>
+                            <span className="block mt-1 whitespace-pre-wrap">
+                              {(() => {
+                                const inputValue = example.input;
+                                if (inputValue === undefined)
+                                  return "No input provided";
+                                if (typeof inputValue === "string")
+                                  return inputValue;
+                                if (Array.isArray(inputValue)) {
+                                  // Clean array formatting with consistent indentation
+                                  if (inputValue.length === 0) return "[]";
+
+                                  return `[
+  ${inputValue.join(",\n  ")}
+]`;
+                                }
+                                return JSON.stringify(inputValue, null, 2);
+                              })()}
+                            </span>
+                          </pre>
+                          <pre className="bg-gray-100 p-3 rounded-md text-gray-800 font-mono text-xs">
+                            <strong className="font-medium text-gray-600">
+                              Output:
+                            </strong>
+                            <span className="block mt-1 whitespace-pre-wrap">
+                              {(() => {
+                                const outputValue =
+                                  example.output || example.expected_output;
+                                if (outputValue === undefined)
+                                  return "No output provided";
+                                if (typeof outputValue === "string")
+                                  return outputValue;
+                                if (Array.isArray(outputValue)) {
+                                  // Clean array formatting with consistent indentation
+                                  if (outputValue.length === 0) return "[]";
+
+                                  return `[
+  ${outputValue.join(",\n  ")}
+]`;
+                                }
+                                return JSON.stringify(outputValue, null, 2);
+                              })()}
+                            </span>
+                          </pre>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-gray-500 text-sm">
+                      No examples provided.
+                    </p>
+                  );
+                } catch (error) {
+                  console.error("Failed to parse test specifications:", error);
+                  return (
+                    <p className="text-red-500">Failed to load test cases</p>
+                  );
+                }
+              })()
             ) : (
               <p className="text-gray-500 text-sm">No examples provided.</p>
             )}

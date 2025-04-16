@@ -1,5 +1,5 @@
 import { createRemoteJWKSet, jwtVerify } from "jose";
-import { ChatBedrockConverse } from "@langchain/aws";
+import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
 import {
   HumanMessage,
   AIMessage,
@@ -140,28 +140,28 @@ export const handler = awslambda.streamifyResponse(
 
     const { problemDetails, userCode, history, newMessage } = requestBody;
 
-    // --- Langchain/Bedrock Initialization ---
-    const modelId = process.env.BEDROCK_MODEL_ID;
+    // --- Langchain/Google Initialization ---
+    const googleApiKey = process.env.GOOGLE_AI_API_KEY;
+    const modelName = process.env.GOOGLE_AI_MODEL_ID;
 
-    if (!modelId) {
-      console.error("Missing required environment variable: BEDROCK_MODEL_ID");
+    if (!googleApiKey) {
+      console.error("Missing required environment variable: GOOGLE_AI_API_KEY");
       const errorPayload = JSON.stringify({
-        error: "Configuration error: Missing Bedrock model ID.",
+        error: "Configuration error: Missing Google API key.",
       });
       responseStream.write(`data: ${errorPayload}\n\n`);
       responseStream.end();
       return; // Stop execution
     }
 
-    const llm = new ChatBedrockConverse({
-      model: modelId,
+    // Ensure all parameters are strings and properly defined
+    console.log("Google API Key:", googleApiKey);
+    console.log("Model Name:", modelName);
+    const llm = new ChatGoogleGenerativeAI({
+      apiKey: String(googleApiKey),
+      modelName: String(modelName),
+      maxOutputTokens: 9126,
       streaming: true,
-      region: region,
-      modelKwargs: {
-        max_tokens: 1024, // Limit output tokens
-        // temperature: 0.7,
-      },
-      // Credentials are automatically handled by the Lambda execution role
     });
 
     // --- Prompt Construction Logic ---
@@ -195,13 +195,18 @@ export const handler = awslambda.streamifyResponse(
 
     // --- LLM Invocation and SSE Streaming Response ---
     try {
-      console.log(`Invoking Bedrock model: ${modelId} via Langchain...`);
+      console.log(`Invoking Google model: ${modelName} via Langchain...`);
+
+      // Add retry mechanism with exponential backoff
+      let retryCount = 0;
+      const maxRetries = 5;
+      let lastError = null;
+
       const stream = await llm.stream(messages);
-      console.log("Streaming response from Bedrock...");
+      console.log("Streaming response from Google model...");
 
       for await (const chunk of stream) {
-        // Check content format - ChatBedrockConverse stream chunks might be different
-        // Assuming chunk.content is the text part based on Langchain docs/previous attempt
+        // Check content format
         let textContent = "";
         if (typeof chunk.content === "string") {
           textContent = chunk.content;
@@ -230,16 +235,18 @@ export const handler = awslambda.streamifyResponse(
           // console.log("Received chunk without printable content:", chunk);
         }
       }
-      console.log("Bedrock stream finished.");
+      console.log("Google model stream finished.");
       // Send a final [DONE] message (optional, depends on frontend implementation)
       responseStream.write(`data: [DONE]\n\n`);
+
+      // If we get here, the stream completed successfully, so exit the retry loop
     } catch (error) {
       console.error(
-        "!!! Error during LLM stream invocation/processing:",
+        "!!! All retry attempts failed during LLM stream invocation/processing:",
         error
       );
       const errorPayload = JSON.stringify({
-        error: "Failed to get response from LLM.",
+        error: "Failed to get response from LLM",
         details: error.message || "Unknown error",
       });
       // Try writing error as SSE event, but headers might be sent

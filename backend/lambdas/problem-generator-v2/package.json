@@ -1,0 +1,35 @@
+{
+  "name": "problem-generator-v2",
+  "version": "1.0.0",
+  "description": "Lambda function to generate coding problems using LLMs with SSE",
+  "main": "index.mjs",
+  "type": "module",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "lambda",
+    "aws",
+    "nodejs",
+    "langchain",
+    "google",
+    "gemini",
+    "dynamodb",
+    "sse"
+  ],
+  "author": "Your Name",
+  "license": "ISC",
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.540.0",
+    "@aws-sdk/lib-dynamodb": "^3.540.0",
+    "@langchain/core": "^0.2.6",
+    "@langchain/google-genai": "^0.0.13",
+    "uuid": "^9.0.1",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.136",
+    "@types/node": "^20.11.25",
+    "@types/uuid": "^9.0.8"
+  }
+}

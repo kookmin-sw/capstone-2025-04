@@ -1,19 +1,26 @@
 // src/app/generate-problem/GenerateProblemClient.tsx
 "use client";
 import React, { useState, useRef, useEffect, useCallback } from "react";
-import { useSearchParams } from "next/navigation";
-// Import the STREAMING dummy API function and types
+import { useSearchParams } from "next/navigation"; // Added useRouter
+import Link from "next/link"; // Add import for Link
+// Import the REAL STREAMING API function and types
 import {
-  // streamGenerationStatusDummyAPI, // 더미 API 제거
-  // GenerateProblemParams,
-  // GeneratedProblem,
-  createProblemAPI,
-  // getProblemsAPI,
+  streamProblemGeneration, // Import the real streaming function
+  CreateProblemRequest, // Use the request type for the streaming function
   ProblemDifficulty,
-  ProblemSummary,
-  getProblemDetailAPI,
-  ProblemDetailAPI,
-} from "@/api/dummy/generateProblemApi";
+  ProblemDetailAPI, // Keep this for the final result
+  // Remove unused imports if any
+  // createProblemAPI, // Keep if needed for non-streaming fallback or other features
+  // getProblemDetailAPI, // Keep for polling fallback or direct fetch if needed
+} from "@/api/generateProblemApi";
+import type {
+  // Import specific types for SSE callbacks
+  ProblemStreamStatus,
+  ProblemStreamResult,
+  ProblemStreamError,
+} from "@/api/generateProblemApi";
+import ReactMarkdown from "react-markdown"; // Import ReactMarkdown
+import remarkGfm from "remark-gfm"; // Import GFM plugin for tables, etc.
 
 // Problem type presets interface
 interface ProblemTypePreset {
@@ -73,6 +80,7 @@ const difficultyMap: Record<string, ProblemDifficulty> = {
 
 const GenerateProblemClient = () => {
   const searchParams = useSearchParams();
+  // const router = useRouter(); // Added router
   const [prompt, setPrompt] = useState("");
   const [difficulty, setDifficulty] = useState<"Easy" | "Medium" | "Hard">(
     "Medium"
@@ -80,21 +88,15 @@ const GenerateProblemClient = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [statusMessages, setStatusMessages] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+  // State to hold the final generated problem details from SSE
   const [generatedProblem, setGeneratedProblem] =
-    useState<ProblemSummary | null>(null);
+    useState<ProblemDetailAPI | null>(null);
   const [hasInitiallyLoaded, setHasInitiallyLoaded] = useState(false);
   const [isInputFocused, setIsInputFocused] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const statusAreaRef = useRef<HTMLDivElement>(null);
-  const controllerRef = useRef<{ abort: boolean }>({ abort: false }); // Simplified abort for dummy
-
-  const [problemId, setProblemId] = useState<string | null>(null);
-  const [problemDetail, setProblemDetail] = useState<ProblemDetailAPI | null>(
-    null
-  );
-  const pollingRef = useRef<NodeJS.Timeout | null>(null);
-  const prevDetailRef = useRef<ProblemDetailAPI | null>(null);
+  // Removed polling-related state and refs
 
   // Ref to track if initial prompt from URL has been handled
   const initialPromptHandledRef = useRef(false);
@@ -160,8 +162,13 @@ const GenerateProblemClient = () => {
       if (savedProblems) {
         try {
           const parsedProblems = JSON.parse(savedProblems);
-          if (Array.isArray(parsedProblems)) {
-            setGeneratedProblem(parsedProblems[parsedProblems.length - 1]);
+          // Load ProblemDetailAPI if available
+          if (
+            Array.isArray(parsedProblems) &&
+            parsedProblems.length > 0 &&
+            parsedProblems[0].problemId // Check if it looks like ProblemDetailAPI
+          ) {
+            setGeneratedProblem(parsedProblems[0]); // Load the first (likely only) saved detailed problem
           } else {
             sessionStorage.removeItem(SESSION_STORAGE_KEY);
           }
@@ -177,11 +184,13 @@ const GenerateProblemClient = () => {
   useEffect(() => {
     if (hasInitiallyLoaded) {
       if (generatedProblem) {
+        // Save the full ProblemDetailAPI
         sessionStorage.setItem(
           SESSION_STORAGE_KEY,
-          JSON.stringify([generatedProblem])
+          JSON.stringify([generatedProblem]) // Store as an array for consistency
         );
       } else {
+        // Clear if no problem is generated/loaded
         if (sessionStorage.getItem(SESSION_STORAGE_KEY)) {
           sessionStorage.removeItem(SESSION_STORAGE_KEY);
         }
@@ -189,138 +198,111 @@ const GenerateProblemClient = () => {
     }
   }, [generatedProblem, hasInitiallyLoaded]);
 
-  // --- Polling Logic ---
-  useEffect(() => {
-    if (!problemId) return;
-    let isActive = true;
-    const poll = async () => {
-      try {
-        const detail = await getProblemDetailAPI(problemId);
-        if (!isActive) return;
-        setProblemDetail(detail);
-        // Streaming-like UI: 필드가 채워질 때마다 메시지 추가
-        const prev = prevDetailRef.current;
-        if (prev) {
-          if (!prev.title && detail.title) {
-            setStatusMessages((prevMsgs) => [
-              ...prevMsgs,
-              `제목 생성됨: ${detail.title}`,
-            ]);
-          }
-          if (!prev.description && detail.description) {
-            setStatusMessages((prevMsgs) => [...prevMsgs, `문제 설명 생성됨`]);
-          }
-          if (!prev.input_format && detail.input_format) {
-            setStatusMessages((prevMsgs) => [...prevMsgs, `입력 형식 생성됨`]);
-          }
-          if (!prev.output_format && detail.output_format) {
-            setStatusMessages((prevMsgs) => [...prevMsgs, `출력 형식 생성됨`]);
-          }
-          if (!prev.constraints && detail.constraints) {
-            setStatusMessages((prevMsgs) => [...prevMsgs, `제약 조건 생성됨`]);
-          }
-        } else {
-          // 최초 polling이면 기본 메시지
-          setStatusMessages((prevMsgs) => [
-            ...prevMsgs,
-            `문제 생성 세부 정보 조회 시작`,
-          ]);
-        }
-        prevDetailRef.current = detail;
-        if (detail.genStatus === "completed") {
-          setStatusMessages((prevMsgs) => [
-            ...prevMsgs,
-            "문제 생성이 완료되었습니다!",
-          ]);
-          if (pollingRef.current) clearTimeout(pollingRef.current);
-          return;
-        }
-        pollingRef.current = setTimeout(poll, 1200);
-      } catch (err) {
-        setStatusMessages((prevMsgs) => [
-          ...prevMsgs,
-          `❌ 상세 조회 오류: ${err instanceof Error ? err.message : err}`,
-        ]);
-        if (pollingRef.current) clearTimeout(pollingRef.current);
-      }
-    };
-    poll();
-    return () => {
-      isActive = false;
-      if (pollingRef.current) clearTimeout(pollingRef.current);
-    };
-  }, [problemId]);
+  // --- Remove Polling Logic ---
+  // useEffect(() => { ... }, [problemId]); // This block is removed
 
-  // --- Main Generation Logic ---
+  // --- Main Generation Logic (Updated for SSE) ---
   const handleGenerate = useCallback(
     async (e?: React.FormEvent, promptOverride?: string) => {
       e?.preventDefault();
-      // Use override if provided, otherwise use state
       const currentPrompt = (promptOverride ?? prompt).trim();
       if (!currentPrompt || isLoading) return;
 
       setIsLoading(true);
       setError(null);
-      setGeneratedProblem(null); // Clear previous results immediately
-      setProblemId(null);
-      setProblemDetail(null);
-      prevDetailRef.current = null;
+      setGeneratedProblem(null); // Clear previous final result
       setStatusMessages([
         `요청 시작: '${currentPrompt}' (${difficultyMap[difficulty]})`,
       ]);
       textareaRef.current?.blur();
 
+      const params: CreateProblemRequest = {
+        prompt: currentPrompt,
+        difficulty: difficultyMap[difficulty],
+      };
+
       try {
-        const res = await createProblemAPI({
-          prompt: currentPrompt,
-          difficulty: difficultyMap[difficulty],
+        // Use the new streaming function
+        await streamProblemGeneration(params, {
+          onStatus: (status: ProblemStreamStatus) => {
+            setStatusMessages((prev) => [...prev, status.message]);
+            console.log("Status update:", status);
+          },
+          onResult: (result: ProblemStreamResult) => {
+            console.log("Received final result:", result);
+            if (result && result.payload) {
+              setGeneratedProblem(result.payload); // Set the final detailed problem
+              // Optionally add a final success message to status
+              setStatusMessages((prev) => [...prev, "✅ 생성 완료!"]);
+            } else {
+              console.error(
+                "Received empty or invalid result payload:",
+                result
+              );
+              setError("문제 생성 결과가 비어있거나 형식이 잘못되었습니다.");
+              setStatusMessages((prev) => [
+                ...prev,
+                "❌ 문제 생성 결과가 잘못되었습니다.",
+              ]);
+            }
+          },
+          onError: (error: ProblemStreamError) => {
+            console.error("Generation error:", error);
+            setError(error.payload);
+            setStatusMessages((prev) => [...prev, `❌ 오류: ${error.payload}`]);
+            setIsLoading(false); // Stop loading on error
+          },
+          onComplete: () => {
+            setIsLoading(false); // Stop loading when stream completes
+            // Use function state reference instead of closure to avoid dependency issues
+            setTimeout(() => {
+              // Get current state via setGeneratedProblem's functional form
+              setGeneratedProblem((currentProblem) => {
+                if (!currentProblem) {
+                  console.warn(
+                    "Stream completed but generatedProblem is still null. This might indicate the 'result' event was never received."
+                  );
+                } else {
+                  console.log(
+                    "SSE Stream Completed with valid generatedProblem:",
+                    currentProblem
+                  );
+                }
+                return currentProblem; // Return same value to not change state
+              });
+            }, 100);
+          },
         });
-        const newProblemId = res.problemId as string; // Use a different variable name
-        if (newProblemId) {
-          setProblemId(newProblemId); // Update state with the new ID
-          setStatusMessages((prev) => [
-            ...prev,
-            `문제 생성 요청이 접수됨 (ID: ${newProblemId})`,
-          ]);
-        } else {
-          setStatusMessages((prev) => [
-            ...prev,
-            "문제 생성 요청이 접수되었으나, problemId를 받지 못했습니다.",
-          ]);
-          setIsLoading(false);
-          return;
-        }
       } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : "알 수 없는 오류";
+        // Catch errors from the streamProblemGeneration setup itself
+        const errorMsg =
+          err instanceof Error
+            ? err.message
+            : "스트리밍 시작 중 알 수 없는 오류";
         setError(errorMsg);
         setStatusMessages((prev) => [...prev, `❌ 오류: ${errorMsg}`]);
         setIsLoading(false);
-        return;
       }
-      // No need to manually set isLoading false here if polling starts
     },
-    [prompt, isLoading, difficulty] // Dependencies for handleGenerate
-  ); // Added prompt and isLoading as dependencies
+    [prompt, isLoading, difficulty] // Dependencies remain the same
+  );
 
-  // Effect to handle initial prompt from URL
+  // Effect to handle initial prompt from URL (Keep as is)
   useEffect(() => {
     const initialPrompt = searchParams.get("prompt");
     if (initialPrompt && !initialPromptHandledRef.current) {
       initialPromptHandledRef.current = true; // Mark as handled
       const decodedPrompt = decodeURIComponent(initialPrompt);
       setPrompt(decodedPrompt); // Set the state
+      // Use the callback directly
       handleGenerate(undefined, decodedPrompt);
     }
-  }, [searchParams, handleGenerate]);
+  }, [searchParams, handleGenerate]); // handleGenerate is now stable
 
-  // Simplified abort cleanup for dummy
-  useEffect(() => {
-    return () => {
-      controllerRef.current.abort = true; // Signal any ongoing dummy process to stop
-    };
-  }, []);
+  // Remove dummy controllerRef cleanup
+  // useEffect(() => { ... }, []);
 
-  // --- handleKeyPress, applyPreset ---
+  // --- handleKeyPress, applyPreset (Keep as is) ---
   const handleKeyPress = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey && !isLoading) {
       e.preventDefault();
@@ -333,13 +315,17 @@ const GenerateProblemClient = () => {
   };
   // --- End ---
 
+  // Update showResultsArea condition: show if loading, or if there are status messages/error, or if a final problem exists
   const showResultsArea =
-    isLoading || statusMessages.length > 1 || problemDetail !== null || error;
+    isLoading ||
+    statusMessages.length > 1 ||
+    generatedProblem !== null ||
+    error;
 
   return (
     <div className="text-gray-900">
       <div className="max-w-4xl mx-auto">
-        {/* --- Input Section --- */}
+        {/* --- Input Section (No changes needed here) --- */}
         <div
           className={`
                     bg-white rounded-lg shadow-sm border transition-all duration-150 ease-in-out cursor-text
@@ -412,7 +398,7 @@ const GenerateProblemClient = () => {
           </div>
         </div>
 
-        {/* --- Problem Type Presets --- */}
+        {/* --- Problem Type Presets (No changes needed here) --- */}
         <div className="flex flex-row flex-wrap gap-2 my-4 justify-center">
           {problemTypePresets.map((preset, index) => (
             <button
@@ -427,13 +413,13 @@ const GenerateProblemClient = () => {
           ))}
         </div>
 
-        {/* --- Results / Status Area --- */}
+        {/* --- Results / Status Area (Updated) --- */}
         {showResultsArea && (
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 min-h-[150px] max-h-[70vh] overflow-y-auto mt-4">
             <h3 className="text-lg font-semibold mb-4 text-gray-900">
               생성 상태 및 결과:
             </h3>
-            {/* Status Messages */}
+            {/* Status Messages (No change needed) */}
             {statusMessages.length > 0 && (
               <div
                 ref={statusAreaRef}
@@ -447,65 +433,161 @@ const GenerateProblemClient = () => {
                 ))}
               </div>
             )}
-            {/* Error Display */}
+            {/* Error Display (No change needed) */}
             {error && (
               <div className="mb-4 p-3 bg-red-100 text-red-700 border border-red-300 rounded-md text-sm">
                 <strong>오류:</strong> {error}
               </div>
             )}
-            {/* Problem Detail Streaming View */}
-            {problemDetail && (
-              <div className="mt-5 space-y-2">
+            {/* Final Problem Detail Display (Updated) */}
+            {generatedProblem && !isLoading && (
+              <div className="mt-5 space-y-4">
+                {" "}
+                {/* Increased spacing */}
                 <div className="border border-gray-200 bg-white p-4 rounded-lg">
-                  <div className="mb-2">
-                    <span className="font-semibold">제목:</span>{" "}
-                    {problemDetail.title || (
-                      <span className="text-gray-400">(생성 중...)</span>
-                    )}
+                  <div className="mb-3">
+                    <span className="font-semibold text-xl">
+                      {" "}
+                      {/* Larger Title */}
+                      {generatedProblem.targetLanguage &&
+                      generatedProblem.title_translated
+                        ? generatedProblem.title_translated
+                        : generatedProblem.title}
+                    </span>
                   </div>
-                  <div className="mb-2">
-                    <span className="font-semibold">난이도:</span>{" "}
-                    {problemDetail.difficulty || (
-                      <span className="text-gray-400">(생성 중...)</span>
-                    )}
+                  <div className="mb-3">
+                    <span
+                      className={`inline-block px-2 py-0.5 text-xs font-medium rounded-full ${
+                        // Adjust styling based on difficulty value if needed
+                        generatedProblem.difficulty === "쉬움" ||
+                        generatedProblem.difficulty === "Easy"
+                          ? "bg-green-100 text-green-800"
+                          : generatedProblem.difficulty === "보통" ||
+                            generatedProblem.difficulty === "Medium"
+                          ? "bg-yellow-100 text-yellow-800"
+                          : "bg-red-100 text-red-800"
+                      }`}
+                    >
+                      {/* Display Korean or English based on preference/mapping */}
+                      {difficultyMap[generatedProblem.difficulty] ||
+                        generatedProblem.difficulty}
+                    </span>
                   </div>
-                  <div className="mb-2">
-                    <span className="font-semibold">문제 설명:</span>
-                    <div className="whitespace-pre-wrap text-sm mt-1">
-                      {problemDetail.description || (
-                        <span className="text-gray-400">(생성 중...)</span>
-                      )}
+
+                  {/* Render Description using ReactMarkdown */}
+                  <div className="mb-4 prose prose-sm max-w-none text-gray-700">
+                    <h4 className="font-semibold mb-2 text-base">문제 내용:</h4>
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {generatedProblem.targetLanguage &&
+                      generatedProblem.description_translated
+                        ? generatedProblem.description_translated
+                        : generatedProblem.description}
+                    </ReactMarkdown>
+                  </div>
+
+                  {/* REMOVED separate constraints block */}
+
+                  {/* Display other relevant details */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-2 text-sm text-gray-600 border-t pt-4 mt-4">
+                    <div>
+                      <span className="font-medium text-gray-800">
+                        Problem ID:
+                      </span>{" "}
+                      {generatedProblem.problemId}
                     </div>
-                  </div>
-                  <div className="mb-2">
-                    <span className="font-semibold">입력 형식:</span>{" "}
-                    {problemDetail.input_format || (
-                      <span className="text-gray-400">(생성 중...)</span>
-                    )}
-                  </div>
-                  <div className="mb-2">
-                    <span className="font-semibold">출력 형식:</span>{" "}
-                    {problemDetail.output_format || (
-                      <span className="text-gray-400">(생성 중...)</span>
-                    )}
-                  </div>
-                  <div className="mb-2">
-                    <span className="font-semibold">제약 조건:</span>{" "}
-                    {problemDetail.constraints || (
-                      <span className="text-gray-400">(생성 중...)</span>
-                    )}
-                  </div>
-                  {problemDetail.genStatus === "completed" && (
-                    <div className="mt-4">
-                      <a
-                        href={`/coding-test/solve?id=${problemDetail.problemId}`}
-                        className="inline-block px-4 py-1.5 bg-primary text-white text-sm font-medium rounded-md hover:bg-primary-hover transition duration-200 ease-in-out"
-                      >
-                        문제 풀기
-                      </a>
+                    <div>
+                      <span className="font-medium text-gray-800">
+                        Language:
+                      </span>{" "}
+                      {generatedProblem.language}
                     </div>
-                  )}
+                    <div>
+                      <span className="font-medium text-gray-800">Status:</span>{" "}
+                      {generatedProblem.generationStatus}
+                    </div>
+                    <div>
+                      <span className="font-medium text-gray-800">
+                        Created:
+                      </span>{" "}
+                      {new Date(generatedProblem.createdAt).toLocaleString()}
+                    </div>
+                    {generatedProblem.targetLanguage && (
+                      <div>
+                        <span className="font-medium text-gray-800">
+                          Translation:
+                        </span>{" "}
+                        {generatedProblem.targetLanguage}
+                      </div>
+                    )}
+                    {generatedProblem.completedAt && (
+                      <div>
+                        <span className="font-medium text-gray-800">
+                          Completed:
+                        </span>{" "}
+                        {new Date(
+                          generatedProblem.completedAt
+                        ).toLocaleString()}
+                      </div>
+                    )}
+                    {generatedProblem.analyzedIntent && (
+                      <div className="col-span-1 md:col-span-2">
+                        <span className="font-medium text-gray-800">
+                          Analyzed Intent:
+                        </span>{" "}
+                        {generatedProblem.analyzedIntent}
+                      </div>
+                    )}
+                    {/* Optionally show snippets or confirmation for code/specs */}
+                    {generatedProblem.solutionCode && (
+                      <div>
+                        <span className="font-medium text-gray-800">
+                          Solution Code:
+                        </span>{" "}
+                        Generated
+                      </div>
+                    )}
+                    {generatedProblem.testGeneratorCode && (
+                      <div>
+                        <span className="font-medium text-gray-800">
+                          Test Gen Code:
+                        </span>{" "}
+                        Generated
+                      </div>
+                    )}
+                    {generatedProblem.testSpecifications && (
+                      <div>
+                        <span className="font-medium text-gray-800">
+                          Test Specs:
+                        </span>{" "}
+                        Generated (JSON)
+                      </div>
+                    )}
+                    {generatedProblem.constraints && (
+                      <div>
+                        <span className="font-medium text-gray-800">
+                          Constraints Data:
+                        </span>{" "}
+                        Generated (JSON)
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Go to Solve button */}
+                  <div className="mt-6 flex justify-center">
+                    <Link
+                      href={`/coding-test/solve?id=${generatedProblem.problemId}`}
+                      className="inline-block px-6 py-3 bg-primary text-white font-medium rounded-md hover:bg-primary-hover transition text-center"
+                    >
+                      풀러가기
+                    </Link>
+                  </div>
                 </div>
+              </div>
+            )}
+            {/* Optional: Show a loading indicator specifically for the result area if needed */}
+            {isLoading && statusMessages.length > 1 && !generatedProblem && (
+              <div className="text-center text-gray-500 text-sm">
+                문제 생성 중...
               </div>
             )}
           </div>

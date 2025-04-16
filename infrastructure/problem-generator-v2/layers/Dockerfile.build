@@ -1,0 +1,30 @@
+# capstone-2025-04/infrastructure/problem-generator-v2/layers/Dockerfile.build
+
+# Use an official AWS Lambda Node.js base image for arm64 matching the runtime
+FROM public.ecr.aws/lambda/nodejs:20-arm64
+
+# Set the working directory for installation
+WORKDIR /opt
+
+# Copy package files
+COPY package.json package-lock.json ./
+
+# Install production dependencies using npm ci (clean install)
+# This installs into /opt/node_modules, Lambda expects /opt/nodejs/node_modules
+# We will move it in the build script or adjust structure here if needed
+RUN npm ci --omit=dev
+
+# Lambda expects layers in /opt/nodejs/node_modules
+# Create the directory and move installed modules there
+RUN mkdir -p nodejs && mv node_modules nodejs/
+
+# Optional: Clean up package files and cache to reduce layer size
+RUN rm package.json package-lock.json \
+    && rm -rf /root/.npm /tmp/*
+
+# Ensure findutils is available if needed for further cleanup (less critical for node_modules)
+# RUN microdnf install -y findutils && microdnf clean all
+# RUN find /opt/nodejs/node_modules/ -type f -name '*.js.map' -delete
+# RUN find /opt/nodejs/node_modules/ -type f -name '*.d.ts' -delete
+# RUN find /opt/nodejs/node_modules/ -type d -name 'docs' -exec rm -rf {} +
+# RUN find /opt/nodejs/node_modules/ -type d -name 'test*' -exec rm -rf {} +
