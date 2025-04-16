@@ -155,12 +155,15 @@ export async function* streamGenerationStatusDummyAPI(
 
 // --- Keep the old non-streaming dummy API for potential comparison or fallback ---
 /**
- * [DEPRECATED - Use streamGenerationStatusDummyAPI]
+ * @deprecated Use streamProblemGeneration instead.
  * Simulates calling a backend API to generate coding problems (non-streaming).
  */
 export const generateProblemsDummyAPI_NonStreaming = async (
   params: GenerateProblemParams
 ): Promise<GeneratedProblem[]> => {
+  console.warn(
+    "DEPRECATED: generateProblemsDummyAPI_NonStreaming is deprecated. Use streamProblemGeneration."
+  );
   console.log("Dummy Non-Streaming API called with params:", params);
   await delay(1500 + Math.random() * 1000);
   const dummyProblems: GeneratedProblem[] = [
@@ -200,15 +203,17 @@ export const generateProblemsDummyAPI_NonStreaming = async (
 
 // ===================== 실제 Problem Generator API 연동 =====================
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_PROBLEM_GENERATION_API_BASE_URL ||
-  (typeof window !== "undefined"
-    ? (
-        window as unknown as {
-          NEXT_PUBLIC_PROBLEM_GENERATION_API_BASE_URL?: string;
-        }
-      ).NEXT_PUBLIC_PROBLEM_GENERATION_API_BASE_URL
-    : undefined);
+// Use the specific environment variable for the V2 generator endpoint
+const PROBLEM_GENERATOR_API_ENDPOINT =
+  process.env.NEXT_PUBLIC_PROBLEM_GENERATION_API_BASE_URL;
+
+if (!PROBLEM_GENERATOR_API_ENDPOINT) {
+  console.error(
+    "Error: NEXT_PUBLIC_PROBLEM_GENERATION_API_BASE_URL environment variable is not set."
+  );
+  // Throw an error to prevent API calls without a configured endpoint
+  throw new Error("Problem Generator API endpoint is not configured.");
+}
 
 // --- API 타입 정의 (명세 기반) ---
 export type ProblemDifficulty = "튜토리얼" | "쉬움" | "보통" | "어려움";
@@ -243,35 +248,217 @@ export interface ProblemDetailAPI {
   problemId: string;
   title: string;
   description: string;
-  input_format: string;
-  output_format: string;
+  difficulty: string;
   constraints: string;
-  example_input?: string | Record<string, unknown>;
-  example_output?: string | Record<string, unknown>;
-  testcases?: ProblemExampleIO[];
-  difficulty: ProblemDifficulty;
-  algorithmType: string;
-  likesCount: number;
-  creatorId: string;
-  genStatus: string;
-  createdAt: string;
-  updatedAt: string;
-  language?: string;
   solution_code?: string;
   test_case_generation_code?: string;
-  template_source?: string;
-  algorithm_hint?: string;
+  analyzed_intent?: string;
+  test_specifications?: string;
+  generation_status?: string;
+  language?: string;
+  createdAt?: string;
+  completedAt?: string;
+  // The following fields are not present in backend and are commented out:
+  // input_format?: string;
+  // output_format?: string;
+  // example_input?: string | Record<string, unknown>;
+  // example_output?: string | Record<string, unknown>;
+  // testcases?: ProblemExampleIO[];
+  // algorithmType?: string;
+  // likesCount?: number;
+  // creatorId?: string;
+  // genStatus?: string;
+  // updatedAt?: string;
+  // template_source?: string;
+  // algorithm_hint?: string;
 }
 
-// --- 실제 API 호출 함수 ---
+// --- SSE Stream Types (Exported) ---
+export interface ProblemStreamStatus {
+  // Exported
+  step: number;
+  message: string;
+}
+
+export interface ProblemStreamError {
+  // Exported
+  payload: string; // Error message string
+}
+
+export interface ProblemStreamResult {
+  // Exported
+  payload: ProblemDetailAPI; // The final generated problem detail
+}
+
+// Define the callback function types for the streaming function (Exported)
+export type OnStatusCallback = (status: ProblemStreamStatus) => void; // Exported
+export type OnResultCallback = (result: ProblemStreamResult) => void; // Exported
+export type OnErrorCallback = (error: ProblemStreamError) => void; // Exported
+export type OnCompleteCallback = () => void; // Exported
+
+// --- SHA256 Helper ---
+/**
+ * Calculates the SHA256 hash of a string.
+ * @param text The string to hash.
+ * @returns A promise that resolves to the hex-encoded SHA256 hash.
+ */
+async function calculateSHA256(text: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(text);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer)); // convert buffer to byte array
+  const hashHex = hashArray
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join(""); // convert bytes to hex string
+  return hashHex;
+}
+
+// --- SSE Streaming Function ---
+/**
+ * Initiates problem generation and streams status/results via SSE.
+ *
+ * @param params The parameters for problem generation (prompt, difficulty).
+ * @param callbacks Object containing onStatus, onResult, onError, onComplete callbacks.
+ */
+export const streamProblemGeneration = async (
+  params: CreateProblemRequest,
+  callbacks: {
+    onStatus: OnStatusCallback;
+    onResult: OnResultCallback;
+    onError: OnErrorCallback;
+    onComplete: OnCompleteCallback;
+  }
+): Promise<void> => {
+  const { onStatus, onResult, onError, onComplete } = callbacks;
+
+  try {
+    // 1. Construct Payload & Calculate SHA256
+    const payloadString = JSON.stringify(params);
+    const sha256Hash = await calculateSHA256(payloadString);
+    console.log("Problem Gen Payload SHA256:", sha256Hash);
+
+    // 2. Use Fetch API for SSE Streaming
+    console.log(
+      "Connecting to Problem Gen SSE endpoint:",
+      PROBLEM_GENERATOR_API_ENDPOINT
+    );
+    const response = await fetch(PROBLEM_GENERATOR_API_ENDPOINT, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        // No Authorization header needed for this endpoint (IAM auth via CloudFront OAC)
+        "x-amz-content-sha256": sha256Hash, // Required for SigV4 signing by CloudFront/Lambda URL
+      },
+      body: payloadString,
+    });
+
+    if (!response.ok) {
+      // Handle non-2xx errors (e.g., 403 Forbidden, 500 Internal Server Error)
+      const errorText = await response.text();
+      throw new Error(
+        `API request failed with status ${response.status}: ${errorText}`
+      );
+    }
+
+    if (!response.body) {
+      throw new Error("Response body is missing for streaming.");
+    }
+
+    // 3. Process SSE Stream
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = ""; // Buffer to handle partial messages
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        console.log("Problem Gen SSE stream finished.");
+        break;
+      }
+
+      buffer += decoder.decode(value, { stream: true });
+
+      // Process buffer line by line for SSE messages (event: ...\ndata: ...\n\n)
+      let eventStartIndex = 0;
+      while (eventStartIndex < buffer.length) {
+        const eventEndIndex = buffer.indexOf("\n\n", eventStartIndex);
+        if (eventEndIndex === -1) break; // Wait for more data if no full event found
+
+        const eventBlock = buffer.substring(eventStartIndex, eventEndIndex);
+        eventStartIndex = eventEndIndex + 2; // Move past the processed block
+
+        let eventType = "message"; // Default event type
+        let eventData = "";
+
+        const lines = eventBlock.split("\n");
+        for (const line of lines) {
+          if (line.startsWith("event:")) {
+            eventType = line.substring(6).trim();
+          } else if (line.startsWith("data:")) {
+            eventData = line.substring(5).trim();
+          }
+        }
+
+        if (eventData) {
+          try {
+            const parsedData = JSON.parse(eventData);
+            console.log("Received SSE Event:", eventType, "Data:", parsedData); // Log received event
+
+            switch (eventType) {
+              case "status":
+                onStatus(parsedData as ProblemStreamStatus);
+                break;
+              case "result":
+                onResult(parsedData as ProblemStreamResult);
+                break;
+              case "error":
+                onError(parsedData as ProblemStreamError);
+                // Consider stopping further processing on backend error
+                break;
+              default:
+                console.warn("Received unknown SSE event type:", eventType);
+            }
+          } catch (e) {
+            console.error(
+              "Failed to parse SSE data content:",
+              eventData,
+              "Error:",
+              e
+            );
+            onError({
+              payload: `Failed to parse stream data: ${eventData.substring(
+                0,
+                100
+              )}...`,
+            });
+          }
+        }
+      }
+      // Keep the remaining partial message in the buffer
+      buffer = buffer.substring(eventStartIndex);
+    }
+    // End of stream
+    onComplete();
+  } catch (error) {
+    console.error("Error in streamProblemGeneration:", error);
+    const err =
+      error instanceof Error ? error : new Error("An unknown error occurred");
+    onError({ payload: err.message });
+    // Ensure completion is called even on error to stop loading states etc.
+    onComplete();
+  }
+};
+
+// --- Existing Non-Streaming API Functions (Keep as is, but ensure API_BASE_URL is correct) ---
 
 /**
- * 문제 생성 요청 (POST /problems)
+ * 문제 생성 요청 (POST /problems) - Non-streaming, returns initial ID
  */
 export async function createProblemAPI(
   params: CreateProblemRequest
 ): Promise<CreateProblemResponse> {
-  const res = await fetch(`${API_BASE_URL}/problems`, {
+  const res = await fetch(`${PROBLEM_GENERATOR_API_ENDPOINT}/problems`, {
+    // Assuming the same base URL for now
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(params),
@@ -287,7 +474,8 @@ export async function createProblemAPI(
  * 문제 목록 조회 (GET /problems)
  */
 export async function getProblemsAPI(): Promise<GetProblemsResponse> {
-  const res = await fetch(`${API_BASE_URL}/problems`, {
+  const res = await fetch(`${PROBLEM_GENERATOR_API_ENDPOINT}/problems`, {
+    // Assuming the same base URL for now
     method: "GET",
   });
   if (!res.ok) {
@@ -303,9 +491,13 @@ export async function getProblemsAPI(): Promise<GetProblemsResponse> {
 export async function getProblemDetailAPI(
   problemId: string
 ): Promise<ProblemDetailAPI> {
-  const res = await fetch(`${API_BASE_URL}/problems/${problemId}`, {
-    method: "GET",
-  });
+  const res = await fetch(
+    `${PROBLEM_GENERATOR_API_ENDPOINT}/problems/${problemId}`,
+    {
+      // Assuming the same base URL for now
+      method: "GET",
+    }
+  );
   if (!res.ok) {
     const error = await res.text();
     throw new Error(`문제 상세 조회 실패: ${res.status} ${error}`);
@@ -313,6 +505,20 @@ export async function getProblemDetailAPI(
   return res.json();
 }
 
-// ===================== 더미 함수 DEPRECATED 처리 =====================
-// ... 기존 더미 함수 및 타입은 deprecated 주석 추가 ...
-// ... existing code ...
+// // ===================== 더미 함수 DEPRECATED 처리 =====================
+// /**
+//  * @deprecated Use streamProblemGeneration instead.
+//  * Simulates calling a backend API to generate coding problems **with streaming feedback**.
+//  */
+// export async function* streamGenerationStatusDummyAPI(
+//   params: GenerateProblemParams
+// ): AsyncGenerator<StreamMessage, void, undefined> {
+//   console.warn(
+//     "DEPRECATED: streamGenerationStatusDummyAPI is deprecated. Use streamProblemGeneration."
+//   );
+//   // ... (keep dummy implementation for reference if needed, or remove)
+//   yield { type: "status", payload: "Using DEPRECATED dummy stream!" };
+//   await delay(500);
+//   yield { type: "error", payload: "Dummy stream is deprecated." };
+// }
+// // ... existing code ...
