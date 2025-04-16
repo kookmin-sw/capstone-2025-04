@@ -209,7 +209,8 @@ const CodingTestContent: React.FC = () => {
         setIsLoadingProblem(true);
         setErrorProblem(null);
         try {
-          const data = await getProblemById(id);
+          // getProblemById returns ProblemDetail which is ProblemDetailAPI
+          const data: ProblemDetailAPI = await getProblemById(id);
           setProblemDetails(data);
           hasLoadedInitialCode.current = false;
         } catch (err) {
@@ -507,7 +508,7 @@ const ProblemPanel: React.FC<{ problemDetails: ProblemDetailAPI }> = ({
           </>
         )}
       </div>
-      {problemDetails.test_specifications && (
+      {problemDetails.testSpecifications && (
         <div className="mb-6">
           <h3 className="text-md font-medium text-gray-800 mb-2">
             입출력 예제
@@ -516,7 +517,7 @@ const ProblemPanel: React.FC<{ problemDetails: ProblemDetailAPI }> = ({
             try {
               // Parse the JSON string of test specifications
               const testcases = JSON.parse(
-                problemDetails.test_specifications
+                problemDetails.testSpecifications
               ) as TestCase[];
               return testcases.map((example: TestCase, index: number) => (
                 <div key={index} className="mb-3 last:mb-0">
@@ -691,12 +692,12 @@ const ResultsPanel: React.FC<{ problemDetails: ProblemDetailAPI }> = ({
       case "examples":
         return (
           <div className="mt-4 space-y-4">
-            {problemDetails.test_specifications ? (
+            {problemDetails.testSpecifications ? (
               (() => {
                 try {
                   // Parse the JSON string of test specifications
                   const testcases = JSON.parse(
-                    problemDetails.test_specifications
+                    problemDetails.testSpecifications
                   ) as TestCase[];
                   return testcases.length > 0 ? (
                     testcases.map((example: TestCase, index: number) => (

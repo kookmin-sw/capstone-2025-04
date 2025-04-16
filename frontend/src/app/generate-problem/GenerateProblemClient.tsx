@@ -19,6 +19,8 @@ import type {
   ProblemStreamResult,
   ProblemStreamError,
 } from "@/api/generateProblemApi";
+import ReactMarkdown from "react-markdown"; // Import ReactMarkdown
+import remarkGfm from "remark-gfm"; // Import GFM plugin for tables, etc.
 
 // Problem type presets interface
 interface ProblemTypePreset {
@@ -438,77 +440,126 @@ const GenerateProblemClient = () => {
               </div>
             )}
             {/* Final Problem Detail Display (Updated for backend fields) */}
+            {/* Final Problem Detail Display (Updated) */}
             {generatedProblem && !isLoading && (
-              <div className="mt-5 space-y-2">
+              <div className="mt-5 space-y-4">
+                {" "}
+                {/* Increased spacing */}
                 <div className="border border-gray-200 bg-white p-4 rounded-lg">
-                  <div className="mb-2">
-                    <span className="font-semibold">제목:</span>{" "}
-                    {generatedProblem.title}
+                  <div className="mb-3">
+                    <span className="font-semibold text-xl">
+                      {" "}
+                      {/* Larger Title */}
+                      {generatedProblem.title}
+                    </span>
                   </div>
-                  <div className="mb-2">
-                    <span className="font-semibold">난이도:</span>{" "}
-                    {generatedProblem.difficulty}
-                  </div>
-                  <div className="mb-2">
-                    <span className="font-semibold">문제 설명:</span>
-                    <div className="whitespace-pre-wrap text-sm mt-1">
-                      {generatedProblem.description}
-                    </div>
-                  </div>
-                  <div className="mb-2">
-                    <span className="font-semibold">제약 조건 (JSON):</span>{" "}
-                    <div className="whitespace-pre-wrap text-xs mt-1 bg-gray-50 p-2 rounded">
-                      {generatedProblem.constraints}
-                    </div>
-                  </div>
-                  {generatedProblem.solution_code && (
-                    <div className="mb-2">
-                      <span className="font-semibold">Solution Code:</span>
-                      <pre className="bg-gray-100 rounded p-2 text-xs overflow-x-auto mt-1">
-                        {generatedProblem.solution_code}
-                      </pre>
-                    </div>
-                  )}
-                  {generatedProblem.test_case_generation_code && (
-                    <div className="mb-2">
-                      <span className="font-semibold">
-                        Test Generator Code:
-                      </span>
-                      <pre className="bg-gray-100 rounded p-2 text-xs overflow-x-auto mt-1">
-                        {generatedProblem.test_case_generation_code}
-                      </pre>
-                    </div>
-                  )}
-                  <div className="mb-2">
-                    <span className="font-semibold">분석된 의도:</span>{" "}
-                    <div className="whitespace-pre-wrap text-xs mt-1">
-                      {generatedProblem.analyzed_intent || ""}
-                    </div>
-                  </div>
-                  <div className="mb-2">
-                    <span className="font-semibold">테스트 명세 (JSON):</span>{" "}
-                    <div className="whitespace-pre-wrap text-xs mt-1 bg-gray-50 p-2 rounded">
-                      {generatedProblem.test_specifications || ""}
-                    </div>
-                  </div>
-                  <div className="mb-2">
-                    <span className="font-semibold">생성 상태:</span>{" "}
-                    {generatedProblem.generation_status || ""}
-                  </div>
-                  <div className="mb-2">
-                    <span className="font-semibold">언어:</span>{" "}
-                    {generatedProblem.language}
-                  </div>
-                  <div className="mb-2">
-                    <span className="font-semibold">생성일:</span>{" "}
-                    {generatedProblem.createdAt}
-                  </div>
-                  <div className="mb-2">
-                    <span className="font-semibold">완료일:</span>{" "}
-                    {generatedProblem.completedAt || ""}
+                  <div className="mb-3">
+                    <span
+                      className={`inline-block px-2 py-0.5 text-xs font-medium rounded-full ${
+                        // Adjust styling based on difficulty value if needed
+                        generatedProblem.difficulty === "쉬움" ||
+                        generatedProblem.difficulty === "Easy"
+                          ? "bg-green-100 text-green-800"
+                          : generatedProblem.difficulty === "보통" ||
+                            generatedProblem.difficulty === "Medium"
+                          ? "bg-yellow-100 text-yellow-800"
+                          : "bg-red-100 text-red-800"
+                      }`}
+                    >
+                      {/* Display Korean or English based on preference/mapping */}
+                      {difficultyMap[generatedProblem.difficulty] ||
+                        generatedProblem.difficulty}
+                    </span>
                   </div>
 
-                  {/* Add Go to Solve button */}
+                  {/* Render Description using ReactMarkdown */}
+                  <div className="mb-4 prose prose-sm max-w-none text-gray-700">
+                    <h4 className="font-semibold mb-2 text-base">문제 내용:</h4>
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {generatedProblem.description}
+                    </ReactMarkdown>
+                  </div>
+
+                  {/* REMOVED separate constraints block */}
+
+                  {/* Display other relevant details */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-2 text-sm text-gray-600 border-t pt-4 mt-4">
+                    <div>
+                      <span className="font-medium text-gray-800">
+                        Problem ID:
+                      </span>{" "}
+                      {generatedProblem.problemId}
+                    </div>
+                    <div>
+                      <span className="font-medium text-gray-800">
+                        Language:
+                      </span>{" "}
+                      {generatedProblem.language}
+                    </div>
+                    <div>
+                      <span className="font-medium text-gray-800">Status:</span>{" "}
+                      {generatedProblem.generationStatus}
+                    </div>
+                    <div>
+                      <span className="font-medium text-gray-800">
+                        Created:
+                      </span>{" "}
+                      {new Date(generatedProblem.createdAt).toLocaleString()}
+                    </div>
+                    {generatedProblem.completedAt && (
+                      <div>
+                        <span className="font-medium text-gray-800">
+                          Completed:
+                        </span>{" "}
+                        {new Date(
+                          generatedProblem.completedAt
+                        ).toLocaleString()}
+                      </div>
+                    )}
+                    {generatedProblem.analyzedIntent && (
+                      <div className="col-span-1 md:col-span-2">
+                        <span className="font-medium text-gray-800">
+                          Analyzed Intent:
+                        </span>{" "}
+                        {generatedProblem.analyzedIntent}
+                      </div>
+                    )}
+                    {/* Optionally show snippets or confirmation for code/specs */}
+                    {generatedProblem.solutionCode && (
+                      <div>
+                        <span className="font-medium text-gray-800">
+                          Solution Code:
+                        </span>{" "}
+                        Generated
+                      </div>
+                    )}
+                    {generatedProblem.testGeneratorCode && (
+                      <div>
+                        <span className="font-medium text-gray-800">
+                          Test Gen Code:
+                        </span>{" "}
+                        Generated
+                      </div>
+                    )}
+                    {generatedProblem.testSpecifications && (
+                      <div>
+                        <span className="font-medium text-gray-800">
+                          Test Specs:
+                        </span>{" "}
+                        Generated (JSON)
+                      </div>
+                    )}
+                    {generatedProblem.constraints && (
+                      <div>
+                        <span className="font-medium text-gray-800">
+                          Constraints Data:
+                        </span>{" "}
+                        Generated (JSON)
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Go to Solve button */}
                   <div className="mt-6 flex justify-center">
                     <Link
                       href={`/coding-test/solve?id=${generatedProblem.problemId}`}

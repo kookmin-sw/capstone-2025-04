@@ -31,10 +31,16 @@ variable "common_tags" {
   }
 }
 
-variable "google_model_id" {
-  description = "The ID of the Google model to use for the chatbot"
+variable "google_ai_model_id" {
+  description = "The ID of the Google ai model to use for the chatbot"
   type        = string
-  default     = "gemini-2.5-pro-exp-03-25"
+  default     = "gemini-2.0-flash-thinking-exp-01-21"
+}
+
+variable "google_ai_api_key" {
+  description = "The API key for the Google API"
+  type        = string
+  sensitive   = true
 }
 
 variable "lambda_runtime" {

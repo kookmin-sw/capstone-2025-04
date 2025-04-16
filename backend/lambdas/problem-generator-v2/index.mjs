@@ -25,6 +25,8 @@ const GENERATOR_VERBOSE =
 const GEMINI_MODEL_NAME =
   process.env.GEMINI_MODEL_NAME || "gemini-2.5-pro-exp-03-25"; // Or "gemini-pro" etc.
 const DEFAULT_LANGUAGE = "python3.12"; // Or make configurable
+const DEFAULT_TARGET_LANGUAGE = "Korean"; // Target language for translation
+const MAX_RETRIES = 2; // Max number of retries on validation failure
 
 // AWS SDK Clients (v3) - reuse client instances
 const dynamoDBClient = new DynamoDBClient({});
@@ -138,6 +140,8 @@ Test Specifications:
 
 Requirements:
 - The code must be correct and aim to pass all the specified test cases.
+{feedback_section}
+
 - The code should be efficient and follow standard coding practices for {language}.
 - Adhere strictly to {language} syntax and standard libraries.
 
@@ -160,6 +164,8 @@ Solution Code ({language}):
 
 Requirements:
 - The generated code must define a function, e.g., \`generate_test_cases()\`, that returns a list of test cases.
+{feedback_section}
+
 - Each test case in the list must be a dictionary containing 'input' and 'expected_output' keys.
 - The generator code might need to import and execute the provided solution code logic (or re-implement its logic) to determine the correct \`expected_output\` for the generated \`input\` based on the test specifications.
 - Ensure the generated inputs cover the scenarios described in the specifications (typical, edge cases, etc.).
@@ -228,27 +234,23 @@ const descriptionGenerationPromptTemplate = PromptTemplate.fromTemplate(
 Generate a user-facing problem description for a coding challenge based on the provided details. The tone and complexity should match the **{difficulty}** level.
 
 Target Language: {language}
-
-Problem Intent:
-{analyzed_intent}
-
-Constraints JSON:
+Problem Intent: {analyzed_intent}
+Constraints Details (JSON):
 {constraints}
+Test Specification Examples (use for Examples section, format appropriately):
+{test_specs_examples}
 
-Test Specification Examples (use for examples section):
-{test_specs}
 
 Instructions:
-- Write a clear and engaging problem narrative based on the intent.
-- Define the **Input Format** section clearly.
-- Define the **Output Format** section clearly.
-- Create a **Constraints** section, listing the constraints from the JSON input.
-- Create an **Examples** section with 1-2 simple examples derived from the Test Specification Examples. Show input and corresponding output for each example.
+- Write a clear and engaging **Problem Narrative** based on the intent. **DO NOT include a main title heading (like '### Problem Title') at the beginning of the narrative.**
+- Clearly define the **Input Format**.
+- Clearly define the **Output Format**.
+- Create a **Constraints** section using the information from the "Constraints Details (JSON)". Format it clearly (e.g., using bullet points).
+- Create an **Examples** section with 1-2 simple examples derived from the "Test Specification Examples". Show the input and corresponding output clearly for each example, using markdown code blocks.
 - Ensure the overall tone, narrative complexity, and example difficulty match the specified **{difficulty}** level.
 
-**CRITICAL:** Output **ONLY** the final problem description as a single block of plain text. You may use markdown internally for headers (e.g., \`### Input Format\`) or code blocks within the description, but the overall output must be just the description text.
-
-Problem Description:`
+**CRITICAL:** Output **ONLY** the final problem description content as a single block of plain text, starting directly with the narrative or relevant sections. Use markdown for formatting (like \`### Section Title\` for subsections like Input/Output/Constraints/Examples, \`\`\`code\`\`\`, or bullet points \`-\`). The entire output should be the description text ready for display, **WITHOUT a main title heading**.
+Problem Description:` // Updated instructions
 );
 
 // --- LangChain Chains (using .pipe()) ---
@@ -268,6 +270,46 @@ const constraintsDerivationChain = constraintsDerivationPromptTemplate
 const descriptionGenerationChain = descriptionGenerationPromptTemplate
   .pipe(llm)
   .pipe(stringParser);
+
+const titleGenerationPromptTemplate = PromptTemplate.fromTemplate(
+  `
+Generate a concise and relevant title (less than 70 characters) for a coding problem with the following details. The title should be suitable for a list or menu of problems.
+
+Difficulty: {difficulty}
+Problem Intent: {analyzed_intent}
+Problem Description Snippet: {description_snippet}
+
+Requirements:
+- The title should capture the core concept of the problem.
+- Avoid generic phrases like "Coding Problem" or "Challenge".
+- Keep it concise and engaging.
+- Append the difficulty in parentheses, e.g., "(Easy)", "(Medium)", "(Hard)".
+
+**CRITICAL:** Output **ONLY** the final title string. Do not include explanations or any other text.
+
+Title:`
+);
+
+const titleGenerationChain = titleGenerationPromptTemplate
+  .pipe(llm)
+  .pipe(stringParser);
+
+const translationPromptTemplate = PromptTemplate.fromTemplate(
+  `
+Translate the following text into {target_language}. Preserve the original meaning, tone, and any markdown formatting (like ### headers, \`code blocks\`, or bullet points).
+
+Target Language: {target_language}
+
+Original Text:
+---
+{text_to_translate}
+---
+
+Translate the above text into {target_language}. Output only the translated text with no additional comments, instructions, or explanations.
+`
+);
+
+const translationChain = translationPromptTemplate.pipe(llm).pipe(stringParser);
 
 // --- Helper Functions ---
 
@@ -354,6 +396,11 @@ function cleanLlMOutput(outputString, expectedType = "code") {
 
   // Additional cleanup specific to types if needed
   if (expectedType === "json") {
+    // Remove // comments
+    cleaned = cleaned.replace(/\/\/.*$/gm, "");
+    // Remove /* */ comments (multiline)
+    cleaned = cleaned.replace(/\/\*[\s\S]*?\*\//g, "");
+
     // Ensure it looks like JSON, find first { and last }
     const start = cleaned.indexOf("{");
     const end = cleaned.lastIndexOf("}");
@@ -366,9 +413,26 @@ function cleanLlMOutput(outputString, expectedType = "code") {
     } catch (e) {
       console.warn("Cleaned JSON output might still be invalid:", cleaned);
     }
+  } else if (expectedType === "text") {
+    // Remove any lines that look like instructions or meta-commentary
+    cleaned = cleaned.replace(/^---.*?---$/gm, ""); // Remove separator lines
+    cleaned = cleaned.replace(/^\*\*.*?\*\*:.*$/gm, ""); // Remove instructions like **IMPORTANT:** ...
+    cleaned = cleaned.replace(/^Translated Text:$/gim, ""); // Remove header
+    cleaned = cleaned.replace(/^Translation:$/gim, ""); // Remove header
+
+    // Remove any text that looks like it might be an instruction about the translation
+    const instructionPatterns = [
+      /^.*?번역된 텍스트.*?출력.*$/gim, // Korean instructions about translated text output
+      /^.*?원본 텍스트.*?포함.*$/gim, // Korean instructions about not including original text
+      /^.*?설명.*?포함하지 않.*$/gim, // Korean instructions about not including explanations
+    ];
+
+    for (const pattern of instructionPatterns) {
+      cleaned = cleaned.replace(pattern, "");
+    }
   }
 
-  return cleaned;
+  return cleaned.trim();
 }
 
 // --- Main Lambda Handler ---
@@ -525,6 +589,18 @@ export const handler = awslambda.streamifyResponse(
       }
 
       // == PIPELINE START ==
+      let analyzedIntent = null;
+      let testSpecs = null;
+      let testSpecsStr = null;
+      let solutionCode = null;
+      let testGenCode = null;
+      let validationResult = null;
+      let validationFeedback = null; // Store feedback for retries
+      let constraints = null;
+      let constraintsJson = null;
+      let problemDescription = null;
+
+      // --- Step 1: Intent Analysis & Test Case Design (Run once) ---
       sendSse(stream, "status", {
         step: 1,
         message: "Analyzing prompt and designing test cases...",
@@ -541,14 +617,14 @@ export const handler = awslambda.streamifyResponse(
         "Intent/Tests",
         intentAnalysisParser // Pass parser for format instructions
       );
-      const analyzedIntent = step1Output.analyzed_intent;
-      const testSpecs = step1Output.test_specs; // Can be object/array/string
+      analyzedIntent = step1Output.analyzed_intent;
+      testSpecs = step1Output.test_specs; // Can be object/array/string
       if (!analyzedIntent || !testSpecs) {
         throw new Error(
           "Step 1 failed to produce valid intent and test specs."
         );
       }
-      const testSpecsStr = JSON.stringify(testSpecs); // Store as JSON string
+      testSpecsStr = JSON.stringify(testSpecs); // Store as JSON string
       await updateDynamoDbStatus(problemId, {
         generationStatus: "step1_complete",
         analyzedIntent: analyzedIntent,
@@ -559,112 +635,174 @@ export const handler = awslambda.streamifyResponse(
         message: "✅ Intent analyzed, test specs designed.",
       });
 
-      sendSse(stream, "status", {
-        step: 2,
-        message: "Generating solution code...",
-      });
-      const step2Input = {
-        analyzed_intent: analyzedIntent,
-        test_specs: testSpecsStr, // Pass JSON string representation
-        language: DEFAULT_LANGUAGE,
-      };
-      const solutionCodeRaw = await runChainStep(
-        2,
-        solutionGenerationChain,
-        step2Input,
-        "Solution Code"
-      );
-      const solutionCode = cleanLlMOutput(solutionCodeRaw, "code");
-      await updateDynamoDbStatus(problemId, {
-        generationStatus: "step2_complete",
-        solutionCode: solutionCode,
-      });
-      sendSse(stream, "status", {
-        step: 2,
-        message: "✅ Solution code generated.",
-      });
+      // --- Steps 2, 3, 4: Generation & Validation Loop ---
+      for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        const isRetry = attempt > 0;
+        const attemptMsg = isRetry
+          ? ` (Attempt ${attempt + 1}/${MAX_RETRIES + 1})`
+          : "";
 
-      sendSse(stream, "status", {
-        step: 3,
-        message: "Generating test case code...",
-      });
-      const step3Input = {
-        test_specs: testSpecsStr,
-        solution_code: solutionCode,
-        language: DEFAULT_LANGUAGE,
-      };
-      const testGenCodeRaw = await runChainStep(
-        3,
-        testGenChain,
-        step3Input,
-        "Test Gen Code"
-      );
-      const testGenCode = cleanLlMOutput(testGenCodeRaw, "code");
-      await updateDynamoDbStatus(problemId, {
-        generationStatus: "step3_complete",
-        testGeneratorCode: testGenCode,
-      });
-      sendSse(stream, "status", {
-        step: 3,
-        message: "✅ Test generator code generated.",
-      });
-
-      sendSse(stream, "status", {
-        step: 4,
-        message: "Validating generated code (LLM Review)...",
-      });
-      const step4Input = {
-        solution_code: solutionCode,
-        test_gen_code: testGenCode,
-        test_specs: testSpecsStr,
-        language: DEFAULT_LANGUAGE,
-      };
-      const validationResult = await runChainStep(
-        4,
-        validationChain,
-        step4Input,
-        "Validation",
-        validationParser // Pass parser for format instructions
-      );
-      console.log("Step 4 Output (Validation):", validationResult);
-      if (validationResult.status?.toLowerCase() !== "pass") {
-        const errorMsg = `LLM Validation failed: ${validationResult.details}`;
+        // --- Step 2: Solution Generation ---
+        sendSse(stream, "status", {
+          step: 2,
+          message: `Generating solution code...${attemptMsg}`,
+        });
+        const step2Input = {
+          analyzed_intent: analyzedIntent,
+          test_specs: testSpecsStr,
+          language: DEFAULT_LANGUAGE,
+          feedback_section: validationFeedback
+            ? `\n\n**Previous Attempt Feedback:**\n${validationFeedback}\nPlease address this feedback in the new solution.`
+            : "", // Add feedback if available
+        };
+        const solutionCodeRaw = await runChainStep(
+          2,
+          solutionGenerationChain,
+          step2Input,
+          "Solution Code"
+        );
+        solutionCode = cleanLlMOutput(solutionCodeRaw, "code"); // Update outer scope variable
         await updateDynamoDbStatus(problemId, {
-          generationStatus: "step4_failed",
-          errorMessage: errorMsg,
+          generationStatus: `step2_attempt_${attempt}`,
+          solutionCode: solutionCode, // Save latest attempt
         });
-        sendSse(stream, "error", {
-          payload: errorMsg,
+        sendSse(stream, "status", {
+          step: 2,
+          message: `✅ Solution code generated.${attemptMsg}`,
         });
-        throw new Error(errorMsg);
-      }
-      await updateDynamoDbStatus(problemId, {
-        generationStatus: "step4_complete",
-        validationDetails: JSON.stringify(validationResult),
-      });
-      sendSse(stream, "status", {
-        step: 4,
-        message: "✅ Validation successful!",
-      });
 
+        // --- Step 3: Test Case Generation ---
+        sendSse(stream, "status", {
+          step: 3,
+          message: `Generating test case code...${attemptMsg}`,
+        });
+        const step3Input = {
+          test_specs: testSpecsStr,
+          solution_code: solutionCode,
+          language: DEFAULT_LANGUAGE,
+          feedback_section: validationFeedback
+            ? `\n\n**Previous Attempt Feedback:**\n${validationFeedback}\nPlease address this feedback in the new test generator.`
+            : "", // Add feedback if available
+        };
+        const testGenCodeRaw = await runChainStep(
+          3,
+          testGenChain,
+          step3Input,
+          "Test Gen Code"
+        );
+        testGenCode = cleanLlMOutput(testGenCodeRaw, "code"); // Update outer scope variable
+        await updateDynamoDbStatus(problemId, {
+          generationStatus: `step3_attempt_${attempt}`,
+          testGeneratorCode: testGenCode, // Save latest attempt
+        });
+        sendSse(stream, "status", {
+          step: 3,
+          message: `✅ Test generator code generated.${attemptMsg}`,
+        });
+
+        // --- Step 4: Validation ---
+        sendSse(stream, "status", {
+          step: 4,
+          message: `Validating generated code (LLM Review)...${attemptMsg}`,
+        });
+        const step4Input = {
+          solution_code: solutionCode,
+          test_gen_code: testGenCode,
+          test_specs: testSpecsStr,
+          language: DEFAULT_LANGUAGE,
+        };
+        validationResult = await runChainStep(
+          4,
+          validationChain,
+          step4Input,
+          "Validation",
+          validationParser // Pass parser for format instructions
+        ); // Update outer scope variable
+        console.log(
+          `Step 4 Output (Validation Attempt ${attempt + 1}):`,
+          validationResult
+        );
+
+        if (validationResult.status?.toLowerCase() === "pass") {
+          validationFeedback = null; // Clear feedback on success
+          await updateDynamoDbStatus(problemId, {
+            generationStatus: "step4_complete",
+            validationDetails: JSON.stringify(validationResult),
+          });
+          sendSse(stream, "status", {
+            step: 4,
+            message: "✅ Validation successful!",
+          });
+          break; // Exit the retry loop
+        } else {
+          // Validation failed
+          validationFeedback =
+            validationResult.details || "Validation failed without details.";
+          const errorMsg = `LLM Validation failed (Attempt ${
+            attempt + 1
+          }): ${validationFeedback}`;
+          await updateDynamoDbStatus(problemId, {
+            generationStatus: `step4_failed_attempt_${attempt}`,
+            errorMessage: errorMsg, // Log latest error
+            validationDetails: JSON.stringify(validationResult), // Log latest validation result
+          });
+          sendSse(stream, "status", {
+            // Use status for retry, error for final failure
+            step: 4,
+            message: `⚠️ Validation failed. ${
+              isRetry ? "Retrying..." : ""
+            } Feedback: ${validationFeedback}`,
+          });
+
+          if (attempt === MAX_RETRIES) {
+            // Exhausted all retries
+            sendSse(stream, "error", {
+              payload: `Validation failed after ${
+                MAX_RETRIES + 1
+              } attempts. Last error: ${validationFeedback}`,
+            });
+            throw new Error(
+              `Validation failed after ${
+                MAX_RETRIES + 1
+              } attempts. Last error: ${validationFeedback}`
+            );
+          }
+          // Otherwise, the loop continues for the next attempt
+        }
+      } // End of retry loop
+
+      // Check if loop completed without success
+      if (validationFeedback) {
+        // This case should theoretically be caught by the throw inside the loop,
+        // but as a safeguard:
+        console.error(
+          "Exited retry loop but validationFeedback is still set. This indicates a logic error."
+        );
+        throw new Error(
+          `Validation failed after exhausting retries. Last feedback: ${validationFeedback}`
+        );
+      }
+
+      // --- Step 5: Constraints Derivation (Runs only after successful validation) ---
       sendSse(stream, "status", {
         step: 5,
         message: "Deriving problem constraints...",
       });
       const step5Input = {
-        solution_code: solutionCode,
+        solution_code: solutionCode, // Use the validated code
         test_specs: testSpecsStr,
         language: DEFAULT_LANGUAGE,
         difficulty: difficulty,
       };
-      const constraints = await runChainStep(
+      constraints = await runChainStep(
+        // Assign to outer scope variable
         5,
         constraintsDerivationChain,
         step5Input,
         "Constraints",
         constraintsParser // Pass parser for format instructions
       );
-      const constraintsJson = JSON.stringify(constraints);
+      constraintsJson = JSON.stringify(constraints); // Assign to outer scope variable
       await updateDynamoDbStatus(problemId, {
         generationStatus: "step5_complete",
         constraints: constraintsJson,
@@ -674,6 +812,7 @@ export const handler = awslambda.streamifyResponse(
         message: "✅ Constraints derived.",
       });
 
+      // --- Step 6: Description Generation (Runs only after successful validation) ---
       sendSse(stream, "status", {
         step: 6,
         message: "Generating final problem description...",
@@ -697,7 +836,7 @@ export const handler = awslambda.streamifyResponse(
       const step6Input = {
         analyzed_intent: analyzedIntent,
         constraints: constraintsJson,
-        test_specs: exampleSpecsStr, // Pass examples
+        test_specs_examples: exampleSpecsStr, // Pass examples (Corrected key)
         difficulty: difficulty,
         language: DEFAULT_LANGUAGE,
       };
@@ -707,7 +846,7 @@ export const handler = awslambda.streamifyResponse(
         step6Input,
         "Description"
       );
-      const problemDescription = cleanLlMOutput(problemDescriptionRaw, "text");
+      problemDescription = cleanLlMOutput(problemDescriptionRaw, "text"); // Assign to outer scope variable
       await updateDynamoDbStatus(problemId, {
         generationStatus: "step6_complete",
         description: problemDescription,
@@ -717,44 +856,189 @@ export const handler = awslambda.streamifyResponse(
         message: "✅ Problem description generated.",
       });
 
+      // --- Step 6.5: Title Generation ---
       sendSse(stream, "status", {
-        step: 7,
+        step: 6.5, // Using 6.5 to indicate it's between 6 and 7
+        message: "Generating problem title...",
+      });
+      const descriptionSnippet = problemDescription.substring(0, 200); // Take a snippet
+      const step6_5Input = {
+        difficulty: difficulty,
+        analyzed_intent: analyzedIntent,
+        description_snippet: descriptionSnippet,
+      };
+      let problemTitle = await runChainStep(
+        6.5,
+        titleGenerationChain,
+        step6_5Input,
+        "Title Generation"
+      );
+      problemTitle = cleanLlMOutput(problemTitle, "text").trim(); // Clean and trim
+      // Add difficulty back if LLM didn't include it (optional safeguard)
+      if (!/\(.*\)/.test(problemTitle)) {
+        problemTitle = `${problemTitle} (${difficulty})`;
+      }
+      await updateDynamoDbStatus(problemId, {
+        generationStatus: "step6_5_complete", // Update status
+        title: problemTitle, // Save the generated title early
+      });
+      sendSse(stream, "status", {
+        step: 6.5,
+        message: "✅ Problem title generated.",
+      });
+
+      // --- Step 7: Translation ---
+      let translatedTitle = problemTitle; // Default to original if translation fails
+      let translatedDescription = problemDescription; // Default to original
+      const targetLanguage = DEFAULT_TARGET_LANGUAGE; // Get target language
+
+      if (targetLanguage && targetLanguage.toLowerCase() !== "none") {
+        sendSse(stream, "status", {
+          step: 7,
+          message: `Translating title and description to ${targetLanguage}...`,
+        });
+
+        try {
+          // Translate Title
+          const titleTranslateInput = {
+            target_language: targetLanguage,
+            text_to_translate: problemTitle,
+          };
+          const translatedTitleRaw = await runChainStep(
+            7.1, // Sub-step
+            translationChain,
+            titleTranslateInput,
+            "Title Translation"
+          );
+          if (GENERATOR_VERBOSE)
+            console.log("Raw Translated Title:", translatedTitleRaw);
+          translatedTitle = cleanLlMOutput(translatedTitleRaw, "text").trim();
+
+          // Additional cleaning for titles - remove any markdown-like formatting or instructions
+          translatedTitle = translatedTitle
+            .replace(/^---.*?---$/g, "")
+            .replace(/\*\*.*?\*\*/g, "")
+            .replace(/^-+\s*|\s*-+$/g, "")
+            .trim();
+
+          if (GENERATOR_VERBOSE)
+            console.log("Cleaned Translated Title:", translatedTitle);
+
+          // Translate Description
+          const descriptionTranslateInput = {
+            target_language: targetLanguage,
+            text_to_translate: problemDescription,
+          };
+          const translatedDescriptionRaw = await runChainStep(
+            7.2, // Sub-step
+            translationChain,
+            descriptionTranslateInput,
+            "Description Translation"
+          );
+          if (GENERATOR_VERBOSE)
+            console.log(
+              "Raw Translated Description:",
+              translatedDescriptionRaw
+            );
+          translatedDescription = cleanLlMOutput(
+            translatedDescriptionRaw,
+            "text"
+          ).trim();
+          if (GENERATOR_VERBOSE)
+            console.log(
+              "Cleaned Translated Description:",
+              translatedDescription
+            );
+
+          await updateDynamoDbStatus(problemId, {
+            generationStatus: "step7_complete",
+            title_translated: translatedTitle,
+            description_translated: translatedDescription,
+            targetLanguage: targetLanguage, // Store which language was used
+          });
+          sendSse(stream, "status", {
+            step: 7,
+            message: `✅ Title and description translated to ${targetLanguage}.`,
+          });
+        } catch (translationError) {
+          console.error(
+            `Translation to ${targetLanguage} failed:`,
+            translationError
+          );
+          // Use default values (original text) but log the error
+          await updateDynamoDbStatus(problemId, {
+            translationError: `Failed to translate to ${targetLanguage}: ${translationError.message}`,
+          });
+          sendSse(stream, "status", {
+            // Send as status, not fatal error
+            step: 7,
+            message: `⚠️ Translation to ${targetLanguage} failed. Using original text.`,
+          });
+        }
+      } else {
+        sendSse(stream, "status", {
+          step: 7,
+          message: `Skipping translation (no target language specified).`,
+        });
+      }
+
+      // --- Step 8: Finalization ---
+      sendSse(stream, "status", {
+        step: 8, // Renumbered step
         message: "Finalizing and saving...",
       });
-      const problemTitle = `Generated: ${analyzedIntent.substring(
-        0,
-        60
-      )}... (${difficulty})`;
-      const completedAt = new Date().toISOString();
-      await updateDynamoDbStatus(problemId, {
-        generationStatus: "completed",
-        title: problemTitle,
-        completedAt: completedAt,
-      });
-      console.log(`Step 7: Final status updated for problem ${problemId}.`);
+      // Old heuristic title generation removed. Title is now generated in Step 6.5
 
-      // Construct final result object
-      const finalProblem = {
+      const completedAt = new Date().toISOString();
+      const finalUpdates = {
+        generationStatus: "completed",
+        // title is already saved in step 6.5, but we include it here for completeness if needed
+        title: problemTitle, // Original title
+        title_translated: translatedTitle, // Translated title
+        description_translated: translatedDescription, // Translated description
+        targetLanguage: targetLanguage, // Language used for translation
+        completedAt: completedAt,
+        // Other fields were saved in previous steps
+      };
+      await updateDynamoDbStatus(problemId, finalUpdates);
+      console.log(`Step 8: Final status updated for problem ${problemId}.`); // Renumbered step
+
+      // Fetch the final complete item to send back (optional but good practice)
+      // Alternatively, construct it from variables held in memory
+      const finalProblemData = {
         problemId: problemId,
-        title: problemTitle,
-        description: problemDescription,
+        userPrompt: userPrompt,
         difficulty: difficulty,
-        constraints: constraintsJson, // Keep as JSON string
+        language: DEFAULT_LANGUAGE,
+        createdAt: createdAt,
+        analyzedIntent: analyzedIntent,
+        testSpecifications: testSpecsStr, // JSON string
         solutionCode: solutionCode,
         testGeneratorCode: testGenCode,
-        analyzedIntent: analyzedIntent,
-        testSpecifications: testSpecsStr, // Keep as JSON string
+        validationDetails: JSON.stringify(validationResult), // JSON string
+        constraints: constraintsJson, // JSON string
+        // Use translated description as main description if available
+        description:
+          targetLanguage && targetLanguage.toLowerCase() !== "none"
+            ? translatedDescription
+            : problemDescription,
+        title:
+          targetLanguage && targetLanguage.toLowerCase() !== "none"
+            ? translatedTitle
+            : problemTitle,
+        // Keep these fields for backward compatibility
+        title_translated: translatedTitle, // Translated title
+        description_translated: translatedDescription, // Translated description
+        targetLanguage: targetLanguage, // Language used
         generationStatus: "completed",
-        language: DEFAULT_LANGUAGE,
-        createdAt: createdAt, // From initial creation
         completedAt: completedAt,
       };
 
       sendSse(stream, "result", {
-        payload: finalProblem,
+        payload: finalProblemData, // Send the constructed final data
       });
       sendSse(stream, "status", {
-        step: 7,
+        step: 8, // Renumbered step
         message: "✅ Generation complete!",
       });
       // == PIPELINE END ==

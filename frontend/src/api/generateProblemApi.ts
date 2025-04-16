@@ -63,33 +63,24 @@ export interface ProblemExampleIO {
   output: string | Record<string, unknown>;
 }
 
+// Detailed Problem Structure - Align with Lambda Output
 export interface ProblemDetailAPI {
   problemId: string;
-  title: string;
-  description: string;
-  difficulty: string;
-  constraints: string;
-  solution_code?: string;
-  test_case_generation_code?: string;
-  analyzed_intent?: string;
-  test_specifications?: string;
-  generation_status?: string;
-  language?: string;
-  createdAt?: string;
-  completedAt?: string;
-  // The following fields are not present in backend and are commented out:
-  // input_format?: string;
-  // output_format?: string;
-  // example_input?: string | Record<string, unknown>;
-  // example_output?: string | Record<string, unknown>;
-  // testcases?: ProblemExampleIO[];
-  // algorithmType?: string;
-  // likesCount?: number;
-  // creatorId?: string;
-  // genStatus?: string;
-  // updatedAt?: string;
-  // template_source?: string;
-  // algorithm_hint?: string;
+  title: string; // Generated title
+  description: string; // Markdown description including constraints section
+  difficulty: string; // e.g., "Easy", "Medium", "Hard"
+  constraints: string; // JSON *string* of constraint details (e.g., time/memory limits, input ranges)
+  solutionCode?: string; // Optional as it might fail
+  testGeneratorCode?: string; // Optional as it might fail
+  analyzedIntent?: string; // Optional
+  testSpecifications?: string; // JSON *string* of test cases (e.g., '[{input: ..., output: ...}]')
+  generationStatus: string; // e.g., "started", "stepN_complete", "completed", "failed"
+  language: string; // e.g., "python3.12"
+  createdAt: string; // ISO Date string
+  completedAt?: string; // ISO Date string (only when completed)
+  userPrompt?: string; // The original prompt used for generation
+  errorMessage?: string; // Error message if generation failed
+  validationDetails?: string; // JSON string of validation result
 }
 
 // --- SSE Stream Types (Exported) ---

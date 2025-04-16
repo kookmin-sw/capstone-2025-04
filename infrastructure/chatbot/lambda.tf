@@ -33,7 +33,8 @@ resource "aws_lambda_function" "chatbot_query" {
 
   environment {
     variables = {
-      GOOGLE_MODEL_ID        = var.google_model_id # Use Bedrock model ID from variables
+      GOOGLE_AI_MODEL_ID        = var.google_ai_model_id # Use Bedrock model ID from variables
+      GOOGLE_AI_API_KEY      = var.google_ai_api_key # Use Bedrock model ID from variables
       # Fetch Cognito details from remote state
       COGNITO_USER_POOL_ID    = data.terraform_remote_state.cognito.outputs.cognito_user_pool_id
       COGNITO_REGION            = var.aws_region # Assuming Cognito is in the same region

@@ -141,11 +141,11 @@ export const handler = awslambda.streamifyResponse(
     const { problemDetails, userCode, history, newMessage } = requestBody;
 
     // --- Langchain/Google Initialization ---
-    const googleApiKey = process.env.GOOGLE_API_KEY;
-    const modelName = process.env.GOOGLE_MODEL_NAME || "gemini-pro";
+    const googleApiKey = process.env.GOOGLE_AI_API_KEY;
+    const modelName = process.env.GOOGLE_AI_MODEL_ID;
 
     if (!googleApiKey) {
-      console.error("Missing required environment variable: GOOGLE_API_KEY");
+      console.error("Missing required environment variable: GOOGLE_AI_API_KEY");
       const errorPayload = JSON.stringify({
         error: "Configuration error: Missing Google API key.",
       });
@@ -154,9 +154,12 @@ export const handler = awslambda.streamifyResponse(
       return; // Stop execution
     }
 
+    // Ensure all parameters are strings and properly defined
+    console.log("Google API Key:", googleApiKey);
+    console.log("Model Name:", modelName);
     const llm = new ChatGoogleGenerativeAI({
-      apiKey: googleApiKey,
-      modelName: modelName,
+      apiKey: String(googleApiKey),
+      modelName: String(modelName),
       maxOutputTokens: 9126,
       streaming: true,
     });
@@ -199,77 +202,51 @@ export const handler = awslambda.streamifyResponse(
       const maxRetries = 5;
       let lastError = null;
 
-      while (retryCount <= maxRetries) {
-        try {
-          if (retryCount > 0) {
-            console.log(`Retry attempt ${retryCount}/${maxRetries}...`);
-            // Add exponential backoff (100ms, 200ms, 400ms, 800ms, 1600ms)
-            const backoffTime = Math.min(
-              100 * Math.pow(2, retryCount - 1),
-              1600
-            );
-            await new Promise((resolve) => setTimeout(resolve, backoffTime));
-          }
+      const stream = await llm.stream(messages);
+      console.log("Streaming response from Google model...");
 
-          const stream = await llm.stream(messages);
-          console.log("Streaming response from Google model...");
+      for await (const chunk of stream) {
+        // Check content format
+        let textContent = "";
+        if (typeof chunk.content === "string") {
+          textContent = chunk.content;
+        } else if (
+          Array.isArray(chunk.content) &&
+          chunk.content.length > 0 &&
+          typeof chunk.content[0] === "object" &&
+          chunk.content[0].type === "text"
+        ) {
+          // Handle structure like [{ type: 'text', text: '...' }]
+          textContent = chunk.content[0].text || "";
+        } else {
+          // Handle other potential structures or log unexpected format
+          console.log(
+            "Received chunk with unexpected content format:",
+            chunk.content
+          );
+        }
 
-          for await (const chunk of stream) {
-            // Check content format
-            let textContent = "";
-            if (typeof chunk.content === "string") {
-              textContent = chunk.content;
-            } else if (
-              Array.isArray(chunk.content) &&
-              chunk.content.length > 0 &&
-              typeof chunk.content[0] === "object" &&
-              chunk.content[0].type === "text"
-            ) {
-              // Handle structure like [{ type: 'text', text: '...' }]
-              textContent = chunk.content[0].text || "";
-            } else {
-              // Handle other potential structures or log unexpected format
-              console.log(
-                "Received chunk with unexpected content format:",
-                chunk.content
-              );
-            }
-
-            if (textContent) {
-              const ssePayload = JSON.stringify({ token: textContent });
-              const sseMessage = `data: ${ssePayload}\n\n`;
-              // console.log("Writing SSE chunk:", sseMessage.trim()); // Log SSE message
-              responseStream.write(sseMessage);
-            } else {
-              // console.log("Received chunk without printable content:", chunk);
-            }
-          }
-          console.log("Google model stream finished.");
-          // Send a final [DONE] message (optional, depends on frontend implementation)
-          responseStream.write(`data: [DONE]\n\n`);
-
-          // If we get here, the stream completed successfully, so exit the retry loop
-          break;
-        } catch (error) {
-          lastError = error;
-          console.error(`Attempt ${retryCount + 1} failed:`, error);
-          retryCount++;
-
-          // If we've exhausted all retries, throw the last error
-          if (retryCount > maxRetries) {
-            throw lastError;
-          }
-
-          // Otherwise, continue to the next retry attempt
+        if (textContent) {
+          const ssePayload = JSON.stringify({ token: textContent });
+          const sseMessage = `data: ${ssePayload}\n\n`;
+          // console.log("Writing SSE chunk:", sseMessage.trim()); // Log SSE message
+          responseStream.write(sseMessage);
+        } else {
+          // console.log("Received chunk without printable content:", chunk);
         }
       }
+      console.log("Google model stream finished.");
+      // Send a final [DONE] message (optional, depends on frontend implementation)
+      responseStream.write(`data: [DONE]\n\n`);
+
+      // If we get here, the stream completed successfully, so exit the retry loop
     } catch (error) {
       console.error(
         "!!! All retry attempts failed during LLM stream invocation/processing:",
         error
       );
       const errorPayload = JSON.stringify({
-        error: "Failed to get response from LLM after multiple attempts.",
+        error: "Failed to get response from LLM",
         details: error.message || "Unknown error",
       });
       // Try writing error as SSE event, but headers might be sent
