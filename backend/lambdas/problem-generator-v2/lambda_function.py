@@ -5,7 +5,7 @@ import time
 import uuid
 import traceback
 import boto3
-from langchain_aws import BedrockLLM
+# from langchain_aws import BedrockLLM
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import PromptTemplate
 from langchain_core.output_parsers import PydanticOutputParser, StrOutputParser
@@ -37,18 +37,18 @@ if GOOGLE_AI_API_KEY:
         google_api_key=GOOGLE_AI_API_KEY,
         # Add temperature or other generation settings if needed
     )
-elif BEDROCK_MODEL_ID:
-    print(f"Using AWS Bedrock ({BEDROCK_MODEL_ID})")
-    bedrock_runtime = boto3.client(service_name="bedrock-runtime")
-    llm = BedrockLLM(
-        client=bedrock_runtime,
-        model_id=BEDROCK_MODEL_ID,
-        model_kwargs={"max_tokens_to_sample": 2048},  # Adjusted based on Bedrock needs
-    )
-else:
-    raise ValueError(
-        "No LLM provider configured. Set GOOGLE_AI_API_KEY or BEDROCK_MODEL_ID environment variables."
-    )
+# elif BEDROCK_MODEL_ID:
+#     print(f"Using AWS Bedrock ({BEDROCK_MODEL_ID})")
+#     bedrock_runtime = boto3.client(service_name="bedrock-runtime")
+#     llm = BedrockLLM(
+#         client=bedrock_runtime,
+#         model_id=BEDROCK_MODEL_ID,
+#         model_kwargs={"max_tokens_to_sample": 2048},  # Adjusted based on Bedrock needs
+#     )
+# else:
+#     raise ValueError(
+#         "No LLM provider configured. Set GOOGLE_AI_API_KEY or BEDROCK_MODEL_ID environment variables."
+#     )
 
 # --- Pydantic Models for Structured Output ---
 

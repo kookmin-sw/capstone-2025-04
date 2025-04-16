@@ -2,7 +2,7 @@
 set -e
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-LAMBDA_DIR="$SCRIPT_DIR/../../backend/lambdas/problem-generator-v2"
+LAMBDA_DIR="$SCRIPT_DIR/../../../backend/lambdas/problem-generator-v2"
 REQUIREMENTS_FILE="$LAMBDA_DIR/requirements.txt"
 DOCKERFILE="$SCRIPT_DIR/Dockerfile.build"
 OUTPUT_DIR="$SCRIPT_DIR/lambda_layer_out"
@@ -34,4 +34,4 @@ cd "$SCRIPT_DIR"
 
 rm -rf "$OUTPUT_DIR" "$tmp_build_dir"
 
-echo "Lambda layer zip file created at $LAYER_ZIP_FILE" 
+echo "Lambda layer zip file created at $LAYER_ZIP_FILE"

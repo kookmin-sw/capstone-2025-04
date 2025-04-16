@@ -1,7 +1,7 @@
 // frontend/src/api/codingTestApi.ts
 
 import { getStaticProblem, isStaticProblemId } from "./staticProblems";
-import type { ProblemDetailAPI } from "./dummy/generateProblemApi";
+import type { ProblemDetailAPI } from "./generateProblemApi";
 
 // Base URL for the coding test mock API server
 const API_BASE_URL = "http://localhost:3002"; // Point to mock server

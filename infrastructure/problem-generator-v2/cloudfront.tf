@@ -13,22 +13,31 @@ resource "aws_cloudfront_distribution" "problem_generator_v2" {
   default_root_object = ""
 
   origin {
-    domain_name              = aws_lambda_function_url.problem_generator_v2_url.function_url
+    domain_name              = split("/", replace(aws_lambda_function_url.problem_generator_v2_url.function_url, "https://", ""))[0]
     origin_id                = "problem-generator-v2-lambda-url"
+
+    custom_origin_config {
+      http_port                = 80 # Not actually used with https_only
+      https_port               = 443
+      origin_protocol_policy   = "https-only" # Lambda Function URLs are HTTPS only
+      origin_ssl_protocols     = ["TLSv1.2"]  # Use secure TLS protocols
+    }
+
     origin_access_control_id = aws_cloudfront_origin_access_control.problem_generator_v2_oac.id
   }
 
   default_cache_behavior {
-    allowed_methods  = ["GET", "HEAD", "OPTIONS", "POST"]
+    allowed_methods  = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
     cached_methods   = ["GET", "HEAD"]
     target_origin_id = "problem-generator-v2-lambda-url"
 
     viewer_protocol_policy = "redirect-to-https"
     compress              = true
 
-    cache_policy_id            = "413fdccd-16f7-4fd2-bb4c-1c4e4100b087" # Managed-CachingDisabled
-    origin_request_policy_id   = "88a5eaf4-2fd4-4709-b370-b4c650ea3fcf" # Managed-AllViewerExceptHostHeader
-    response_headers_policy_id = "60669651-455b-4ae9-85a4-c4c02393f86c" # Managed-SimpleCORS
+    # Use data sources to look up managed policy IDs
+    cache_policy_id            = data.aws_cloudfront_cache_policy.caching_disabled.id
+    origin_request_policy_id   = data.aws_cloudfront_origin_request_policy.all_viewer_except_host_header.id
+    response_headers_policy_id = data.aws_cloudfront_response_headers_policy.simple_cors.id
   }
 
   price_class = "PriceClass_100"
@@ -44,4 +53,17 @@ resource "aws_cloudfront_distribution" "problem_generator_v2" {
   }
 
   tags = var.common_tags
+}
+
+# Data sources for managed policies
+data "aws_cloudfront_cache_policy" "caching_disabled" {
+  name = "Managed-CachingDisabled"
+}
+
+data "aws_cloudfront_origin_request_policy" "all_viewer_except_host_header" {
+  name = "Managed-AllViewerExceptHostHeader"
+}
+
+data "aws_cloudfront_response_headers_policy" "simple_cors" {
+  name = "Managed-SimpleCORS"
 }

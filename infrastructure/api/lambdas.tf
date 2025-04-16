@@ -36,6 +36,7 @@ resource "aws_lambda_function" "create_post" {
   layers           = [aws_lambda_layer_version.common_deps_layer.arn]
   timeout          = local.lambda_timeout
   memory_size      = local.lambda_memory
+  architectures    = ["arm64"]
 
   environment {
     variables = local.common_lambda_environment_variables
@@ -63,6 +64,7 @@ resource "aws_lambda_function" "delete_post" {
   layers           = [aws_lambda_layer_version.common_deps_layer.arn]
   timeout          = local.lambda_timeout
   memory_size      = local.lambda_memory
+  architectures    = ["arm64"]
 
   environment {
     variables = local.common_lambda_environment_variables
@@ -90,6 +92,7 @@ resource "aws_lambda_function" "get_all_posts" {
   layers           = [aws_lambda_layer_version.common_deps_layer.arn]
   timeout          = local.lambda_timeout
   memory_size      = local.lambda_memory
+  architectures    = ["arm64"]
 
   environment {
     variables = local.common_lambda_environment_variables
@@ -117,6 +120,7 @@ resource "aws_lambda_function" "get_post" {
   layers           = [aws_lambda_layer_version.common_deps_layer.arn]
   timeout          = local.lambda_timeout
   memory_size      = local.lambda_memory
+  architectures    = ["arm64"]
 
   environment {
     variables = local.common_lambda_environment_variables
@@ -144,6 +148,7 @@ resource "aws_lambda_function" "like_post" {
   layers           = [aws_lambda_layer_version.common_deps_layer.arn]
   timeout          = local.lambda_timeout
   memory_size      = local.lambda_memory
+  architectures    = ["arm64"]
 
   environment {
     variables = local.common_lambda_environment_variables
@@ -171,6 +176,7 @@ resource "aws_lambda_function" "update_post" {
   layers           = [aws_lambda_layer_version.common_deps_layer.arn]
   timeout          = local.lambda_timeout
   memory_size      = local.lambda_memory
+  architectures    = ["arm64"]
 
   environment {
     variables = local.common_lambda_environment_variables
@@ -201,6 +207,7 @@ resource "aws_lambda_function" "create_comment" {
   layers           = [aws_lambda_layer_version.common_deps_layer.arn]
   timeout          = local.lambda_timeout
   memory_size      = local.lambda_memory
+  architectures    = ["arm64"]
 
   environment {
     variables = local.common_lambda_environment_variables
@@ -228,6 +235,7 @@ resource "aws_lambda_function" "delete_comment" {
   layers           = [aws_lambda_layer_version.common_deps_layer.arn]
   timeout          = local.lambda_timeout
   memory_size      = local.lambda_memory
+  architectures    = ["arm64"]
 
   environment {
     variables = local.common_lambda_environment_variables
@@ -255,6 +263,7 @@ resource "aws_lambda_function" "get_comments" {
   layers           = [aws_lambda_layer_version.common_deps_layer.arn]
   timeout          = local.lambda_timeout
   memory_size      = local.lambda_memory
+  architectures    = ["arm64"]
 
   environment {
     variables = local.common_lambda_environment_variables

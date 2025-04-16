@@ -1,4 +1,4 @@
-import type { ProblemDetailAPI } from "./dummy/generateProblemApi";
+import type { ProblemDetailAPI } from "./generateProblemApi";
 
 const staticProblemsData: Record<string, ProblemDetailAPI> = {
   "1": {

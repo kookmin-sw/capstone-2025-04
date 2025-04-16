@@ -183,6 +183,7 @@ resource "aws_lambda_function" "post_confirmation_trigger" {
   handler       = "lambda_function.lambda_handler" # Assumes lambda_function.py with handler named lambda_handler
   runtime       = "python3.9"                      # Choose a supported runtime
   timeout       = 15                               # Seconds
+  architectures = ["arm64"]
 
   environment {
     variables = {

@@ -33,7 +33,7 @@ variable "common_tags" {
 variable "bedrock_model_id" {
   description = "The ID of the Bedrock model to use for the problem generator"
   type        = string
-  default     = "anthropic.claude-3-haiku-20240307-v1:0"
+  default     = "" # "anthropic.claude-3-haiku-20240307-v1:0"
 }
 
 variable "lambda_runtime" {

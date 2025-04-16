@@ -1,10 +1,24 @@
+
+# Use the official AWS Lambda Python base image for arm64
 FROM public.ecr.aws/lambda/python:3.12-arm64
 
+# Copy requirements file
 COPY requirements.txt /tmp/requirements.txt
 
+# Install findutils using microdnf (common in Amazon Linux minimal images)
+# Clean up cache afterwards to minimize layer size
+# Note: microdnf doesn't usually require an 'update' step like apt-get
+RUN microdnf install -y findutils && \
+    microdnf clean all
+
+# Install Python dependencies from requirements.txt into the target directory
+# Use --no-cache-dir to reduce layer size
 RUN pip install \
     --requirement /tmp/requirements.txt \
-    --target /opt/python/lib/python3.12/site-packages/
+    --target /opt/python/lib/python3.12/site-packages/ \
+    --no-cache-dir
 
+# Clean up __pycache__ directories and pip cache
+# Now the find command should work
 RUN find /opt/python/lib/python3.12/site-packages/ -name '__pycache__' -type d -exec rm -rf {} + \
-    && rm -rf /root/.cache/pip 
+    && rm -rf /root/.cache/pip

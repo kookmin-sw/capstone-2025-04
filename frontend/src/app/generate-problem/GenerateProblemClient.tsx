@@ -11,13 +11,13 @@ import {
   // Remove unused imports if any
   // createProblemAPI, // Keep if needed for non-streaming fallback or other features
   // getProblemDetailAPI, // Keep for polling fallback or direct fetch if needed
-} from "@/api/dummy/generateProblemApi";
+} from "@/api/generateProblemApi";
 import type {
   // Import specific types for SSE callbacks
   ProblemStreamStatus,
   ProblemStreamResult,
   ProblemStreamError,
-} from "@/api/dummy/generateProblemApi";
+} from "@/api/generateProblemApi";
 
 // Problem type presets interface
 interface ProblemTypePreset {

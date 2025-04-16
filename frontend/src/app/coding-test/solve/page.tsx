@@ -24,7 +24,7 @@ import { getProblemById } from "@/api/codingTestApi";
 import type {
   ProblemDetailAPI,
   ProblemExampleIO,
-} from "@/api/dummy/generateProblemApi";
+} from "@/api/generateProblemApi";
 import { toast } from "sonner";
 import Chatbot from "@/components/Chatbot";
 import { CODE_TEMPLATES } from "@/components/CodeEditor";

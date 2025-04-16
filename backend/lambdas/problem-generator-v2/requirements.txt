@@ -1,5 +1,3 @@
-boto3
 langchain
-langchain-core
-langchain-aws 
+
 langchain-google-genai
