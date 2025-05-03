@@ -1,14 +1,13 @@
-# 🦙**ALPACO : 클라우드 기반 LLM 알고리즘 문제 생성 및 자동 채점 플랫폼**
-
-## 국민대학교 소프트웨어융합대학 2025년 캡스톤 4팀 (우서용 Be Smile !)
+## ALPACO : 클라우드 기반 LLM 알고리즘 문제 생성 및 자동 채점 플랫폼
 
 <p align="center">
   <img src="assets/logo.png" alt="ALPACO Logo" width="220"/>
 </p>
 
+### 국민대학교 소프트웨어융합대학 2025년 캡스톤 4팀
 ---
 
-## 1. 상세 서비스 설명 (작성중)
+## 💡 프로젝트 소개
 
 ### a. 문제 생성 서비스
 
@@ -59,27 +58,39 @@
 
 ---
 
-## 2. 소개 영상 (예정)
+## 주요 기능
 
 ---
 
-## 3. 팀 소개
-
-### 배용하 (팀장)
-
-- 코딩테스트 서비스 알고리즘 로직 담당
-
-### 박우혁
-
-- 전체 백엔드 통합, CI/CD 담당
-
-### 백서현
-
-- DB, 백엔드 기능 개발 담당 웹페이지 구상 및 디자인
+## 🎬 소개 영상 (예정)
 
 ---
 
-## 4. 사용법 (작성중)
+## 👋 팀원 소개
+
+<p align="center">
+  <img src="assets/people.png" alt="Team Members" width="80%"/>
+</p>
+
+---
+
+## 🌐 시스템 구조
+
+<p align="center">
+  <img src="assets/architecture.png" alt="System Architecture" width="90%"/>
+</p>
+
+> LLM 기반 문제 생성부터 채점까지의 전체 흐름을 시각화한 다이어그램입니다.
+---
+
+## ⚒️ 기술 스택
+<p align="center">
+  <img src="assets/skills.png" alt="Tech Stack" width="80%"/>
+</p>
+
+---
+
+## 사용법 (작성중)
 
 소스코드 제출시 설치법이나 사용법을 작성하세요.
 
@@ -94,7 +105,7 @@
 
 ---
 
-## 5. API 명세
+## API 명세
 
 ### 문제 생성 스트리밍 API
 
