@@ -2,6 +2,10 @@
 
 ## 국민대학교 소프트웨어융합대학 2025년 캡스톤 4팀 (우서용 Be Smile !)
 
+<p align="center">
+  <img src="assets/logo.png" alt="ALPACO Logo" width="220"/>
+</p>
+
 ---
 
 ## 1. 상세 서비스 설명 (작성중)
