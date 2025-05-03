@@ -1,176 +1,169 @@
-# Problem Grader & Generator System
+# Problem Grader Core Logic (`@problem-grader`)
 
-이 문서는 코드 채점(`@problem-grader`) 및 문제 생성 스트리밍(`@problem-generator-streaming`) 시스템의 통합 아키텍처, 워크플로우, 구성 요소, 배포 및 사용 방법에 대해 상세히 설명합니다. 여러 AWS 서비스를 복합적으로 사용하므로 처음 접하는 사용자를 위해 최대한 자세히 기술되었습니다.
+이 문서는 `@problem-grader` 시스템의 핵심 채점 로직 구현에 대해 설명합니다. 이 컴포넌트의 목적은 사용자가 제출한 코드를 특정 문제에 대해 **사전에 정의된 테스트 케이스**를 사용하여 채점하고, 그 결과를 구조화된 형식으로 반환하는 것입니다.
+
+**주요 목표:**
+
+- 채점 로직(`lambda_function.py`)과 실행 환경(`docker/runner/python`) 제공.
+- Terraform/인프라 담당자가 이 로직을 기존 시스템에 쉽게 통합할 수 있도록 명확한 인터페이스(필요한 환경 변수, 데이터 구조) 정의.
+- 핵심 로직은 **동기식(Synchronous)**으로 동작하며, 외부 호출 시 채점 결과를 즉시 반환합니다.
+- **AWS Step Functions는 이 로직에서 사용되지 않습니다.**
+- **외부 호출 방식 (API Gateway, SQS 등)의 명세는 이 문서의 범위에 포함되지 않습니다.**
 
 ## 1. 개요 (Overview)
 
-이 시스템은 크게 두 가지 주요 기능을 제공합니다.
+이 컴포넌트는 문제 ID, 사용자 코드, 사용 언어를 입력받습니다. 입력받은 문제 ID를 사용하여 **미리 정의된** 문제 설정(시간 제한 등) 및 테스트 케이스 목록을 외부 저장소(예: DynamoDB `problems_table`)에서 조회합니다. 각 테스트 케이스에 대해 격리된 컨테이너 환경(ECS Fargate Runner Task)에서 사용자 코드를 실행합니다. Runner Task는 실행 결과(상태, stdout, stderr, 실행 시간 등)를 **S3에 JSON 파일로 저장**합니다. Orchestrator Lambda 함수는 이 S3 파일을 읽어 결과를 처리하고, 모든 테스트 케이스 실행 후 종합하여 최종 채점 상태를 판정합니다. 최종 결과는 정의된 형식에 따라 반환되며, **외부 결과 저장소**(예: DynamoDB `submissions_table`)에 기록됩니다.
 
-1.  **문제 생성 (Streaming):** 사용자의 프롬프트를 기반으로 여러 단계(분석, 변환, 설명, 테스트 케이스 생성 코드 등)에 걸쳐 프로그래밍 문제를 생성하고, 그 과정을 실시간으로 스트리밍합니다.
-2.  **코드 채점 (Async Grading):** 사용자가 제출한 코드를 특정 문제에 대해 채점합니다. 채점 요청 시 즉시 결과를 반환하는 대신, 고유한 `submission_id`를 반환하고 백그라운드에서 비동기적으로 채점 프로세스를 진행합니다.
+**S3 사용 이유:** Runner의 실행 결과, 특히 `stdout`과 `stderr`는 매우 길어질 수 있습니다. DynamoDB의 항목 크기 제한(400KB)을 초과할 가능성이 있으므로, 원본 결과는 크기 제한이 훨씬 덜 엄격한 S3에 저장하는 것이 안정적입니다. Lambda는 이 원본 S3 데이터를 가져와 처리 후, 필요한 정보만 요약/정제하여 DynamoDB `submissions_table`에 저장합니다.
 
-**주요 특징:**
+**주요 특징 (Core Logic):**
 
-- **통합 관리:** 문제 생성과 코드 채점에 필요한 AWS 인프라를 단일 Terraform 프로젝트에서 관리합니다.
-- **비동기 채점:** AWS Step Functions를 사용하여 복잡하고 시간이 오래 걸릴 수 있는 채점 워크플로우를 안정적으로 오케스트레이션합니다.
-- **실시간 생성 과정:** WebSocket (또는 유사 기술)을 사용하여 문제 생성의 각 단계별 결과를 클라이언트에 실시간 스트리밍합니다.
-- **확장 가능한 실행 환경:** ECS Fargate를 사용하여 테스트 케이스 생성 및 코드 실행 환경을 컨테이너화하여 필요에 따라 확장합니다.
-- **다양한 언어 지원 (확장 가능):** 채점 시 Python을 기본으로 지원하며, 다른 언어 Runner 추가가 용이하도록 설계되었습니다.
+- **동기식 처리:** 단일 Lambda 함수(`lambda_function.py`) 내에서 채점 과정을 동기적으로 처리하고 결과를 즉시 반환합니다.
+- **사전 정의된 테스트 케이스 사용:** 외부 저장소(예: DynamoDB)에서 문제별 테스트 케이스 목록(입력/기대 출력 쌍)을 조회하여 사용합니다.
+- **격리된 코드 실행:** 제공된 Python Runner (`docker/runner/python`)를 사용하여 ECS Fargate에서 사용자 코드를 안전하게 실행합니다.
+- **결과 저장 분리:** Runner의 상세/원본 결과는 S3에, Lambda가 처리한 최종/집계 결과는 DynamoDB에 저장합니다.
+- **명확한 데이터 인터페이스:** 필요한 입력 데이터(문제 정보, 테스트 케이스) 및 출력 데이터(채점 결과)의 구조를 상세히 정의합니다.
+- **Python 지원:** Python 코드 채점을 위한 Runner를 제공하며, 다른 언어 추가가 용이하도록 설계되었습니다.
 
-## 2. 아키텍처 (Architecture)
+## 2. 핵심 로직 워크플로우 (`lambda_function.py`)
 
-이 통합 시스템은 다음과 같은 주요 AWS 서비스들로 구성됩니다.
+Orchestrator Lambda 함수(`lambda_function.py`)는 다음과 같은 단계를 동기적으로 수행합니다.
 
-- **Amazon API Gateway:** 두 가지 주요 API 엔드포인트를 제공합니다.
-  - **HTTP API (채점용):** 코드 채점 요청(`POST /problems/{problem_id}/grade`)을 수신하여 Starter Lambda를 트리거합니다.
-  - **WebSocket API (문제 생성 스트리밍용 - 가정):** 클라이언트와 WebSocket 연결을 관리하고, Streaming Lambda와 상호작용합니다. (또는 HTTP 기반 스트리밍 방식일 수도 있음)
-- **AWS Lambda:** 여러 역할을 수행합니다.
-  - **Starter Lambda (채점용):** 채점 요청 처리, Step Functions 워크플로우 실행 시작.
-  - **Task Lambda (채점용):** Step Functions 워크플로우 내 특정 작업 수행 (DB 조회, S3 파싱, 결과 집계 등).
-  - **Streaming Lambda (생성용):** WebSocket 연결 관리, 문제 생성 로직(`ProblemGenerator` 클래스) 호출, 각 단계 결과 스트리밍.
-- **AWS Step Functions (Standard Workflow):** **코드 채점** 프로세스를 상태 머신으로 정의하고 오케스트레이션합니다.
-- **Amazon ECS (with AWS Fargate):** 컨테이너화된 작업을 실행합니다.
-  - **Test Case Generation Task (채점 시):** Step Functions 워크플로우 내에서 실행되며, DynamoDB에 저장된 `generation_code`를 사용하여 **채점 시점에 테스트 케이스를 재생성**합니다.
-  - **Runner Task (채점 시):** 제출된 사용자 코드를 각 테스트 케이스에 대해 실행합니다.
-- **Amazon S3:** 채점 과정 중 생성되는 중간 결과 파일(테스트 케이스, 실행 결과 등)을 저장합니다.
-- **Amazon DynamoDB:** 두 개의 주요 테이블을 사용합니다.
-  - **`problems_table`:** 문제 정보(설명, `generation_code`, 제약 조건 등)를 저장하는 중앙 저장소. Generator가 쓰고 Grader가 읽습니다.
-  - **`submissions_table`:** 코드 제출 정보 및 최종/초기 채점 결과를 저장합니다.
-- **Amazon ECR:** Test Case Generator 및 각 언어 Runner의 Docker 이미지를 저장합니다.
-- **AWS IAM:** 각 서비스가 다른 서비스에 접근하는 데 필요한 역할과 정책을 정의합니다.
+1.  **입력 수신:** 외부 호출로부터 문제 ID(`problem_id`), 사용자 코드(`user_code`), 언어(`language`)를 포함한 입력을 받습니다.
+2.  **문제 데이터 조회:** `problem_id`를 사용하여 **외부 문제 저장소**(예: DynamoDB `problems_table`)에서 시간 제한(`time_limit`)과 테스트 케이스 목록(`test_cases`)을 조회합니다.
+3.  **테스트 케이스 반복 실행:** 조회된 `test_cases` 목록의 각 항목에 대해 다음을 반복합니다.
+    - **Runner Task 실행:** Python Runner ECS Task를 실행합니다. (`USER_CODE`, `INPUT_DATA`, `TIME_LIMIT`, `S3_BUCKET`, `S3_KEY` 환경 변수 전달)
+    - **Runner Task 완료 대기:** 해당 ECS Task가 완료될 때까지 동기적으로 대기합니다.
+    - **Runner 결과 조회 (S3):** Runner가 **S3**에 저장한 결과 JSON 파일을 읽어옵니다. (아래 **필수 데이터 구조** - Runner Result Structure 참조)
+    - **결과 판정:** S3에서 가져온 Runner 결과(`status`, `stdout`, `stderr`, `execution_time`)와 현재 테스트 케이스의 기대 출력(`test_cases[i].expected_output`)을 비교하여 해당 케이스의 최종 상태를 결정합니다. (아래 **상태 코드 정의** 참조)
+    - **Fail Fast:** 첫 번째 실패(Non-ACCEPTED) 케이스 발생 시, 남은 테스트 케이스 실행을 중단합니다.
+4.  **최종 결과 집계:** 모든 실행된 테스트 케이스 결과를 종합하여 최종 상태(`status`), 최대 실행 시간(`execution_time`) 등을 계산합니다.
+5.  **결과 저장 (DynamoDB):** 집계된 최종 결과를 **외부 결과 저장소**(예: DynamoDB `submissions_table`)에 저장합니다. (아래 **필수 데이터 구조** - Submission Result Structure 참조)
+6.  **결과 반환:** 최종 채점 결과를 구조화된 데이터 형식으로 반환합니다. (이것을 어떻게 외부로 전달할지는 호출자에게 달려있습니다.)
 
-**데이터 및 제어 흐름:**
+## 3. 상태 코드 정의 (Status Codes)
 
-**A. 문제 생성 흐름 (Streaming):**
+채점 시스템에서는 두 가지 종류의 상태 코드가 사용됩니다.
 
-1.  클라이언트가 WebSocket API에 연결 요청을 보냅니다.
-2.  API Gateway가 Streaming Lambda를 트리거하여 연결을 수립합니다.
-3.  클라이언트가 문제 생성 시작 메시지(프롬프트 포함)를 전송합니다.
-4.  Streaming Lambda는 `ProblemGenerator` 로직을 단계별로 호출합니다.
-5.  각 단계(분석, 변환, 설명, 테스트 케이스 생성 코드 생성 등) 결과가 나올 때마다 Streaming Lambda는 WebSocket을 통해 클라이언트에 결과를 스트리밍합니다.
-6.  모든 단계 완료 후, 생성된 문제 정보(특히 `generation_code`)를 DynamoDB `problems_table`에 저장합니다.
-7.  최종 완료 메시지를 클라이언트에 전송하고 연결을 종료(또는 유지)합니다.
+1.  **Runner Result Status (`run_code.py` 결과 - S3 저장):**
 
-**B. 코드 채점 흐름 (Async Grading via Step Functions):**
+    - ECS 컨테이너 내의 `run_code.py` 스크립트가 사용자 코드 실행 후 **S3에 저장하는 결과 상태**입니다.
+    - 코드 실행 자체의 성공/실패 여부를 나타냅니다.
+    - **가능한 값:**
+      - `SUCCESS`: 사용자 코드가 오류 없이 제한 시간 내에 실행 완료됨.
+      - `RUNTIME_ERROR`: 사용자 코드 실행 중 런타임 오류 발생 또는 0이 아닌 코드로 종료됨.
+      - `TIME_LIMIT_EXCEEDED`: 사용자 코드가 지정된 시간 제한을 초과하여 종료됨.
+      - `GRADER_ERROR`: `run_code.py` 스크립트 자체의 오류 또는 환경 문제.
 
-1.  사용자는 채점용 HTTP API 엔드포인트(`POST /problems/{problem_id}/grade`)로 문제 ID, 언어, 코드를 전송합니다.
-2.  API Gateway가 Starter Lambda를 트리거합니다.
-3.  Starter Lambda는 요청 검증, `submission_id` 생성, **Step Functions 상태 머신 실행 시작** (입력 전달), DynamoDB `submissions_table`에 초기 상태('PENDING') 저장 후, 사용자에게 `submission_id`를 포함한 202 응답을 반환합니다.
-4.  Step Functions 워크플로우가 시작되어 다음 상태들을 실행합니다.
-    - `GetProblemDetails` (Task Lambda): `problems_table`에서 `problem_id`로 문제 정보(특히 `generation_code`, `time_limit`) 조회.
-    - `GenerateTestCases` (ECS Fargate Task - `.sync`): 조회된 `generation_code`를 입력으로 받아 **테스트 케이스들을 재생성**하고 결과를 S3에 저장.
-    - `ParseGeneratorOutput` (Task Lambda): S3에서 생성된 테스트 케이스 파일 파싱.
-    - `PrepareMapInput` (Task Lambda): 실행할 언어에 맞는 Runner 정보(Task Def ARN, 컨테이너 이름)를 조회하여 `context`에 추가.
-    - `RunTestCasesMap` (Map State): 각 테스트 케이스(`items`)에 대해 내부 워크플로우(`Iterator`) 병렬 실행:
-      - **`RunSingleTestCase`:** 해당 언어 Runner Task를 동기적(`.sync`)으로 실행 (사용자 코드, 입력 데이터, 제한 시간 전달). `TaskDefinition` 및 컨테이너 `Name`은 `PrepareMapInput` 결과(`context`) 참조.
-      - **`ParseRunnerOutput`:** Runner Task의 S3 결과 파싱.
-      - **`FormatMapItemResult`:** Map 반복 출력을 위한 데이터 가공.
-      - **`MapItemFail`:** 반복 내 오류 처리.
-    - `AggregateResults`: 모든 테스트 케이스 결과 집계, 최종 상태 판정 (출력 비교 포함).
-    - `SaveResult`: 최종 결과를 DynamoDB `submissions_table`에 저장.
-5.  워크플로우가 성공 또는 실패 상태로 종료됩니다.
+2.  **Submission (Overall & Case) Status (Lambda 판정 결과 - DynamoDB 저장):**
 
-**테스트 케이스 처리 방식 (옵션 A 채택):**
+    - Lambda 함수(`lambda_function.py`)가 각 테스트 케이스 및 전체 제출에 대해 최종적으로 판정하여 **DynamoDB `submissions_table`에 저장하는 상태**입니다.
+    - S3에서 가져온 Runner Result Status 와 실제 출력/기대 출력 비교 결과를 종합하여 결정됩니다.
+    - **가능한 값:**
 
-이 시스템은 **옵션 A: 채점 시 테스트 케이스 재생성** 방식을 사용합니다. 즉:
+      - `ACCEPTED` (AC): 해당 케이스의 Runner 상태가 `SUCCESS`이고, `stdout`이 `expected_output`과 일치.
+      - `WRONG_ANSWER` (WA): Runner 상태는 `SUCCESS`이지만, `stdout`이 `expected_output`과 불일치.
+      - `TIME_LIMIT_EXCEEDED` (TLE): Runner 상태가 `TIME_LIMIT_EXCEEDED`.
+      - `RUNTIME_ERROR` (RE): Runner 상태가 `RUNTIME_ERROR`.
+      - `INTERNAL_ERROR` (IE): 채점 시스템 내부 오류 (Lambda 오류, ECS Task 실패, S3 접근 불가 등). Runner 상태가 `GRADER_ERROR`인 경우도 포함될 수 있음.
+      - `NO_TEST_CASES`: 조회한 `test_cases` 목록이 비어있음.
 
-- 문제 생성 시(`@problem-generator-streaming`), 실제 테스트 케이스 데이터(입력/출력 쌍) 자체를 저장하는 대신, 해당 테스트 케이스들을 **생성할 수 있는 코드 또는 로직(`generation_code`)** 을 DynamoDB `problems_table`에 저장합니다.
-- 코드 채점 시(`@problem-grader`), Step Functions 워크플로우의 `GenerateTestCases` 단계에서 이 `generation_code`를 실행하는 별도의 ECS Task를 구동하여 필요한 테스트 케이스들을 **매번 동일하게 재생성**합니다.
-- **장점:** 문제 정의가 `generation_code`로 단순화되고 저장 공간이 절약됩니다. 채점 시 항상 동일한 테스트 케이스 사용이 보장됩니다.
-- **단점:** 채점 시마다 테스트 케이스를 생성하는 시간이 소요됩니다. Grader 워크플로우에 테스트 케이스 생성 단계가 필요합니다.
+    - **관계:** Lambda는 S3에서 Runner 결과를 가져와 처리합니다. Runner의 `status`가 `SUCCESS`라도 `stdout` 비교 결과가 다르면 `WRONG_ANSWER`로 판정합니다. 다른 Runner 상태는 대체로 그대로 반영됩니다. 최종 Submission 상태는 가장 심각한 케이스 상태를 따릅니다.
 
-**왜 Step Functions를 사용하는가? (채점 워크플로우)**
+## 4. 제공되는 컴포넌트
 
-- Lambda 타임아웃 한계 극복, 복잡한 작업(ECS Task 실행/대기) 오케스트레이션, 시각적 워크플로우 및 디버깅, 내장된 오류 처리/재시도 기능 활용.
+- **`lambda_function.py`:** 채점 오케스트레이션 Lambda 함수 코드.
+- **`docker/runner/python/` 디렉토리:** Python Runner Dockerfile 및 실행 스크립트 (`run_code.py`).
 
-## 3. 워크플로우 상세 (Detailed Workflow - Step Functions for Grading)
+## 5. 필수 인프라 및 구성 (인프라 담당자 참고)
 
-코드 채점 워크플로우는 `infrastructure/terraform/problem_service/problem_grader_statemachine.asl.json` 파일에 정의되어 있습니다. 주요 상태는 다음과 같습니다.
+1.  **호출 인터페이스:** 이 Lambda 함수를 호출할 방식(예: 다른 Lambda, Step Function Task, 직접 호출 등)과 필요한 입력(문제 ID, 코드, 언어) 전달 구현.
+2.  **AWS Lambda 함수:** `lambda_function.py` 사용, 적절한 IAM 역할 및 아래 환경 변수 설정.
+3.  **IAM 권한:**
+    - **Lambda 실행 역할:** DynamoDB Get/Put, S3 GetObject, ECS Run/Describe/Stop Task, IAM PassRole, CloudWatch Logs 쓰기.
+    - **ECS Task 실행 역할:** ECR 이미지 가져오기, CloudWatch Logs 쓰기 (`AmazonECSTaskExecutionRolePolicy`).
+    - **ECS Task 역할:** S3 PutObject (Runner가 결과를 S3에 쓰기 위함).
+4.  **DynamoDB 테이블 (`problems_table`):** 문제 정보 저장. `id` (String, UUID), `constraints_time_limit`, `test_cases` (List of Maps, 아래 구조 참조) 필드 포함.
+5.  **DynamoDB 테이블 (`submissions_table`):** 최종 결과 저장. 파티션 키 `submission_id` (String) 권장. 저장 구조는 아래 참조.
+6.  **S3 버킷:** Runner 결과 JSON 파일을 저장할 버킷. Lambda와 ECS Task 역할 모두 접근 권한 필요.
+7.  **ECR 리포지토리:** Python Runner Docker 이미지 저장소.
+8.  **ECS 클러스터 및 네트워킹:** Fargate Task 실행 환경 (클러스터, 서브넷, 보안 그룹).
+9.  **ECS Task Definition (Python Runner):** ECR 이미지 사용, 적절한 역할 연결, 컨테이너 이름 일치.
+10. **Lambda 환경 변수 (필수):**
+    - `DYNAMODB_PROBLEMS_TABLE_NAME`, `DYNAMODB_SUBMISSIONS_TABLE_NAME`, `S3_BUCKET_NAME`, `ECS_CLUSTER_NAME`, `RUNNER_PYTHON_TASK_DEF_ARN`, `RUNNER_PYTHON_CONTAINER_NAME`, `SUBNET_IDS`, `SECURITY_GROUP_IDS`.
 
-- **`GetProblemDetails`:** DynamoDB에서 문제 정보 (`generation_code`, `time_limit` 등) 조회.
-- **`CheckProblemDetails`:** 문제 정보 조회 성공 여부 확인.
-- **`GenerateTestCases`:** ECS Fargate Task를 동기적(`.sync`)으로 실행. 입력받은 `generation_code`를 사용하여 **테스트 케이스들을 재생성**하고 결과를 S3에 저장.
-- **`ParseGeneratorOutput`:** S3의 Generator 출력(테스트 케이스 목록) 파싱.
-- **`CheckGeneratedCases`:** 유효한 테스트 케이스가 생성되었는지 확인.
-- **`PrepareMapInput`:** Lambda를 호출하여 실행 언어에 맞는 Runner Task Definition ARN과 컨테이너 이름을 조회하고, Map 상태 실행을 위한 입력(`context`, `items`) 준비.
-- **`RunTestCasesMap` (Map State):** 각 테스트 케이스(`items`)에 대해 내부 워크플로우(`Iterator`) 병렬 실행:
-  - **`RunSingleTestCase`:** 해당 언어 Runner Task를 동기적(`.sync`)으로 실행 (사용자 코드, 입력 데이터, 제한 시간 전달). `TaskDefinition` 및 컨테이너 `Name`은 `PrepareMapInput` 결과(`context`) 참조.
-  - **`ParseRunnerOutput`:** Runner Task의 S3 결과 파싱.
-  - **`FormatMapItemResult`:** Map 반복 출력을 위한 데이터 가공.
-  - **`MapItemFail`:** 반복 내 오류 처리.
-- **`AggregateResults`:** 모든 테스트 케이스 결과 집계, 최종 상태 판정 (출력 비교 포함).
-- **`SaveResult`:** 최종 결과를 DynamoDB `submissions_table`에 저장.
-- **`FailState` / `SuccessState`:** 워크플로우 최종 상태.
+## 6. 필수 데이터 구조
 
-## 4. 주요 구성 요소 (Core Components)
+1.  **Test Case Structure (in `problems_table`'s `test_cases` list):**
 
-- **API Gateway (`api_lambda.tf` 등):**
-  - 채점 요청용 HTTP API (`POST /problems/{problem_id}/grade`).
-  - 문제 생성 스트리밍용 WebSocket API (가정).
-- **Lambda 함수 (`api_lambda.tf`, `lambda_function.py` 등):**
-  - **Starter Lambda (채점):** API Gateway -> Step Functions 실행 시작.
-  - **Task Lambda (채점):** Step Functions `Task` 상태 처리 (`getProblemDetails`, `parseS3Output`, `aggregateResults`, `prepareMapInput`). `RUNNER_INFO_JSON` 환경 변수 사용.
-  - **Streaming Lambda (생성):** WebSocket 연결 관리, `ProblemGenerator` 호출, 결과 스트리밍.
-- **Step Functions 상태 머신 (`step_functions.tf`, `problem_grader_statemachine.asl.json`):**
-  - 코드 채점 워크플로우 오케스트레이션. ASL로 정의.
-- **ECS Fargate Tasks (`ecs.tf`, Dockerfiles):**
-  - **Test Case Generation Task:** 채점 시 `generation_code`를 받아 테스트 케이스 재생성.
-  - **Runner Task:** 사용자 코드 실행.
-- **Amazon S3:** 채점 중간 결과 (재생성된 테스트 케이스, Runner 출력) 저장.
-- **Amazon DynamoDB:** 두 개의 주요 테이블을 사용합니다.
-  - **`problems_table`:** 문제 정보 저장 (특히 `generation_code` 포함).
-  - **`submissions_table`:** 채점 제출/결과 저장.
-- **Amazon ECR:** Test Case Generator 및 각 언어 Runner의 Docker 이미지를 저장합니다.
-- **AWS IAM:** 각 서비스가 다른 서비스에 접근하는 데 필요한 역할과 정책을 정의합니다.
+    ```json
+    {
+      "input": "테스트 케이스 입력 (String)",
+      "expected_output": "테스트 케이스 기대 출력 (String)"
+    }
+    ```
 
-## 5. Terraform 구조 (`*.tf`, `locals.tf`)
+2.  **Runner Result Structure (S3에 저장되는 JSON):**
 
-`infrastructure/terraform/problem_service` 디렉토리 내 Terraform 코드는 **문제 생성 스트리밍과 코드 채점 시스템 모두에 필요한 AWS 인프라를 통합 관리**합니다.
+    ```json
+    {
+      "status": "SUCCESS | RUNTIME_ERROR | TIME_LIMIT_EXCEEDED | GRADER_ERROR",
+      "stdout": "실행 표준 출력 (String)",
+      "stderr": "실행 표준 에러 (String)",
+      "execution_time": 1.234 // 실행 시간 (Number, 초)
+    }
+    ```
 
-- `provider.tf`: AWS Provider 및 리전 설정.
-- `variables.tf`: 프로젝트 전반에 사용되는 변수 정의 (리전, 이름 지정 규칙, Lambda 설정 등 - Generator Streaming 관련 변수 포함).
-- `backend.tf`: Terraform 상태 원격 관리 설정 **(사용자 수정 필요)**.
-- `network.tf`: VPC, 서브넷, 보안 그룹 등 네트워킹 리소스.
-- `storage.tf`: S3 버킷 (채점 결과 저장용), DynamoDB 테이블 (`problems_table`, `submissions_table`).
-- `ecr.tf`: ECR 리포지토리 (Generator Task, Runner Task 용).
-- `iam.tf`: **통합 시스템 전체**에 필요한 IAM 역할 및 정책 (채점용 Lambda/Step Functions/ECS 역할, 생성 스트리밍용 Lambda 역할 등).
-- `ecs.tf`: ECS 클러스터, CloudWatch 로그 그룹, Task Definitions (Generator Task, Runner Task 용).
-- `step_functions.tf`: **채점용** Step Functions 상태 머신 및 관련 IAM 역할, CloudWatch 로그 그룹.
-- `problem_grader_statemachine.asl.json`: **채점용** Step Functions 상태 머신의 워크플로우 정의 (Amazon States Language).
-- `api_lambda.tf`: **API 및 Lambda 통합 관리.**
-  - 채점용 HTTP API Gateway 및 Starter/Task Lambda 함수.
-  - **생성 스트리밍용 WebSocket API Gateway 및 Streaming Lambda 함수.**
-  - **Streaming Lambda용 의존성 Layer 생성 로직 (`null_resource`, `local-exec` 사용).**
-    - _주의: `local-exec` 방식은 Terraform 실행 환경에 Python/pip가 필요하며, OS 간 호환성 문제가 발생할 수 있습니다. Docker를 사용한 Layer 빌드를 권장합니다._
-- `locals.tf`: 중앙 집중식 로컬 변수 정의 (서브넷/보안그룹 ID, Runner 정보 맵 등).
-- `outputs.tf`: 배포된 주요 리소스 식별자 출력 (채점 API URL, 상태 머신 ARN, **WebSocket API URL** 등).
+3.  **Submission Result Structure (DynamoDB `submissions_table` 저장 형식):**
+    ```json
+    {
+      "submission_id": "sub_...", // (String, Partition Key)
+      "problem_id": "f47ac10b-...", // (String, UUID 형식)
+      "language": "python", // (String)
+      "status": "ACCEPTED | WRONG_ANSWER | TLE | RE | IE | NO_TEST_CASES", // 최종 상태 (String)
+      "execution_time": 0.1234, // 최대 실행 시간 (Number, 초)
+      "results": [
+        // (List of Maps) 각 케이스 요약 결과
+        {
+          "case": 1, // (Number)
+          "status": "ACCEPTED | WRONG_ANSWER | TLE | RE | IE", // 케이스 상태 (String)
+          "execution_time": 0.05 // 케이스 실행 시간 (Number)
+          // Lambda 판단 하에 stdout/stderr/expected_output 등 추가 정보 저장 가능 (크기 제한 유의)
+        }
+      ],
+      "submission_time": 1678886400, // (Number, Unix timestamp)
+      "user_code": "...", // (String, 선택적 저장)
+      "error_message": "..." // (String, 오류 발생 시, 선택적 저장)
+    }
+    ```
 
-**(진행 상황 및 이슈):** 현재 Terraform 리소스 정의는 대부분 통합되었으나, `terraform plan` 실행 시 Step Functions와 Lambda 간의 **순환 종속성 오류**가 발생하고 있습니다. 이는 `problem_grader_statemachine.asl.json` 파일 내 Lambda 참조 방식 확인 및 수정이 필요한 상태입니다.
+## 7. 배포 참고사항 (인프라 담당자)
 
-## 6. 배포 방법 (Deployment Steps)
-
-...(이전과 동일한 내용 유지 - 사전 요구 사항, 백엔드 설정, init/plan/apply, Docker 빌드/푸시, 출력 확인)...
-
-## 7. 사용 방법 (Usage)
-
-**A. 코드 채점 요청:**
-
-...(이전과 동일 - 채점 API 엔드포인트 확인, POST 요청 예시, submission_id 확인, 결과 확인 방법)...
-
-**B. 문제 생성 요청 (Streaming):**
-
-**(구현 후 추가 예정)** WebSocket 엔드포인트 연결 및 메시지 프로토콜에 대한 설명이 필요합니다.
+1.  제공된 `lambda_function.py` 및 `docker/runner/python` 사용.
+2.  **필수 인프라 및 구성** 섹션의 요구사항 충족.
+3.  Lambda 환경 변수 정확성 확인.
+4.  Runner Docker 이미지 빌드 및 ECR 푸시.
+5.  구현된 호출 인터페이스를 통해 기능 테스트.
 
 ## 8. 문제 해결 (Troubleshooting)
 
-...(이전과 동일 - Step Functions 히스토리, CloudWatch Logs (Lambda, ECS), Terraform 오류, IAM 오류, 네트워크 오류 확인)...
+- **Lambda 함수 로그 (CloudWatch):** 워크플로우 오류 추적 (DB 조회, ECS Task 실행, S3 GetObject 등).
+- **ECS Runner Task 로그 (CloudWatch):** 컨테이너 내부 오류 (`run_code.py` 또는 사용자 코드 오류).
+- **데이터 확인:** `problems_table` (ID, `test_cases` 형식), S3 (Runner 결과 파일 존재 여부), `submissions_table` (결과 저장 확인).
+- **권한 확인:** Lambda 및 ECS 역할의 IAM 권한 검토 (DynamoDB, S3, ECS).
+- **네트워킹:** ECS Task의 VPC 설정 (서브넷, 보안 그룹, 외부 서비스 접근).
+- **환경 변수:** Lambda 환경 변수 값과 실제 리소스 일치 여부 확인.
 
 ## 9. 확장성 (Extensibility)
 
 **A. 채점 언어 추가:**
 
-...(이전과 동일 - Runner Dockerfile/코드 작성, Terraform ECR/TaskDef/locals 수정, 이미지 빌드/푸시, 테스트)...
+1.  새 언어용 Runner 구현 및 Docker 이미지 생성.
+2.  ECR 리포지토리 및 ECS Task Definition 생성.
+3.  Lambda 환경 변수 추가/업데이트.
+4.  `lambda_function.py` 내 `runner_map` 등 관련 로직 수정.
+5.  이미지 빌드/푸시 및 인프라 배포.
 
-**B. 문제 생성 로직 확장:**
+**B. 비동기 처리로 전환:**
 
-...(향후 관련 모듈/클래스 수정 및 배포 방법에 대한 설명 추가)...
+이 동기식 로직은 필요에 따라 비동기 아키텍처(예: SQS+Lambda) 내에서 호출되도록 인프라 레벨에서 수정/통합될 수 있습니다. 이는 Lambda 함수 코드 자체보다는 외부 호출 및 상태 관리 방식의 변경을 의미합니다.
