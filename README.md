@@ -1,13 +1,22 @@
 ## ALPACO : 클라우드 기반 LLM 알고리즘 문제 생성 및 자동 채점 플랫폼
 
+<br/>
+
 <p align="center">
-  <img src="assets/logo.png" alt="ALPACO Logo" width="220"/>
+  <img src="assets/logo.png" alt="ALPACO Logo" width="200"/>
 </p>
+
+<br/>
 
 ### 국민대학교 소프트웨어융합대학 2025년 캡스톤 4팀
 ---
 
 ## 💡 프로젝트 소개
+
+<p align="center">
+  <img src="assets/key.png" alt="Why ALPACO?" width="100%"/>
+</p>
+
 
 ### a. 문제 생성 서비스
 
