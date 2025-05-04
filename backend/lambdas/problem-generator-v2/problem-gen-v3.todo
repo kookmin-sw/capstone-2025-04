@@ -1,0 +1,109 @@
+모듈을 잘게 나누어 “한눈에 이해‑가능하고, 부분적으로 교체·테스트·재사용이 쉬운” 구조를 만드는 것이 핵심입니다. 아래는 AWS Lambda + LangChain 기반 프로젝트에서 자주 쓰는 분리 전략을 그대로 적용한 예시입니다.
+
+⸻
+
+1. 기준 원칙
+
+원칙	이유	실천 팁
+단일 책임(SRP)	파일 하나가 하나의 역할만 수행하게	“한 줄 설명”을 못 쓰면 과도하게 커진 것
+계층화(Entry ⟶ Service ⟶ Util)	진입점과 비즈니스 로직, 공용 유틸을 분리	의존 방향은 한쪽 방향(위→아래)만
+의존성 뒤집기(DI)	테스트·교체 용이	AWS SDK, LangChain 객체를 매개변수로 주입
+폴더별 Naming = Role	폴더 이름만 봐도 책임 구분	chains/, prompts/, schemas/ 등
+
+⸻
+
+2. 추천 폴더 구조 (예시)
+
+backend/
+  lambdas/
+    problem-generator/
+      ├─ handler.mjs              # 진입점: AWS Lambda handler
+      ├─ services/
+      │    ├─ pipeline.mjs        # 8‑스텝 파이프라인 orchestrator
+      │    ├─ dynamoClient.mjs    # DynamoDB CRUD 래퍼
+      │    ├─ sse.mjs             # SSE 전송 유틸
+      ├─ chains/
+      │    ├─ intentAnalysis.mjs
+      │    ├─ solutionGen.mjs
+      │    ├─ testGen.mjs
+      │    └─ …                   # step2~6 모듈별 체인
+      ├─ prompts/
+      │    ├─ intentAnalysis.js
+      │    ├─ solutionGen.js
+      │    └─ …
+      ├─ schemas/                 # zod 스키마
+      │    ├─ intent.js
+      │    ├─ validation.js
+      │    └─ …
+      ├─ utils/
+      │    ├─ cleanLlmOutput.mjs
+      │    ├─ retry.mjs
+      │    └─ constants.mjs       # 환경변수·디폴트 값
+      ├─ index.test.js            # 단위 테스트
+      └─ README.md
+
+핵심 분리 지점
+	1.	handler.mjs
+	•	event 파싱과 problem-generator 서비스 호출만 담당.
+	•	AWS‑specific 코드만 남기고, 로직은 services/pipeline.mjs에 위임.
+	2.	services/pipeline.mjs
+	•	지금 index.mjs에 있는 8‑스텝 수행 순서를 그대로 옮기되,
+각 스텝은 chains/* 모듈에 캡슐화된 함수를 호출.
+	•	재시도, DynamoDB 업데이트, SSE status 전송 로직도 여기에서 orchestration.
+	3.	chains/
+	•	LangChain PromptTemplate + LLM + Parser를 조합해 단일 결과를 내는 함수만 포함.
+	•	테스트에서 체인별 단독 실행 가능.
+	4.	prompts/
+	•	멀티라인 템플릿 문자열만 별도 파일에 빼두면, 버전 관리 diff 가 깔끔하고
+번역·카피 작업자 협업이 쉬워집니다.
+	5.	utils/
+	•	범용 함수(문자열 정제, 재시도 래퍼 등)는 여기서 공유.
+	6.	schemas/
+	•	Zod 스키마는 체인·서비스 어디서든 재사용하므로 중앙화.
+
+⸻
+
+3. 구현 단계
+	1.	폴더 생성 후 내용 복사
+	•	먼저 utils/constants.mjs에 환경 변수·디폴트 값을 이동.
+	•	services/dynamoClient.mjs, services/sse.mjs를 만든 뒤 관련 함수 이관.
+	2.	각 스텝 체인별 함수 추출
+	•	예: const intentAnalysis = async (input) => { … } 형태로 chains/intentAnalysis.mjs에 이동.
+	•	index.mjs에서 사용하던 모듈 스코프 변수 대신, 필요한 의존성(LangChain LLM, parser 등)을 인자로 주입.
+	3.	pipeline.mjs 리팩터링
+	•	runStep({ num, name, chainFn, input, onSuccess }) 헬퍼로 반복 패턴 제거.
+	•	재시도 로직을 utils/retry.mjs로 분리해 테스트 가능하게.
+	4.	handler.mjs 최소화
+
+import { pipeline } from "./services/pipeline.mjs";
+
+export const handler = awslambda.streamifyResponse(
+  async (event, responseStream) => {
+    await pipeline(event, responseStream);
+  }
+);
+
+
+	5.	테스트 작성
+	•	체인 함수는 I/O가 명확하므로 jest로 단위 테스트.
+	•	pipeline은 LLM 호출을 목(mock) 처리해 플로우 테스트.
+
+⸻
+
+4. 추가 개선 아이디어
+
+개선	효과
+TypeScript 전환	Zod 스키마 ↔︎ 타입 자동 추론, IDE 가독성 향상
+비동기 종속성 주입 (AWS SDK, LangChain)	로컬 테스트·스텁 교체 편리
+결과 / 상태 Enum 모듈화	“문자열 오타” 리스크 감소
+ESM Barrel 파일(index.js)	import { intentAnalysis, solutionGen } from './chains' 식 재사용
+Layer 활용	공통 모듈을 Lambda Layer에 넣어 배포 패키지 최소화
+
+
+
+⸻
+
+5. 진행 방법
+	1.	위 구조로 디렉터리·파일 scaffold를 먼저 만든 뒤,
+	2.	가장 작은 단위부터(유틸 → 체인 → 서비스) 함수 이동·테스트 추가,
+	3.	마지막으로 handler.mjs를 교체하면 점진적 마이그레이션 가능.
