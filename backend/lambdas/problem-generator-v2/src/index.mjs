@@ -15,6 +15,7 @@ import {
 import { z } from "zod";
 import { v4 as uuidv4 } from "uuid";
 import { Readable } from "stream"; // Node.js built-in stream
+import { cleanLlmOutput } from "./utils/cleanLlmOutput.mjs";
 
 // Environment Variables
 const PROBLEMS_TABLE_NAME =
@@ -378,63 +379,6 @@ async function updateDynamoDbStatus(problemId, updates) {
   }
 }
 
-/**
- * Cleans LLM string output, removing markdown fences or extra text.
- * @param {string} outputString - The raw output from the LLM.
- * @param {'code' | 'json' | 'text'} expectedType - The expected type of content.
- * @returns {string} The cleaned string.
- */
-function cleanLlMOutput(outputString, expectedType = "code") {
-  let cleaned = outputString.trim();
-
-  // Generic removal of ```<lang>\n ... ``` fences
-  // Covers ```python, ```json, ``` etc.
-  const fenceMatch = cleaned.match(/^```(?:\w*\n)?([\s\S]*?)```$/);
-  if (fenceMatch && fenceMatch[1]) {
-    cleaned = fenceMatch[1].trim();
-  }
-
-  // Additional cleanup specific to types if needed
-  if (expectedType === "json") {
-    // Remove // comments
-    cleaned = cleaned.replace(/\/\/.*$/gm, "");
-    // Remove /* */ comments (multiline)
-    cleaned = cleaned.replace(/\/\*[\s\S]*?\*\//g, "");
-
-    // Ensure it looks like JSON, find first { and last }
-    const start = cleaned.indexOf("{");
-    const end = cleaned.lastIndexOf("}");
-    if (start !== -1 && end !== -1 && end > start) {
-      cleaned = cleaned.substring(start, end + 1);
-    }
-    // Optionally try parsing and stringifying to ensure validity/formatting
-    try {
-      cleaned = JSON.stringify(JSON.parse(cleaned));
-    } catch (e) {
-      console.warn("Cleaned JSON output might still be invalid:", cleaned);
-    }
-  } else if (expectedType === "text") {
-    // Remove any lines that look like instructions or meta-commentary
-    cleaned = cleaned.replace(/^---.*?---$/gm, ""); // Remove separator lines
-    cleaned = cleaned.replace(/^\*\*.*?\*\*:.*$/gm, ""); // Remove instructions like **IMPORTANT:** ...
-    cleaned = cleaned.replace(/^Translated Text:$/gim, ""); // Remove header
-    cleaned = cleaned.replace(/^Translation:$/gim, ""); // Remove header
-
-    // Remove any text that looks like it might be an instruction about the translation
-    const instructionPatterns = [
-      /^.*?번역된 텍스트.*?출력.*$/gim, // Korean instructions about translated text output
-      /^.*?원본 텍스트.*?포함.*$/gim, // Korean instructions about not including original text
-      /^.*?설명.*?포함하지 않.*$/gim, // Korean instructions about not including explanations
-    ];
-
-    for (const pattern of instructionPatterns) {
-      cleaned = cleaned.replace(pattern, "");
-    }
-  }
-
-  return cleaned.trim();
-}
-
 // --- Main Lambda Handler ---
 export const handler = awslambda.streamifyResponse(
   async (event, responseStream, context) => {
@@ -665,7 +609,7 @@ export const handler = awslambda.streamifyResponse(
           step2Input,
           "Solution Code"
         );
-        solutionCode = cleanLlMOutput(solutionCodeRaw, "code"); // Update outer scope variable
+        solutionCode = cleanLlmOutput(solutionCodeRaw, "code"); // Update outer scope variable
         await updateDynamoDbStatus(problemId, {
           generationStatus: `step2_attempt_${attempt}`,
           solutionCode: solutionCode, // Save latest attempt
@@ -694,7 +638,7 @@ export const handler = awslambda.streamifyResponse(
           step3Input,
           "Test Gen Code"
         );
-        testGenCode = cleanLlMOutput(testGenCodeRaw, "code"); // Update outer scope variable
+        testGenCode = cleanLlmOutput(testGenCodeRaw, "code"); // Update outer scope variable
         await updateDynamoDbStatus(problemId, {
           generationStatus: `step3_attempt_${attempt}`,
           testGeneratorCode: testGenCode, // Save latest attempt
@@ -850,7 +794,7 @@ export const handler = awslambda.streamifyResponse(
         step6Input,
         "Description"
       );
-      problemDescription = cleanLlMOutput(problemDescriptionRaw, "text"); // Assign to outer scope variable
+      problemDescription = cleanLlmOutput(problemDescriptionRaw, "text"); // Assign to outer scope variable
       await updateDynamoDbStatus(problemId, {
         generationStatus: "step6_complete",
         description: problemDescription,
@@ -877,7 +821,7 @@ export const handler = awslambda.streamifyResponse(
         step6_5Input,
         "Title Generation"
       );
-      problemTitle = cleanLlMOutput(problemTitle, "text").trim(); // Clean and trim
+      problemTitle = cleanLlmOutput(problemTitle, "text").trim(); // Clean and trim
       // Add difficulty back if LLM didn't include it (optional safeguard)
       if (!/\(.*\)/.test(problemTitle)) {
         problemTitle = `${problemTitle} (${difficulty})`;
@@ -916,7 +860,7 @@ export const handler = awslambda.streamifyResponse(
           );
           if (GENERATOR_VERBOSE)
             console.log("Raw Translated Title:", translatedTitleRaw);
-          translatedTitle = cleanLlMOutput(translatedTitleRaw, "text").trim();
+          translatedTitle = cleanLlmOutput(translatedTitleRaw, "text").trim();
 
           // Additional cleaning for titles - remove any markdown-like formatting or instructions
           translatedTitle = translatedTitle
@@ -944,7 +888,7 @@ export const handler = awslambda.streamifyResponse(
               "Raw Translated Description:",
               translatedDescriptionRaw
             );
-          translatedDescription = cleanLlMOutput(
+          translatedDescription = cleanLlmOutput(
             translatedDescriptionRaw,
             "text"
           ).trim();
@@ -1083,3 +1027,15 @@ export const handler = awslambda.streamifyResponse(
     }
   }
 );
+
+// Re-export the handler from the modularized structure
+export { handler } from './handler.mjs';
+
+// Note: This file serves as a backward-compatible entry point.
+// The actual implementation has been modularized and can be found in:
+// - handler.mjs: Main entry point
+// - services/pipeline.mjs: Pipeline orchestration
+// - chains/: Individual LLM chain modules
+// - prompts/: Prompt templates
+// - schemas/: Zod schemas for structured output
+// - utils/: Utility functions
