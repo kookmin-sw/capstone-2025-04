@@ -50,7 +50,7 @@ export const handler = async (event) => {
       };
     }
 
-    const author = claims["cognito:username"];
+    const author = claims["given_name"] || claims["cognito:username"] || "익명";
     const userId = claims.sub; // Use 'sub' from JWT as userId
     const postId = uuidv4();
     const createdAt = new Date().toISOString();

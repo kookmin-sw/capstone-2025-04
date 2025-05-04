@@ -51,7 +51,8 @@ export const handler = async (event) => {
       };
     }
 
-    const author = claims["cognito:username"];
+    const author = claims["given_name"] || claims["cognito:username"] || "익명";
+    const userId = claims.sub;
     const commentId = uuidv4();
     const createdAt = new Date().toISOString();
 
@@ -67,6 +68,7 @@ export const handler = async (event) => {
               SK: `COMMENT#${commentId}`,
               commentId,
               author,
+              userId,
               content,
               createdAt,
               // Add GSI keys if comments need separate listing/sorting later
@@ -97,6 +99,7 @@ export const handler = async (event) => {
       postId,
       commentId,
       author,
+      userId,
       content,
       createdAt,
     };

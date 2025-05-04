@@ -28,7 +28,8 @@ const CommunityDetail: React.FC<CommunityDetailProps> = ({ id }) => {
     context.authStatus,
   ]);
   const isAuthenticated = authStatus === "authenticated";
-  const currentUsername = user?.username; // Or use signInDetails?.loginId depending on config
+  console.log("user:", user);
+  const currentUserId = user?.userId; // Or use signInDetails?.loginId depending on config
 
   const [post, setPost] = useState<PostDetail | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
@@ -69,8 +70,8 @@ const CommunityDetail: React.FC<CommunityDetailProps> = ({ id }) => {
         setLikeCount(postResult.value.likesCount ?? 0);
         // Check if current user liked this post
         setIsLiked(
-          !!currentUsername &&
-            postResult.value.likedUsers?.includes(currentUsername)
+          !!currentUserId &&
+            postResult.value.likedUsers?.includes(currentUserId)
         );
       } else {
         console.error("Failed to fetch post:", postResult.reason);
@@ -107,7 +108,7 @@ const CommunityDetail: React.FC<CommunityDetailProps> = ({ id }) => {
       setIsLoadingPost(false);
       setIsLoadingComments(false);
     }
-  }, [id, currentUsername, errorPost, errorComments]); // Add dependencies
+  }, [id, currentUserId, errorPost, errorComments]); // Add dependencies
 
   useEffect(() => {
     if (id) {
@@ -178,7 +179,7 @@ const CommunityDetail: React.FC<CommunityDetailProps> = ({ id }) => {
 
   // Handle Post Deletion
   const handleDeletePost = async () => {
-    if (!isAuthenticated || !post || post.author !== currentUsername) {
+    if (!isAuthenticated || !post || post.userId !== currentUserId) {
       toast.error("게시글을 삭제할 권한이 없습니다.");
       return;
     }
@@ -207,7 +208,7 @@ const CommunityDetail: React.FC<CommunityDetailProps> = ({ id }) => {
     if (
       !isAuthenticated ||
       !commentToDelete ||
-      commentToDelete.author !== currentUsername
+      commentToDelete.userId !== currentUserId
     ) {
       toast.error("댓글을 삭제할 권한이 없습니다.");
       return;
@@ -272,7 +273,7 @@ const CommunityDetail: React.FC<CommunityDetailProps> = ({ id }) => {
     );
   }
 
-  const isAuthor = isAuthenticated && post.author === currentUsername;
+  const isAuthor = isAuthenticated && post.userId === currentUserId;
 
   return (
     <div className="max-w-5xl mx-auto p-8">
@@ -399,7 +400,7 @@ const CommunityDetail: React.FC<CommunityDetailProps> = ({ id }) => {
                       </div>
                       {/* Delete Button for Comment Author */}
                       {isAuthenticated &&
-                        comment.author === currentUsername && (
+                        comment.userId === currentUserId && (
                           <button
                             onClick={() =>
                               handleDeleteComment(comment.commentId)

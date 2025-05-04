@@ -53,6 +53,7 @@ export const handler = async (event) => {
       postId: item.PK, // PK is the postId
       title: item.title,
       author: item.author,
+      userId: item.userId,
       createdAt: item.createdAt,
       likesCount: item.likesCount ?? 0, // Use nullish coalescing for default
       commentCount: item.commentCount ?? 0, // Use nullish coalescing for default

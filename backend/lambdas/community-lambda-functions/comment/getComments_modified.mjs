@@ -39,7 +39,7 @@ export const handler = async (event) => {
         ":commentPrefix": "COMMENT#",
       },
       // Select only needed attributes to reduce payload size
-      ProjectionExpression: "commentId, content, author, createdAt, SK",
+      ProjectionExpression: "commentId, content, author, createdAt, SK, userId",
       ScanIndexForward: false, // Get latest comments first (descending sort key order)
     };
 
@@ -50,12 +50,13 @@ export const handler = async (event) => {
 
     // Map results using logic from community/getComments.js
     const comments = items.map(
-      ({ content, author, createdAt, SK, commentId }) => ({
+      ({ content, author, createdAt, SK, commentId, userId }) => ({
         // Prefer using the dedicated commentId attribute if available, otherwise parse SK
         commentId: commentId || SK.replace("COMMENT#", ""),
         content,
         author,
         createdAt,
+        userId, // Include userId for author verification
       })
     );
 

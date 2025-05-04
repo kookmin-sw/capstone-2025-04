@@ -24,6 +24,7 @@ export interface PostDetail {
   title: string;
   content: string;
   author: string;
+  userId: string;
   createdAt: string;
   updatedAt?: string | null;
   likesCount: number;
@@ -37,6 +38,7 @@ export interface Comment {
   commentId: string;
   content: string;
   author: string;
+  userId: string;
   createdAt: string;
 }
 
