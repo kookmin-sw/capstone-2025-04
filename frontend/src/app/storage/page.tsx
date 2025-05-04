@@ -1,45 +1,60 @@
 "use client";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Head from "next/head";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import Link from "next/link";
+import { fetchAuthSession } from "aws-amplify/auth";
+import { getProblems, ProblemSummary } from "@/api/problemApi";
+import { format } from "date-fns";
 
-// 가상의 저장된 코딩 테스트 데이터
-const savedTests = [
-  {
-    id: 1,
-    title: "배열에서 가장 큰 수 찾기",
-    type: "알고리즘 기초",
-    date: "2023-04-18",
-    status: "완료",
-    score: 100,
-  },
-  {
-    id: 2,
-    title: "피보나치 수열 구현하기",
-    type: "다이나믹 프로그래밍",
-    date: "2023-04-16",
-    status: "완료",
-    score: 85,
-  },
-  {
-    id: 3,
-    title: "이진 탐색 트리 구현",
-    type: "자료구조",
-    date: "2023-04-10",
-    status: "진행중",
-    score: null,
-  },
-];
+// Format the date from ISO string
+const formatDate = (dateStr: string) => {
+  try {
+    return format(new Date(dateStr), "yyyy-MM-dd");
+  } catch {
+    return dateStr;
+  }
+};
 
 const StoragePage: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState("");
+  const [userProblems, setUserProblems] = useState<ProblemSummary[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  
+  // Fetch user-created problems
+  useEffect(() => {
+    const fetchUserProblems = async () => {
+      try {
+        setLoading(true);
+        
+        // Get user ID from token
+        const session = await fetchAuthSession();
+        const username = session.tokens?.idToken?.payload?.["cognito:username"] as string;
+        
+        if (!username) {
+          throw new Error("사용자 정보를 가져올 수 없습니다.");
+        }
+        
+        // Fetch problems created by this user
+        const problems = await getProblems(username);
+        setUserProblems(problems);
+      } catch (err) {
+        console.error("Error fetching user problems:", err);
+        setError(err instanceof Error ? err.message : "문제를 불러오는 데 실패했습니다.");
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchUserProblems();
+  }, []);
 
-  const filteredTests = savedTests.filter(
-    (test) =>
-      test.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      test.type.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredProblems = userProblems.filter(
+    (problem) =>
+      problem.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      problem.algorithmType?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
@@ -119,7 +134,7 @@ const StoragePage: React.FC = () => {
               </div>
             </div>
 
-            <div className="bg-white shadow-sm rounded-lg overflow-hidden">
+            <div className="bg-white shadow-sm rounded-lg overflow-hidden mb-8">
               <div className="px-6 py-5 border-b border-gray-200">
                 <h2 className="text-xl font-semibold text-gray-900 flex items-center">
                   <span className="mr-2 text-primary">
@@ -138,15 +153,24 @@ const StoragePage: React.FC = () => {
                       />
                     </svg>
                   </span>
-                  저장된 코딩 테스트
+                  내가 생성한 문제
                 </h2>
                 <p className="mt-1 text-sm text-gray-500">
-                  저장한 문제들을 언제든지 다시 풀어볼 수 있습니다. 총{" "}
-                  {filteredTests.length}개의 문제가 있습니다.
+                  내가 생성한 문제들을 확인할 수 있습니다. 총{" "}
+                  {filteredProblems.length}개의 문제가 있습니다.
                 </p>
               </div>
 
-              {filteredTests.length > 0 ? (
+              {loading ? (
+                <div className="py-10 px-6 text-center">
+                  <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                  <p className="mt-2 text-gray-500">문제를 불러오는 중...</p>
+                </div>
+              ) : error ? (
+                <div className="py-10 px-6 text-center">
+                  <p className="text-red-500">{error}</p>
+                </div>
+              ) : filteredProblems.length > 0 ? (
                 <div className="overflow-x-auto">
                   <table className="min-w-full divide-y divide-gray-200">
                     <thead className="bg-gray-50">
@@ -155,16 +179,13 @@ const StoragePage: React.FC = () => {
                           제목
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          유형
+                          알고리즘 유형
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          저장 날짜
+                          난이도
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          상태
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          점수
+                          생성 날짜
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           작업
@@ -172,115 +193,53 @@ const StoragePage: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                      {filteredTests.map((test) => (
-                        <tr key={test.id} className="hover:bg-gray-50">
+                      {filteredProblems.map((problem) => (
+                        <tr key={problem.problemId} className="hover:bg-gray-50">
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div className="text-sm font-medium text-gray-900">
-                              {test.title}
+                              {problem.title}
                             </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div className="text-sm text-gray-500">
-                              {test.type}
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="text-sm text-gray-500">
-                              {test.date}
+                              {problem.algorithmType || "기타"}
                             </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <span
                               className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                                test.status === "완료"
+                                problem.difficulty === "쉬움" || problem.difficulty === "Easy"
                                   ? "bg-green-100 text-green-800"
-                                  : "bg-yellow-100 text-yellow-800"
+                                  : problem.difficulty === "보통" || problem.difficulty === "Medium"
+                                  ? "bg-yellow-100 text-yellow-800"
+                                  : "bg-red-100 text-red-800"
                               }`}
                             >
-                              {test.status === "완료" ? (
-                                <svg
-                                  className="h-3 w-3 mr-1"
-                                  viewBox="0 0 20 20"
-                                  fill="currentColor"
-                                >
-                                  <path
-                                    fillRule="evenodd"
-                                    d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                                    clipRule="evenodd"
-                                  />
-                                </svg>
-                              ) : (
-                                <svg
-                                  className="h-3 w-3 mr-1"
-                                  viewBox="0 0 20 20"
-                                  fill="currentColor"
-                                >
-                                  <path
-                                    fillRule="evenodd"
-                                    d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z"
-                                    clipRule="evenodd"
-                                  />
-                                </svg>
-                              )}
-                              {test.status}
+                              {problem.difficulty}
                             </span>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
-                            {test.score !== null ? (
-                              <div className="flex items-center">
-                                <div className="w-32 bg-gray-200 rounded-full h-2.5 mr-2">
-                                  <div
-                                    className="bg-primary h-2.5 rounded-full"
-                                    style={{ width: `${test.score}%` }}
-                                  ></div>
-                                </div>
-                                <span className="text-sm text-gray-600">
-                                  {test.score}/100
-                                </span>
-                              </div>
-                            ) : (
-                              <span className="text-gray-400">-</span>
-                            )}
+                            <div className="text-sm text-gray-500">
+                              {formatDate(problem.createdAt)}
+                            </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <Link
-                              href={{
-                                pathname: "/coding-test/solve",
-                                query: { id: test.id, fromStorage: true },
-                              }}
+                              href={`/coding-test/solve?id=${problem.problemId}`}
                               className="inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-md text-primary-hover bg-primary/10 hover:bg-primary/20 transition"
                             >
-                              {test.status === "완료" ? (
-                                <>
-                                  <svg
-                                    viewBox="0 0 20 20"
-                                    fill="currentColor"
-                                    className="h-4 w-4 mr-1"
-                                  >
-                                    <path
-                                      fillRule="evenodd"
-                                      d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z"
-                                      clipRule="evenodd"
-                                    />
-                                  </svg>
-                                  다시 풀기
-                                </>
-                              ) : (
-                                <>
-                                  <svg
-                                    viewBox="0 0 20 20"
-                                    fill="currentColor"
-                                    className="h-4 w-4 mr-1"
-                                  >
-                                    <path
-                                      fillRule="evenodd"
-                                      d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-8.707l-3-3a1 1 0 00-1.414 0l-3 3a1 1 0 001.414 1.414L9 9.414V13a1 1 0 102 0V9.414l1.293 1.293a1 1 0 001.414-1.414z"
-                                      clipRule="evenodd"
-                                    />
-                                  </svg>
-                                  계속하기
-                                </>
-                              )}
+                              <svg
+                                viewBox="0 0 20 20"
+                                fill="currentColor"
+                                className="h-4 w-4 mr-1"
+                              >
+                                <path
+                                  fillRule="evenodd"
+                                  d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-8.707l-3-3a1 1 0 00-1.414 0l-3 3a1 1 0 001.414 1.414L9 9.414V13a1 1 0 102 0V9.414l1.293 1.293a1 1 0 001.414-1.414z"
+                                  clipRule="evenodd"
+                                />
+                              </svg>
+                              문제 풀기
                             </Link>
                           </td>
                         </tr>
@@ -290,7 +249,13 @@ const StoragePage: React.FC = () => {
                 </div>
               ) : (
                 <div className="py-10 px-6 text-center">
-                  <p className="text-gray-500">검색 결과가 없습니다.</p>
+                  <p className="text-gray-500">생성한 문제가 없습니다. 문제를 생성해보세요!</p>
+                  <Link
+                    href="/generate-problem"
+                    className="mt-4 inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary hover:bg-primary-hover transition"
+                  >
+                    문제 생성하기
+                  </Link>
                 </div>
               )}
             </div>

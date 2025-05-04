@@ -40,6 +40,7 @@ export type ProblemDifficulty = "튜토리얼" | "쉬움" | "보통" | "어려�
 export interface CreateProblemRequest {
   prompt: string;
   difficulty: ProblemDifficulty;
+  creatorId?: string; // Add optional creatorId field
 }
 
 export interface CreateProblemResponse {
