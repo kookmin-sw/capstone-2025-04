@@ -54,7 +54,7 @@ export const handler = async (event) => {
           ":creatorId": creatorId,
         },
         ProjectionExpression:
-          "problemId, title, difficulty, algorithmType, createdAt, creatorId",
+          "problemId, title, difficulty, algorithmType, createdAt, creatorId, author",
       };
 
       console.log("Querying by creatorId:", queryParams);
@@ -67,7 +67,7 @@ export const handler = async (event) => {
       const scanParams = {
         TableName: tableName,
         ProjectionExpression:
-          "problemId, title, difficulty, algorithmType, createdAt, creatorId",
+          "problemId, title, difficulty, algorithmType, createdAt, creatorId, author",
       };
 
       console.log("Scanning all problems");

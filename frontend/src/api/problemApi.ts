@@ -19,6 +19,7 @@ export interface ProblemSummary {
   algorithmType?: string; // 선택적 필드
   createdAt: string;
   creatorId?: string; // Add creatorId field
+  author?: string; // Add author field
 }
 
 /**

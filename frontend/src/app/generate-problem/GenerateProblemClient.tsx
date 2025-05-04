@@ -221,12 +221,14 @@ const GenerateProblemClient = () => {
       try {
         const session = await fetchAuthSession();
         const idToken = session.tokens?.idToken;
-        const username = (idToken?.payload?.["cognito:username"] as string) || undefined;
-        console.log("creatorId:", username);
+        const creatorId = idToken?.payload?.sub as string;
+        const username = (idToken?.payload?.["given_name"] as string) || undefined;
+        console.log("generate-problem creatorId:", creatorId);
         const params: CreateProblemRequest = {
           prompt: currentPrompt,
           difficulty: difficultyMap[difficulty],
-          creatorId: username, // Add creator ID if available
+          creatorId: creatorId, // Add creator ID if available
+          author: username, // Add author if available
         };
 
         try {

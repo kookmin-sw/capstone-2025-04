@@ -41,6 +41,7 @@ export interface CreateProblemRequest {
   prompt: string;
   difficulty: ProblemDifficulty;
   creatorId?: string; // Add optional creatorId field
+  author?: string; // Add optional author field
 }
 
 export interface CreateProblemResponse {

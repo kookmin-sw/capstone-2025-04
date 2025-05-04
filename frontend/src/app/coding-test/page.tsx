@@ -69,7 +69,8 @@ const CodingTestPage: React.FC = () => {
     (problem) =>
       problem.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       problem.algorithmType?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      problem.creatorId?.toLowerCase().includes(searchTerm.toLowerCase()) // Also allow filtering by creator
+      // problem.creatorId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      problem.author?.toLowerCase().includes(searchTerm.toLowerCase()) // Also allow filtering by author
   );
 
   // --- Sorting logic ---
@@ -79,7 +80,8 @@ const CodingTestPage: React.FC = () => {
         case "title": return a.title || "";
         case "algorithmType": return a.algorithmType || "기타";
         case "difficulty": return a.difficulty || "";
-        case "creatorId": return a.creatorId || "Unknown"; // Handle missing creatorId
+        // case "creatorId": return a.creatorId || "Unknown"; // Handle missing creatorId
+        case "author": return a.author || "Unknown"; // Handle missing author
         case "createdAt": return a.createdAt || "";
         default: return "";
       }
@@ -90,7 +92,8 @@ const CodingTestPage: React.FC = () => {
         case "title": return b.title || "";
         case "algorithmType": return b.algorithmType || "기타";
         case "difficulty": return b.difficulty || "";
-        case "creatorId": return b.creatorId || "Unknown";
+        // case "creatorId": return b.creatorId || "Unknown";
+        case "author": return b.author || "Unknown";
         case "createdAt": return b.createdAt || "";
         default: return "";
       }
@@ -260,18 +263,15 @@ const CodingTestPage: React.FC = () => {
                           </th>
                            <th
                             className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 hidden md:table-cell" // Hide on small screens
-                            onClick={() => handleSort("creatorId")}
+                            onClick={() => handleSort("author")}
                           >
-                            생성자 {renderSortIndicator("creatorId")}
+                            생성자 {renderSortIndicator("author")}
                           </th>
                           <th
                             className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 hidden sm:table-cell" // Hide on very small screens
                             onClick={() => handleSort("createdAt")}
                           >
                             생성 날짜 {renderSortIndicator("createdAt")}
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Action
                           </th>
                         </tr>
                       </thead>
@@ -300,20 +300,12 @@ const CodingTestPage: React.FC = () => {
                               </span>
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 hidden md:table-cell">
-                              {problem.creatorId || "Unknown"}
+                              {problem.author || "Unknown"}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap hidden sm:table-cell">
                               <div className="text-sm text-gray-500">
                                 {formatDate(problem.createdAt)}
                               </div>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                              <Link
-                                href={`/coding-test/solve?id=${problem.problemId}`}
-                                className="inline-flex items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md text-primary-hover bg-primary/10 hover:bg-primary/20 transition"
-                              >
-                                풀기
-                              </Link>
                             </td>
                           </tr>
                         ))}

@@ -33,14 +33,14 @@ const StoragePage: React.FC = () => {
         
         // Get user ID from token
         const session = await fetchAuthSession();
-        const username = session.tokens?.idToken?.payload?.["cognito:username"] as string;
+        const creatorId = session.tokens?.idToken?.payload?.sub as string;
         
-        if (!username) {
+        if (!creatorId) {
           throw new Error("사용자 정보를 가져올 수 없습니다.");
         }
         
         // Fetch problems created by this user
-        const problems = await getProblems(username);
+        const problems = await getProblems(creatorId);
         setUserProblems(problems);
       } catch (err) {
         console.error("Error fetching user problems:", err);
@@ -263,14 +263,15 @@ const StoragePage: React.FC = () => {
                         >
                           생성 날짜 {renderSortIndicator("createdAt")}
                         </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          작업
-                        </th>
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
                       {sortedProblems.map((problem) => (
-                        <tr key={problem.problemId} className="hover:bg-gray-50">
+                        <tr 
+                          key={problem.problemId} 
+                          className="hover:bg-gray-50 cursor-pointer"
+                          onClick={() => window.location.href = `/coding-test/solve?id=${problem.problemId}`}
+                        >
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div className="text-sm font-medium text-gray-900">
                               {problem.title}
@@ -298,25 +299,6 @@ const StoragePage: React.FC = () => {
                             <div className="text-sm text-gray-500">
                               {formatDate(problem.createdAt)}
                             </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <Link
-                              href={`/coding-test/solve?id=${problem.problemId}`}
-                              className="inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-md text-primary-hover bg-primary/10 hover:bg-primary/20 transition"
-                            >
-                              <svg
-                                viewBox="0 0 20 20"
-                                fill="currentColor"
-                                className="h-4 w-4 mr-1"
-                              >
-                                <path
-                                  fillRule="evenodd"
-                                  d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-8.707l-3-3a1 1 0 00-1.414 0l-3 3a1 1 0 001.414 1.414L9 9.414V13a1 1 0 102 0V9.414l1.293 1.293a1 1 0 001.414-1.414z"
-                                  clipRule="evenodd"
-                                />
-                              </svg>
-                              문제 풀기
-                            </Link>
                           </td>
                         </tr>
                       ))}

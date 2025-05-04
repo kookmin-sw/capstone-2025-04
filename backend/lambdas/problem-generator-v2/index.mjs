@@ -493,6 +493,7 @@ export const handler = awslambda.streamifyResponse(
       const userPrompt = body.prompt || "";
       const difficulty = body.difficulty || "Medium"; // Default difficulty
       const creatorId = body.creatorId || ""; // Extract creatorId from request
+      const author = body.author || ""; // Extract author from request
 
       if (!userPrompt) {
         throw new Error(
@@ -515,6 +516,7 @@ export const handler = awslambda.streamifyResponse(
         createdAt: createdAt,
         language: DEFAULT_LANGUAGE, // Use constant or make configurable
         creatorId: creatorId, // Add creatorId to the initial item
+        author: author, // Add author to the initial item
       };
 
       try {
@@ -1001,6 +1003,7 @@ export const handler = awslambda.streamifyResponse(
         targetLanguage: targetLanguage, // Language used for translation
         completedAt: completedAt,
         creatorId: creatorId, // Ensure creatorId is in the final updates
+        author: author, // Add author to the final updates
         // Other fields were saved in previous steps
       };
       await updateDynamoDbStatus(problemId, finalUpdates);
@@ -1036,6 +1039,7 @@ export const handler = awslambda.streamifyResponse(
         generationStatus: "completed",
         completedAt: completedAt,
         creatorId: creatorId, // Include creatorId in the final problem data
+        author: author, // Include author in the final problem data
       };
 
       sendSse(stream, "result", {
