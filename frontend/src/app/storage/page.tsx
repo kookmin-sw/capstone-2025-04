@@ -11,7 +11,7 @@ import { format } from "date-fns";
 // Format the date from ISO string
 const formatDate = (dateStr: string) => {
   try {
-    return format(new Date(dateStr), "yyyy-MM-dd");
+    return format(new Date(dateStr), "yyyy-MM-dd HH:mm");
   } catch {
     return dateStr;
   }
@@ -22,6 +22,8 @@ const StoragePage: React.FC = () => {
   const [userProblems, setUserProblems] = useState<ProblemSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [sortColumn, setSortColumn] = useState<string>("createdAt"); // Default sort by creation date
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc"); // Default newest first
   
   // Fetch user-created problems
   useEffect(() => {
@@ -51,11 +53,73 @@ const StoragePage: React.FC = () => {
     fetchUserProblems();
   }, []);
 
+  // Filter problems by search term
   const filteredProblems = userProblems.filter(
     (problem) =>
       problem.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       problem.algorithmType?.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  // Sort problems based on current column and direction
+  const sortedProblems = [...filteredProblems].sort((a, b) => {
+    // Default values for null/undefined fields
+    const getValueA = () => {
+      if (sortColumn === "title") return a.title || "";
+      if (sortColumn === "algorithmType") return a.algorithmType || "기타";
+      if (sortColumn === "difficulty") return a.difficulty || "";
+      if (sortColumn === "createdAt") return a.createdAt || "";
+      return "";
+    };
+    
+    const getValueB = () => {
+      if (sortColumn === "title") return b.title || "";
+      if (sortColumn === "algorithmType") return b.algorithmType || "기타";
+      if (sortColumn === "difficulty") return b.difficulty || "";
+      if (sortColumn === "createdAt") return b.createdAt || "";
+      return "";
+    };
+    
+    const valueA = getValueA();
+    const valueB = getValueB();
+    
+    // Specific handling for difficulty
+    if (sortColumn === "difficulty") {
+      const difficultyOrder = {"쉬움": 1, "Easy": 1, "보통": 2, "Medium": 2, "어려움": 3, "Hard": 3};
+      const orderA = difficultyOrder[valueA as keyof typeof difficultyOrder] || 0;
+      const orderB = difficultyOrder[valueB as keyof typeof difficultyOrder] || 0;
+      return sortDirection === "asc" ? orderA - orderB : orderB - orderA;
+    }
+    
+    // Default string comparison for other columns
+    if (sortDirection === "asc") {
+      return valueA.localeCompare(valueB);
+    } else {
+      return valueB.localeCompare(valueA);
+    }
+  });
+
+  // Handle column header click
+  const handleSort = (column: string) => {
+    if (sortColumn === column) {
+      // If clicking the same column, toggle direction
+      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
+    } else {
+      // If clicking a new column, set it as sort column and default to ascending
+      setSortColumn(column);
+      setSortDirection("asc");
+    }
+  };
+
+  // Render sort indicator
+  const renderSortIndicator = (column: string) => {
+    if (sortColumn !== column) return null;
+    
+    return (
+      <span className="ml-1 text-xs inline-block">
+        {sortDirection === "asc" ? "▲" : "▼"}
+      </span>
+    );
+  };
 
   return (
     <>
@@ -170,22 +234,34 @@ const StoragePage: React.FC = () => {
                 <div className="py-10 px-6 text-center">
                   <p className="text-red-500">{error}</p>
                 </div>
-              ) : filteredProblems.length > 0 ? (
+              ) : sortedProblems.length > 0 ? (
                 <div className="overflow-x-auto">
                   <table className="min-w-full divide-y divide-gray-200">
                     <thead className="bg-gray-50">
                       <tr>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          제목
+                        <th 
+                          className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                          onClick={() => handleSort("title")}
+                        >
+                          제목 {renderSortIndicator("title")}
                         </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          알고리즘 유형
+                        <th 
+                          className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                          onClick={() => handleSort("algorithmType")}
+                        >
+                          알고리즘 유형 {renderSortIndicator("algorithmType")}
                         </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          난이도
+                        <th 
+                          className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                          onClick={() => handleSort("difficulty")}
+                        >
+                          난이도 {renderSortIndicator("difficulty")}
                         </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          생성 날짜
+                        <th 
+                          className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                          onClick={() => handleSort("createdAt")}
+                        >
+                          생성 날짜 {renderSortIndicator("createdAt")}
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           작업
@@ -193,7 +269,7 @@ const StoragePage: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                      {filteredProblems.map((problem) => (
+                      {sortedProblems.map((problem) => (
                         <tr key={problem.problemId} className="hover:bg-gray-50">
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div className="text-sm font-medium text-gray-900">
