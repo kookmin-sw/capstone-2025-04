@@ -97,3 +97,4 @@ infrastructure/terraform/problem_service/lambda_package.zip
 .next/
 .nuxt/
 .cache/
+backend/lambdas/problem-grader/test/terraform/lambda_function.zip

@@ -1,0 +1,5 @@
+{
+  "problem_id": "sample-problem-add-two",
+  "language": "python",
+  "user_code": "a, b = map(int, input().split()); print(a+b)"
+}

@@ -1,0 +1,22 @@
+{
+  "id": "sample-problem-add-two",
+  "constraints_time_limit": 2,
+  "test_cases": [
+    {
+      "input": "1 2",
+      "expected_output": "3"
+    },
+    {
+      "input": "10 5",
+      "expected_output": "15"
+    },
+    {
+      "input": "-5 5",
+      "expected_output": "0"
+    },
+    {
+      "input": "1000000000 2000000000",
+      "expected_output": "3000000000"
+    }
+  ]
+}

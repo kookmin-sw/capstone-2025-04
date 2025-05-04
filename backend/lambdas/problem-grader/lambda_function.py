@@ -1,3 +1,4 @@
+# Force update trigger (added comment)
 import json
 import os
 import uuid
@@ -6,7 +7,7 @@ import logging
 import time
 import traceback
 import re
-from botocore.exceptions import ClientError
+from botocore.exceptions import ClientError, WaiterError
 from decimal import Decimal
 
 # --- 로거 설정 ---
@@ -157,12 +158,11 @@ def run_fargate_task(task_definition_arn, environment_vars, container_name, subm
             cluster=ECS_CLUSTER_NAME,
             tasks=[task_arn],
             WaiterConfig={
-                'Delay': 6, # Check every 6 seconds
-                'MaxAttempts': 100 # Max wait time (adjust as needed based on max time limit)
+                'Delay': 6, 
+                'MaxAttempts': 100
             }
         )
-
-        logger.info(f"Task {task_arn} stopped for {task_tag}. Describing task...")
+        logger.info(f"Task {task_arn} stopped successfully (according to waiter) for {task_tag}.")
 
         # Describe the stopped task to get details
         desc_response = ecs_client.describe_tasks(cluster=ECS_CLUSTER_NAME, tasks=[task_arn])
@@ -189,20 +189,37 @@ def run_fargate_task(task_definition_arn, environment_vars, container_name, subm
 
         return task_arn, None # 성공적으로 실행 완료 (결과는 S3에서 확인)
 
-    except ecs_client.exceptions.WaiterError as e:
-        logger.error(f"ECS task waiter timed out or failed for {task_tag}: {e}")
-        # 이 경우 Task를 수동으로 중지 시도
-        try:
-            ecs_client.stop_task(cluster=ECS_CLUSTER_NAME, task=task_arn, reason="Lambda waiter timed out")
-        except ClientError as stop_e:
-            logger.warning(f"Failed to stop timed-out task {task_arn}: {stop_e}")
-        return None, f"ECS task did not complete within the expected time: {e}"
     except ClientError as e:
-        logger.error(f"ECS ClientError running task for {task_tag}: {e}")
-        return None, f"Failed to run ECS task: {e.response['Error']['Message']}"
+        # Handle specific boto3 client errors (e.g., RunTask failure)
+        logger.error(f"ECS ClientError in run_fargate_task for {task_tag}: {e}")
+        # Attempt to classify the error if possible
+        error_code = e.response.get('Error', {}).get('Code')
+        error_msg = e.response.get('Error', {}).get('Message', str(e))
+        if error_code == 'AccessDeniedException':
+             return None, f"ECS task failed due to permissions: {error_msg}"
+        # Add more specific ClientError handling if needed
+        return None, f"Failed to run/manage ECS task: {error_msg}"
+        
     except Exception as e:
-        logger.error(f"Unexpected error running Fargate task for {task_tag}: {e}")
-        return None, f"An unexpected error occurred while running the Fargate task: {traceback.format_exc()}"
+        # Catch any other exception during run_task, wait, or describe_tasks
+        logger.error(f"Unexpected exception in run_fargate_task for {task_tag}. Type: {type(e).__name__}, Error: {e}")
+        logger.error(traceback.format_exc()) # Log the full traceback
+        
+        # Check if it looks like a waiter timeout based on common error messages
+        if "Waiter timed out" in str(e) or "Max attempts exceeded" in str(e):
+             logger.warning(f"Detected possible waiter timeout for task {locals().get('task_arn', 'unknown')}")
+             # Attempt to stop the task if ARN is available
+             task_arn_to_stop = locals().get('task_arn')
+             if task_arn_to_stop:
+                 try:
+                     ecs_client.stop_task(cluster=ECS_CLUSTER_NAME, task=task_arn_to_stop, reason="Lambda task wait failed/timed out")
+                     logger.info(f"Attempted to stop possibly timed-out task {task_arn_to_stop}")
+                 except ClientError as stop_e:
+                     logger.warning(f"Failed to stop possibly timed-out task {task_arn_to_stop}: {stop_e}")
+             return None, f"ECS task waiter likely timed out or failed: {e}"
+        else:
+            # Otherwise, return a generic error message
+            return None, f"An unexpected error occurred in run_fargate_task: {e}"
 
 def get_s3_output(s3_key):
     """S3에서 Runner 결과 파일을 읽어옴"""
@@ -500,18 +517,36 @@ def handler(event, context):
         error_msg = f"An unexpected internal server error occurred: {e}"
 
         # 가능한 경우 오류 상태를 DB에 저장 시도
-        if 'submission_id' in locals(): # submission_id 가 생성된 이후 발생한 오류
-            final_submission_result['status'] = STATUS_INTERNAL_ERROR
-            final_submission_result['error_message'] = error_msg
-            final_submission_result['execution_time'] = round(time.time() - start_time, 4)
-            # 실행 시간이 없으므로 0 또는 현재까지 시간
-            save_grading_result(final_submission_result.copy()) # 저장 실패는 무시
+        current_submission_id = locals().get('submission_id')
+        if current_submission_id:
+            error_result_to_save = {
+                'submission_id': current_submission_id,
+                'problem_id': body.get('problem_id', 'unknown'),
+                'language': body.get('language', 'unknown'),
+                'status': STATUS_INTERNAL_ERROR,
+                'execution_time': Decimal(str(round(time.time() - start_time, 4))),
+                'results': [], # 오류 시 상세 결과는 저장하지 않음
+                'submission_time': int(start_time),
+                'user_code': body.get('user_code', '')[:1000], # 코드 일부 저장
+                'error_message': error_msg
+            }
+            try:
+                # Make sure decimals are handled before saving
+                save_grading_result(error_result_to_save.copy())
+            except Exception as db_save_e:
+                 logger.error(f"[{current_submission_id}] Failed to save error state to DynamoDB during exception handling: {db_save_e}")
+
+        # Return a simplified error response, ensuring no Decimals are included
+        response_body = {
+            'submission_id': current_submission_id,
+            'status': STATUS_INTERNAL_ERROR,
+            'error': error_msg # Include the original error message
+        }
+        # Ensure submission_id is included if available, even if saving failed
+        if not response_body['submission_id'] and 'submission_id' in locals():
+             response_body['submission_id'] = locals()['submission_id']
 
         return {
             'statusCode': 500,
-            'body': json.dumps({
-                'submission_id': submission_id if 'submission_id' in locals() else None,
-                'status': STATUS_INTERNAL_ERROR,
-                'error': error_msg
-            })
+            'body': json.dumps(response_body)
         } 

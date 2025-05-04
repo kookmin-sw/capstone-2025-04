@@ -1,0 +1,17 @@
+{
+  "id": { "S": "sample-problem-add-two" },
+  "constraints_time_limit": { "N": "2" },
+  "test_cases": {
+    "L": [
+      { "M": { "input": { "S": "1 2" }, "expected_output": { "S": "3" } } },
+      { "M": { "input": { "S": "10 5" }, "expected_output": { "S": "15" } } },
+      { "M": { "input": { "S": "-5 5" }, "expected_output": { "S": "0" } } },
+      {
+        "M": {
+          "input": { "S": "1000000000 2000000000" },
+          "expected_output": { "S": "3000000000" }
+        }
+      }
+    ]
+  }
+}
