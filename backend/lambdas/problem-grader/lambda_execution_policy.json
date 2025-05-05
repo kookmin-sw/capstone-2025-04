@@ -1,0 +1,22 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "logs:CreateLogGroup",
+        "logs:CreateLogStream",
+        "logs:PutLogEvents"
+      ],
+      "Resource": "arn:aws:logs:*:*:*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["dynamodb:GetItem", "dynamodb:PutItem"],
+      "Resource": [
+        "arn:aws:dynamodb:<YOUR_AWS_REGION>:<YOUR_ACCOUNT_ID>:table/<YOUR_PROBLEMS_TABLE_NAME>",
+        "arn:aws:dynamodb:<YOUR_AWS_REGION>:<YOUR_ACCOUNT_ID>:table/<YOUR_SUBMISSIONS_TABLE_NAME>"
+      ]
+    }
+  ]
+}
