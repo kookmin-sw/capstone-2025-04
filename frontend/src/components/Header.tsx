@@ -10,6 +10,9 @@ import { useRouter } from 'next/navigation'; // 리디렉션을 위한 useRouter
 import AlpacoLogo from "./AlpacoLogo";
 import AlpacoWordLogo from "./AlpacoWordLogo";
 
+// 로컬 스토리지 키
+const NICKNAME_STORAGE_KEY = "alpaco_user_nickname";
+
 const Header: React.FC = () => {
   const router = useRouter(); // 라우터 인스턴스 생성
   // Optimize: Select only the states needed by the Header
@@ -21,9 +24,31 @@ const Header: React.FC = () => {
   const isAuthenticated = authStatus === "authenticated";
   console.log("context: ", user, authStatus); // Debugging line
 
-  const [nickname, setNickname] = useState<string | null>(null); // State for nickname
-  const [isNicknameChecked, setIsNicknameChecked] = useState<boolean>(false); // 닉네임 체크 상태
-  const [shouldRedirect, setShouldRedirect] = useState<boolean>(false); // 리디렉션 여부 상태
+  const [nickname, setNickname] = useState<string | null>(() => {
+    // 브라우저 환경에서만 로컬 스토리지 접근
+    if (typeof window !== 'undefined') {
+      const savedNickname = localStorage.getItem(NICKNAME_STORAGE_KEY);
+      return savedNickname;
+    }
+    return null;
+  });
+  const [isNicknameChecked, setIsNicknameChecked] = useState<boolean>(false);
+  const [shouldRedirect, setShouldRedirect] = useState<boolean>(false);
+  const [isInitialLoad, setIsInitialLoad] = useState<boolean>(true);
+
+  // 닉네임이 변경될 때마다 로컬 스토리지에 저장
+  useEffect(() => {
+    if (!isInitialLoad && nickname && typeof window !== 'undefined') {
+      localStorage.setItem(NICKNAME_STORAGE_KEY, nickname);
+    }
+  }, [nickname, isInitialLoad]);
+
+  // 로그아웃 시 로컬 스토리지에서 닉네임 제거
+  useEffect(() => {
+    if (!isAuthenticated && typeof window !== 'undefined') {
+      localStorage.removeItem(NICKNAME_STORAGE_KEY);
+    }
+  }, [isAuthenticated]);
 
   useEffect(() => {
     const fetchAttributesFromToken = async () => {
@@ -76,10 +101,14 @@ const Header: React.FC = () => {
           setIsNicknameChecked(true);
           setShouldRedirect(false); // 에러 상황에서는 리디렉션하지 않음
         }
+        
+        // 초기 로드 완료
+        setIsInitialLoad(false);
       } else {
         setNickname(null);
         setIsNicknameChecked(true);
         setShouldRedirect(false);
+        setIsInitialLoad(false);
       }
     };
 

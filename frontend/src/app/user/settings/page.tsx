@@ -6,6 +6,9 @@ import { updateUserAttributes, fetchUserAttributes } from "aws-amplify/auth";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 
+// 로컬 스토리지 키 (Header와 동일하게 사용)
+const NICKNAME_STORAGE_KEY = "alpaco_user_nickname";
+
 const UserSettingsPage: React.FC = () => {
   const { authStatus } = useAuthenticator((context) => [
     context.authStatus,
@@ -63,6 +66,11 @@ const UserSettingsPage: React.FC = () => {
           nickname,
         },
       });
+      
+      // 로컬 스토리지에도 저장
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(NICKNAME_STORAGE_KEY, nickname);
+      }
       
       toast.success("닉네임이 성공적으로 설정되었습니다.");
       setIsNewUser(false); // 닉네임 설정 후 신규 사용자 상태 해제
