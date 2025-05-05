@@ -4,6 +4,7 @@ import Link from "next/link";
 import React, { useState, useEffect } from "react"; // Import useState, useEffect
 import { useAuthenticator } from "@aws-amplify/ui-react"; // Import the hook
 import { fetchAuthSession } from "aws-amplify/auth"; // Import fetchAuthSession
+import { fetchUserAttributes } from "aws-amplify/auth"; // Import fetchUserAttributes back
 
 import AlpacoLogo from "./AlpacoLogo";
 import AlpacoWordLogo from "./AlpacoWordLogo";
@@ -18,21 +19,35 @@ const Header: React.FC = () => {
   const isAuthenticated = authStatus === "authenticated";
   console.log("context: ", user, authStatus); // Debugging line
 
+
   const [givenName, setGivenName] = useState<string | null>(null); // State for given_name
+  const [nickname, setNickname] = useState<string | null>(null); // State for nickname
 
   useEffect(() => {
     const fetchAttributesFromToken = async () => {
       if (isAuthenticated) {
         try {
+          // Get data from session token first
           const session = await fetchAuthSession();
           const idTokenPayload = session.tokens?.idToken?.payload;
           console.log("ID Token Payload:", idTokenPayload); // Debug: See what's in the token
+          
           if (idTokenPayload && typeof idTokenPayload.given_name === "string") {
             setGivenName(idTokenPayload.given_name);
-          } else {
-            // Fallback or handle missing attribute
-            console.warn("given_name not found in ID token payload.");
-            setGivenName(null); // Explicitly set to null if not found
+          }
+          
+          // Try to get additional attributes safely
+          try {
+            const userAttributes = await fetchUserAttributes();
+            console.log("User Attributes:", userAttributes); // Debug: See what's in the attributes
+            
+            // Set nickname if available
+            if (userAttributes.nickname) {
+              setNickname(userAttributes.nickname);
+            }
+          } catch (attrError) {
+            console.warn("Could not fetch user attributes:", attrError);
+            // Continue with the flow, we'll just use what we have from the token
           }
         } catch (error) {
           console.error(
@@ -40,9 +55,11 @@ const Header: React.FC = () => {
             error
           );
           setGivenName(null);
+          setNickname(null);
         }
       } else {
-        setGivenName(null); // Clear name when not authenticated
+        setGivenName(null);
+        setNickname(null);
       }
     };
 
@@ -51,10 +68,11 @@ const Header: React.FC = () => {
 
   // Function to get user identifier (e.g., email or username)
   const getUserIdentifier = () => {
-    // Prioritize fetched given_name from state
+    // Prioritize nickname over given_name
+    if (nickname) return nickname;
     if (givenName) return givenName;
 
-    // Fallback logic if given_name is not available or not fetched yet
+    // Fallback logic if attributes are not available or not fetched yet
     if (!user) return "사용자";
     console.log("user (fallback): ", user); // Debugging line for fallback
 
@@ -98,9 +116,31 @@ const Header: React.FC = () => {
           {/* Auth Buttons / User Info */}
           {isAuthenticated ? (
             <>
-              <span className="text-sm text-gray-700 hidden md:inline">
-                {getUserIdentifier()}님 {/* Display user identifier */}
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-700 hidden md:inline">
+                  {getUserIdentifier()}님 {/* Display user identifier */}
+                </span>
+                <Link 
+                  href="/user/settings" 
+                  className="text-gray-600 hover:text-primary transition-colors duration-200"
+                  title="설정"
+                >
+                  <svg 
+                    xmlns="http://www.w3.org/2000/svg" 
+                    fill="none" 
+                    viewBox="0 0 24 24" 
+                    strokeWidth={1.5} 
+                    stroke="currentColor" 
+                    className="w-5 h-5"
+                  >
+                    <path 
+                      strokeLinecap="round" 
+                      strokeLinejoin="round" 
+                      d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" 
+                    />
+                  </svg>
+                </Link>
+              </div>
               <button
                 onClick={signOut} // Use the signOut function from the hook
                 className="font-medium text-gray-600 relative hover:text-primary transition-colors duration-200 hover:after:content-[''] hover:after:absolute hover:after:bottom-[-0.5rem] hover:after:left-0 hover:after:w-full hover:after:h-0.5 hover:after:bg-primary hover:after:rounded-sm"

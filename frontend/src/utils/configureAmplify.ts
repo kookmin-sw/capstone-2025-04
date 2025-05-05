@@ -31,7 +31,7 @@ const awsconfig: ResourcesConfig = {
         oauth: {
           domain: cognitoDomain || "",
           // Make sure these match EXACTLY what's in your Cognito App Client settings (variables.tf)
-          scopes: ["openid", "email", "profile"],
+          scopes: ["openid", "email", "profile", "aws.cognito.signin.user.admin"],
           redirectSignIn: appBaseUrl ? [`${appBaseUrl}/auth/callback`] : [], // 로그인 후 홈으로
           redirectSignOut: appBaseUrl ? [`${appBaseUrl}/auth/login`] : [], // 로그아웃 후 로그인 페이지로
           responseType: "code", // Use Authorization Code Grant
