@@ -15,6 +15,7 @@ const UserSettingsPage: React.FC = () => {
   const [nickname, setNickname] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isNewUser, setIsNewUser] = useState(false);
   
   useEffect(() => {
     const fetchAttributes = async () => {
@@ -27,6 +28,9 @@ const UserSettingsPage: React.FC = () => {
         
         if (userAttributes.nickname) {
           setNickname(userAttributes.nickname);
+        } else {
+          // 닉네임이 없는 경우 신규 사용자로 간주
+          setIsNewUser(true);
         }
       } catch (error) {
         console.error("Error fetching user attributes:", error);
@@ -47,6 +51,11 @@ const UserSettingsPage: React.FC = () => {
       return;
     }
     
+    if (!nickname.trim()) {
+      toast.error("닉네임을 입력해주세요.");
+      return;
+    }
+    
     try {
       setIsSaving(true);
       await updateUserAttributes({
@@ -55,7 +64,8 @@ const UserSettingsPage: React.FC = () => {
         },
       });
       
-      toast.success("닉네임이 성공적으로 업데이트되었습니다.");
+      toast.success("닉네임이 성공적으로 설정되었습니다.");
+      setIsNewUser(false); // 닉네임 설정 후 신규 사용자 상태 해제
     } catch (error) {
       console.error("Error updating user attributes:", error);
       toast.error("닉네임 업데이트에 실패했습니다.");
@@ -84,7 +94,15 @@ const UserSettingsPage: React.FC = () => {
       <Header />
       <main className="flex-grow container mx-auto px-4 py-8">
         <div className="max-w-md mx-auto bg-white p-8 rounded-lg shadow-md">
-          <h1 className="text-2xl font-bold mb-6 text-center">사용자 설정</h1>
+          <h1 className="text-2xl font-bold mb-2 text-center">사용자 설정</h1>
+          
+          {isNewUser && (
+            <div className="mb-6 bg-yellow-50 border-l-4 border-yellow-400 p-4">
+              <p className="text-yellow-700">
+                <strong>환영합니다!</strong> 알파코에서 활동하기 위해 닉네임을 설정해주세요.
+              </p>
+            </div>
+          )}
           
           {isLoading ? (
             <div className="flex justify-center py-4">
@@ -94,7 +112,7 @@ const UserSettingsPage: React.FC = () => {
             <form onSubmit={handleSubmit}>
               <div className="mb-6">
                 <label htmlFor="nickname" className="block text-sm font-medium text-gray-700 mb-1">
-                  닉네임
+                  닉네임 <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
@@ -104,7 +122,7 @@ const UserSettingsPage: React.FC = () => {
                   onChange={(e) => setNickname(e.target.value)}
                   required
                   maxLength={20}
-                  placeholder="닉네임을 입력하세요"
+                  placeholder="닉네임을 입력하세요 (필수)"
                 />
                 <p className="mt-1 text-xs text-gray-500">
                   다른 사용자에게 표시될 이름입니다. 최대 20자까지 입력 가능합니다.
@@ -113,7 +131,7 @@ const UserSettingsPage: React.FC = () => {
               
               <button
                 type="submit"
-                disabled={isSaving}
+                disabled={isSaving || !nickname.trim()}
                 className="w-full bg-primary text-white py-2 px-4 rounded-md hover:bg-primary-dark transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isSaving ? '저장 중...' : '저장하기'}

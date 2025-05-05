@@ -51,6 +51,7 @@ export interface GetCommentsResponse {
 export interface CreatePostPayload {
   title: string;
   content: string;
+  author: string;
   problemId?: string;
 }
 
@@ -82,6 +83,7 @@ export interface LikeResponse {
 // For POST /community/{postId}/comment
 export interface CreateCommentPayload {
   content: string;
+  author: string;
 }
 
 // --- Authentication Helper ---

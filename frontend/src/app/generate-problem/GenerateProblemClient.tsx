@@ -3,7 +3,8 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useSearchParams } from "next/navigation"; // Added useRouter
 import Link from "next/link"; // Add import for Link
-import { fetchAuthSession } from "aws-amplify/auth"; // Add import for fetchAuthSession
+
+import { fetchUserAttributes } from "aws-amplify/auth"; // Import fetchUserAttributes back
 // Import the REAL STREAMING API function and types
 import {
   streamProblemGeneration, // Import the real streaming function
@@ -219,10 +220,9 @@ const GenerateProblemClient = () => {
 
       // Get current user session to get user ID
       try {
-        const session = await fetchAuthSession();
-        const idToken = session.tokens?.idToken;
-        const creatorId = idToken?.payload?.sub as string;
-        const username = (idToken?.payload?.["given_name"] as string) || undefined;
+        const userAttributes = await fetchUserAttributes();
+        const creatorId = userAttributes.sub as string;
+        const username = (userAttributes.nickname as string) || (userAttributes.cognito_username as string) || undefined;
         console.log("generate-problem creatorId:", creatorId);
         const params: CreateProblemRequest = {
           prompt: currentPrompt,

@@ -5,11 +5,13 @@ import React, { useState, useEffect } from "react"; // Import useState, useEffec
 import { useAuthenticator } from "@aws-amplify/ui-react"; // Import the hook
 import { fetchAuthSession } from "aws-amplify/auth"; // Import fetchAuthSession
 import { fetchUserAttributes } from "aws-amplify/auth"; // Import fetchUserAttributes back
+import { useRouter } from 'next/navigation'; // 리디렉션을 위한 useRouter 추가
 
 import AlpacoLogo from "./AlpacoLogo";
 import AlpacoWordLogo from "./AlpacoWordLogo";
 
 const Header: React.FC = () => {
+  const router = useRouter(); // 라우터 인스턴스 생성
   // Optimize: Select only the states needed by the Header
   const { user, signOut, authStatus } = useAuthenticator((context) => [
     context.user,
@@ -19,24 +21,15 @@ const Header: React.FC = () => {
   const isAuthenticated = authStatus === "authenticated";
   console.log("context: ", user, authStatus); // Debugging line
 
-
-  const [givenName, setGivenName] = useState<string | null>(null); // State for given_name
   const [nickname, setNickname] = useState<string | null>(null); // State for nickname
+  const [isNicknameChecked, setIsNicknameChecked] = useState<boolean>(false); // 닉네임 체크 상태
+  const [shouldRedirect, setShouldRedirect] = useState<boolean>(false); // 리디렉션 여부 상태
 
   useEffect(() => {
     const fetchAttributesFromToken = async () => {
       if (isAuthenticated) {
         try {
-          // Get data from session token first
-          const session = await fetchAuthSession();
-          const idTokenPayload = session.tokens?.idToken?.payload;
-          console.log("ID Token Payload:", idTokenPayload); // Debug: See what's in the token
-          
-          if (idTokenPayload && typeof idTokenPayload.given_name === "string") {
-            setGivenName(idTokenPayload.given_name);
-          }
-          
-          // Try to get additional attributes safely
+          // Try to get user attributes safely
           try {
             const userAttributes = await fetchUserAttributes();
             console.log("User Attributes:", userAttributes); // Debug: See what's in the attributes
@@ -44,39 +37,74 @@ const Header: React.FC = () => {
             // Set nickname if available
             if (userAttributes.nickname) {
               setNickname(userAttributes.nickname);
+              setIsNicknameChecked(true);
+              setShouldRedirect(false); // 닉네임이 있으면 리디렉션하지 않음
+            } else {
+              // 닉네임이 없는 경우에만 리디렉션 필요
+              setNickname(null);
+              setIsNicknameChecked(true);
+              setShouldRedirect(true);
             }
           } catch (attrError) {
             console.warn("Could not fetch user attributes:", attrError);
             // Continue with the flow, we'll just use what we have from the token
+            
+            // Fallback to token if we couldn't get attributes
+            const session = await fetchAuthSession();
+            const idTokenPayload = session.tokens?.idToken?.payload;
+            console.log("ID Token Payload:", idTokenPayload); // Debug: See what's in the token
+            
+            // 닉네임 체크 완료 표시
+            setIsNicknameChecked(true);
+            
+            // 토큰에서 nickname 확인
+            if (idTokenPayload && typeof idTokenPayload.nickname === "string") {
+              setNickname(idTokenPayload.nickname);
+              setShouldRedirect(false);
+            } else {
+              // 토큰에도 nickname이 없으면 리디렉션 필요
+              setShouldRedirect(true);
+            }
           }
         } catch (error) {
           console.error(
             "Error fetching auth session or parsing ID token:",
             error
           );
-          setGivenName(null);
           setNickname(null);
+          // 에러가 발생해도 체크는 완료된 것으로 표시
+          setIsNicknameChecked(true);
+          setShouldRedirect(false); // 에러 상황에서는 리디렉션하지 않음
         }
       } else {
-        setGivenName(null);
         setNickname(null);
+        setIsNicknameChecked(true);
+        setShouldRedirect(false);
       }
     };
 
     fetchAttributesFromToken();
   }, [isAuthenticated]); // Re-run only when auth status changes
 
+  // 닉네임이 없는 경우 설정 페이지로 리디렉션
+  useEffect(() => {
+    if (isAuthenticated && isNicknameChecked && shouldRedirect) {
+      const currentPath = window.location.pathname;
+      // 이미 설정 페이지에 있거나 콜백 페이지인 경우에는 리디렉션하지 않음
+      if (currentPath !== '/user/settings' && !currentPath.includes('/auth/callback')) {
+        console.log("리디렉션: 닉네임이 없어서 설정 페이지로 이동합니다.");
+        router.push('/user/settings');
+      }
+    }
+  }, [isAuthenticated, isNicknameChecked, shouldRedirect, router]);
+
   // Function to get user identifier (e.g., email or username)
   const getUserIdentifier = () => {
-    // Prioritize nickname over given_name
+    // Use nickname if available
     if (nickname) return nickname;
-    if (givenName) return givenName;
 
-    // Fallback logic if attributes are not available or not fetched yet
-    if (!user) return "사용자";
-    console.log("user (fallback): ", user); // Debugging line for fallback
-
-    return user.signInDetails?.loginId || user.username || "사용자";
+    // 닉네임이 없으면 '사용자'로 표시
+    return "사용자";
   };
 
   return (
