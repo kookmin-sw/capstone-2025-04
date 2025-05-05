@@ -59,6 +59,9 @@ export const handler = async (event) => {
         userId, // Include userId for author verification
       })
     );
+    
+    // Sort comments by createdAt in descending order (newest first)
+    comments.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
     // --- SUCCESS RESPONSE ---
     const responseBody = {
