@@ -1,7 +1,7 @@
 import { StringOutputParser } from "@langchain/core/output_parsers";
-import { titleGenerationPromptTemplate } from "../prompts/title.mjs";
-import { cleanLlmOutput } from "../utils/cleanLlmOutput.mjs";
-import { TitleOutputSchema } from "../schemas/title.mjs";
+import { titleGenerationPromptTemplate } from "./prompt.mjs";
+import { cleanLlmOutput } from "../../utils/cleanLlmOutput.mjs";
+import { TitleOutputSchema } from "./schema.mjs";
 
 /**
  * Creates a Title Generation chain.

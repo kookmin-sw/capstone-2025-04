@@ -1,7 +1,7 @@
 import { StringOutputParser } from "@langchain/core/output_parsers";
-import { testGenPromptTemplate } from "../prompts/testGen.mjs";
-import { cleanLlmOutput } from "../utils/cleanLlmOutput.mjs";
-import { TestGenOutputSchema } from "../schemas/testGen.mjs";
+import { testGenPromptTemplate } from "./prompt.mjs";
+import { cleanLlmOutput } from "../../utils/cleanLlmOutput.mjs";
+import { TestGenOutputSchema } from "./schema.mjs";
 
 /**
  * Creates a Test Generator chain.

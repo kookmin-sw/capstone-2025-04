@@ -1,109 +1,162 @@
-모듈을 잘게 나누어 “한눈에 이해‑가능하고, 부분적으로 교체·테스트·재사용이 쉬운” 구조를 만드는 것이 핵심입니다. 아래는 AWS Lambda + LangChain 기반 프로젝트에서 자주 쓰는 분리 전략을 그대로 적용한 예시입니다.
 
-⸻
+**Core Principles for Improvement:**
 
-1. 기준 원칙
+1.  **Execution is King for Tests:** Rely on *actually executing* the generated solution code to determine correct test outputs, rather than asking the LLM to predict them.
+2.  **Validate Early, Refine Iteratively:** Insert validation steps (especially code execution) earlier in the pipeline and use feedback loops for correction and improvement.
+3.  **Decomposition and Verification:** Break down complex generation steps and verify consistency between components.
+4.  **Strengthen Prompts:** Apply advanced prompt engineering techniques (role-setting, clear format instructions, negative constraints, few-shot examples, self-critique, etc.) for clarity, control, and error prevention.
 
-원칙	이유	실천 팁
-단일 책임(SRP)	파일 하나가 하나의 역할만 수행하게	“한 줄 설명”을 못 쓰면 과도하게 커진 것
-계층화(Entry ⟶ Service ⟶ Util)	진입점과 비즈니스 로직, 공용 유틸을 분리	의존 방향은 한쪽 방향(위→아래)만
-의존성 뒤집기(DI)	테스트·교체 용이	AWS SDK, LangChain 객체를 매개변수로 주입
-폴더별 Naming = Role	폴더 이름만 봐도 책임 구분	chains/, prompts/, schemas/ 등
+**Proposed Enhanced Pipeline Flow & Modifications:**
 
-⸻
+*(Numbers roughly correspond to the existing steps but with significant internal changes)*
 
-2. 추천 폴더 구조 (예시)
+1.  **Step 1: Intent Analysis (Largely Unchanged)**
+    *   **Action:** Keep the existing `intentAnalysis.mjs` chain and prompt. It effectively extracts the core goal, constraints, and concepts.
+    *   **Output:** `intent`, `intentJson` (as before).
 
-backend/
-  lambdas/
-    problem-generator/
-      ├─ handler.mjs              # 진입점: AWS Lambda handler
-      ├─ services/
-      │    ├─ pipeline.mjs        # 8‑스텝 파이프라인 orchestrator
-      │    ├─ dynamoClient.mjs    # DynamoDB CRUD 래퍼
-      │    ├─ sse.mjs             # SSE 전송 유틸
-      ├─ chains/
-      │    ├─ intentAnalysis.mjs
-      │    ├─ solutionGen.mjs
-      │    ├─ testGen.mjs
-      │    └─ …                   # step2~6 모듈별 체인
-      ├─ prompts/
-      │    ├─ intentAnalysis.js
-      │    ├─ solutionGen.js
-      │    └─ …
-      ├─ schemas/                 # zod 스키마
-      │    ├─ intent.js
-      │    ├─ validation.js
-      │    └─ …
-      ├─ utils/
-      │    ├─ cleanLlmOutput.mjs
-      │    ├─ retry.mjs
-      │    └─ constants.mjs       # 환경변수·디폴트 값
-      ├─ index.test.js            # 단위 테스트
-      └─ README.md
+2.  **Step 2: Test Design (Specification - Inputs & Rationales Only)**
+    *   **Action:** Modify the `testDesign.mjs` prompt. Instead of asking for `expected_output`, focus *only* on generating diverse `input` values and clear `rationale`. The prompt should emphasize covering scenarios derived from the `intent` (goal, key constraints, concepts) and `difficulty`.
+    *   **Prompt Improvement:** Include few-shot examples (`input` + `rationale` pairs) and explicitly state negative constraints.
+    *   **Schema Change:** Update `TestCaseSchema` in `testSpecs.mjs` to make `expected_output` optional *at this stage* or remove it temporarily.
+    *   **Rationale:** We separate input design from output calculation. The LLM focuses on *what* to test, not *what the result should be*.
+    *   **Output:** `testSpecs` (array of objects with `input` and `rationale`), `testSpecsJson`.
 
-핵심 분리 지점
-	1.	handler.mjs
-	•	event 파싱과 problem-generator 서비스 호출만 담당.
-	•	AWS‑specific 코드만 남기고, 로직은 services/pipeline.mjs에 위임.
-	2.	services/pipeline.mjs
-	•	지금 index.mjs에 있는 8‑스텝 수행 순서를 그대로 옮기되,
-각 스텝은 chains/* 모듈에 캡슐화된 함수를 호출.
-	•	재시도, DynamoDB 업데이트, SSE status 전송 로직도 여기에서 orchestration.
-	3.	chains/
-	•	LangChain PromptTemplate + LLM + Parser를 조합해 단일 결과를 내는 함수만 포함.
-	•	테스트에서 체인별 단독 실행 가능.
-	4.	prompts/
-	•	멀티라인 템플릿 문자열만 별도 파일에 빼두면, 버전 관리 diff 가 깔끔하고
-번역·카피 작업자 협업이 쉬워집니다.
-	5.	utils/
-	•	범용 함수(문자열 정제, 재시도 래퍼 등)는 여기서 공유.
-	6.	schemas/
-	•	Zod 스키마는 체인·서비스 어디서든 재사용하므로 중앙화.
+3.  **Step 3: Solution Generation (With Feedback Loop)**
+    *   **Action:** Keep the `solutionGen.mjs` chain and prompt. It takes `analyzed_intent` (from `intent.goal` in Step 1) and `test_specs` (as context/guidance) to generate `solution_code`. It can receive failure feedback (`feedback_section`) from Step 4 to revise the code.
+    *   **Output:** `solutionCode`.
 
-⸻
+4.  **Step 4: Solution Execution & Validation (NEW/CRITICAL)**
+    *   **Action:** Introduce a new step, potentially requiring a new service/utility.
+        *   **Functionality:** This step takes the `solutionCode` (from Step 3) and the `testSpecs` (from Step 2, containing inputs). It executes the `solutionCode` against each `input` in a sandboxed environment (e.g., using a secure code execution service – initially a managed subprocess/basic container, with plans to upgrade to AWS Lambda+Firecracker). **Designed modularly** for future execution environment replacement.
+        *   **Output Calculation:** It captures the actual output produced by the solution for each input.
+        *   **Validation:** It primarily checks for runtime errors, timeouts, or unexpected crashes during execution.
+        *   **Failure Classification & Feedback Loop:**
+            *   **Syntax/Runtime Errors:** Feed the error details back to Step 3 (`solutionGen.mjs`) requesting solution regeneration.
+            *   **Timeout:** Feed specific feedback like "Execution timed out. Please optimize the solution for better time complexity" back to Step 3 requesting regeneration.
+            *   **Success:** Proceed to the next step.
+        *   **Infinite Loop Guard:** Implement a `MAX_RETRIES` limit for the solution regeneration loop (Steps 3-4). If exceeded, save the failure reason and intermediate outputs, and route to a human-review queue.
+        *   **Resource Limits:** Enforce timeout and memory limits for this execution step itself.
+        *   **Language Extensibility:** Design the `codeExecutor` module with a `{'language': executor}` mapping structure (e.g., `{'python3.12': py_executor, 'javascript18': js_executor}`) for future multi-language support, even if only Python is supported initially.
+    *   **Implementation:** This involves creating a `codeExecutor` utility or using a LangChain tool wrapping a code execution environment.
+    *   **Output:** `validatedSolutionCode` (the version that passed execution), `testResults` (an updated `testSpecs` array, now populated with the `actual_output` obtained from execution for each `input`). Let's rename `actual_output` to `expected_output` now, as it's derived from the *validated* solution.
 
-3. 구현 단계
-	1.	폴더 생성 후 내용 복사
-	•	먼저 utils/constants.mjs에 환경 변수·디폴트 값을 이동.
-	•	services/dynamoClient.mjs, services/sse.mjs를 만든 뒤 관련 함수 이관.
-	2.	각 스텝 체인별 함수 추출
-	•	예: const intentAnalysis = async (input) => { … } 형태로 chains/intentAnalysis.mjs에 이동.
-	•	index.mjs에서 사용하던 모듈 스코프 변수 대신, 필요한 의존성(LangChain LLM, parser 등)을 인자로 주입.
-	3.	pipeline.mjs 리팩터링
-	•	runStep({ num, name, chainFn, input, onSuccess }) 헬퍼로 반복 패턴 제거.
-	•	재시도 로직을 utils/retry.mjs로 분리해 테스트 가능하게.
-	4.	handler.mjs 최소화
+5.  **Step 5: Test Case Finalization & Potential Augmentation (Replaces Old Test Gen)**
+    *   **Action:** Replace the old `testGen.mjs` chain. This step now focuses on refining the test set.
+        *   The primary test set comes directly from `testResults` (Step 4), which has inputs and *execution-verified* outputs.
+        *   **(Optional Augmentation):** Add a prompt asking the LLM: "Given the validated solution and the current test cases `[testResults]`, can you suggest 1-2 more *tricky* edge case inputs based on the solution's logic?"
+            *   **Suggested Input Handling:** Immediately execute the suggested inputs via Step 4.
+                *   **Pass:** Add the case to the `finalTestCases`.
+                *   **Fail (Error/Timeout):** Feed the failure information back to the Solution Generation step (Step 3) for refinement (creating a fuzzing + self-play effect).
+    *   **Output:** `finalTestCases`, `finalTestCasesJson` (the definitive set of input/output pairs for the problem).
 
-import { pipeline } from "./services/pipeline.mjs";
+6.  **Step 6: LLM-Based Validation (Refocused)**
+    *   **Action:** Keep the `validation.mjs` chain but revise the prompt (`validation.mjs` prompt file).
+    *   **New Focus:** The prompt should ask the LLM to review:
+        *   **Consistency:** Does the `intent` (Step 1) align well with the `validatedSolutionCode` (Step 4) and the `finalTestCases` (Step 5)? Does the problem goal seem correctly implemented?
+        *   **Coverage:** Do the `finalTestCases` (especially their rationales) adequately cover the scenarios implied by the `intent` and `difficulty`? Are there obvious gaps?
+        *   **Quality:** Is the `validatedSolutionCode` reasonably clean and efficient for the `difficulty`? (LLM provides an opinion).
+        *   **Rationale Check:** Do the `rationale` fields in `finalTestCases` accurately reflect why those test cases are important?
+    *   **Prompt Improvement:** Include self-critique questions like, "Propose one extreme input example that might not be caught by the above test cases and explain why," serving both validation and additional fuzz seed purposes.
+    *   **Validation Logic:** The primary check is no longer "does the code work?" (Step 4 handled that) but "is the whole package coherent and complete?".
+    *   **Objective Metrics:** While initially relying on LLM review, add **placeholders and logging** to facilitate adding objective metrics (like code coverage via `pytest-cov` or similar tools) in a subsequent iteration for enhanced validation.
+    *   **Output:** `validationResult` (Pass/Fail based on coherence/coverage, with detailed feedback). If Fail, potentially loop back to earlier steps based on feedback (e.g., refine intent, add tests, maybe even tweak solution if consistency is the issue). Consider applying `MAX_RETRIES` to this loop as well.
 
-export const handler = awslambda.streamifyResponse(
-  async (event, responseStream) => {
-    await pipeline(event, responseStream);
-  }
-);
+7.  **Step 7: Constraints Derivation (Largely Unchanged)**
+    *   **Action:** Keep the `constraints.mjs` chain and prompt. Use the `validatedSolutionCode` and `finalTestCases` as input.
+    *   **Output:** `constraints`, `constraintsJson`.
+
+8.  **Step 8: Description Generation (Improved Examples)**
+    *   **Action:** Keep the `description.mjs` chain but modify the input.
+    *   **Input Change:** The `test_specs_examples` input should now be derived from the `finalTestCases` (Step 5), ensuring the examples shown in the description use *actually validated* input/output pairs. Select 1-2 simple examples from the final set.
+    *   **Output:** `problemDescription`.
+
+9.  **Step 9: Title Generation (Unchanged)**
+    *   **Action:** Keep the `title.mjs` chain and prompt. Use `difficulty`, `intent.goal`, and a snippet of `problemDescription`.
+    *   **Output:** `problemTitle`.
+
+10. **Step 10: Translation (Unchanged)**
+    *   **Action:** Keep the `translation.mjs` chain and prompt. Translate `problemTitle` and `problemDescription`.
+    *   **Output:** `translatedTitle`, `translatedDescription`.
+
+11. **Step 11: Finalization (Unchanged Logic)**
+    *   **Action:** Assemble all validated and generated artifacts (`problemId`, `intentJson`, `finalTestCasesJson`, `validatedSolutionCode`, `validationResult`, `constraintsJson`, `problemDescription`, `problemTitle`, translated versions, etc.) and save the final record to DynamoDB with status "completed". Send the result via SSE.
+    *   **Schema Versioning:** Add a `schemaVersion` field to the DynamoDB record, especially impacting the `testSpecifications` structure, to distinguish between old and new version records and ensure smooth transitions if the format evolves.
+
+**Summary of Key Changes & Benefits:**
+
+1.  **Test Output Accuracy:** Moved from LLM guessing outputs to *calculating* outputs by executing the validated solution (Major Improvement).
+2.  **Solution Validation:** Added an explicit code execution step to validate the solution against designed inputs *before* finalizing tests or description (Increases Reliability).
+3.  **Test Generation Refocus:** LLM focuses on designing diverse *inputs* and *rationales*, leveraging its strength in scenario planning, while execution handles the correctness. Old `testGen` chain is replaced/repurposed.
+4.  **LLM Validation Role Shift:** LLM validation focuses on higher-level consistency, coverage, and quality checks, complementing the objective execution checks.
+5.  **Improved Examples:** Description examples are now based on the final, validated test cases.
+6.  **Iterative Refinement:** Explicit feedback loops are built-in (especially for solution generation based on execution results).
+
+**Key Implementation Considerations (Integrated into Steps):**
+
+*   **Code Execution Environment:** Modular design, starting simple (managed subprocess/container) with a clear path to a more robust/secure solution (Lambda+Firecracker). Resource limits enforced.
+*   **Error Handling & Retries:** Specific handling for different failure types (syntax/runtime error, timeout) with targeted feedback. `MAX_RETRIES` limits on loops with fallback to human review.
+*   **Versioning:** Clear versioning for DynamoDB schema (`schemaVersion`) and prompts/chains (filenames/comments).
+*   **Monitoring & Logging:** Implement logging for key metrics (step times, retries, success/failure rates, error types) to monitor pipeline health and identify bottlenecks (e.g., using CloudWatch Logs).
+*   **Language Extensibility:** Design for future multi-language support via a language-executor mapping.
+*   **Prompt Engineering:** Systematically apply best practices (few-shot, negative constraints, self-critique) across relevant prompts.
+
+**Conclusion:**
+
+This enhanced plan incorporates all feedback and directly addresses the identified weaknesses by leveraging execution-based validation and iterative refinement. The focus is on modular design, robust error handling/retries, clear versioning, and observability, while pragmatically tackling the core challenge of safe code execution in phases.
+
+We will proceed with implementing these enhancements. This iterative, validation-driven approach is expected to yield a significantly more reliable and high-quality problem generation system.
 
 
-	5.	테스트 작성
-	•	체인 함수는 I/O가 명확하므로 jest로 단위 테스트.
-	•	pipeline은 LLM 호출을 목(mock) 처리해 플로우 테스트.
+# Working Notes
 
-⸻
+## Implementation Todo List
 
-4. 추가 개선 아이디어
+### Phase 1: Code Execution & Solution Validation
+- [x] **New:** Create `codeExecutor.mjs` utility module in `src/utils/` to handle Python code execution
+  - [x] Implement basic sandbox environment with subprocess and timeout controls
+  - [x] Create execution result parser to extract stdout, stderr, execution time
+  - [x] Add support for language mapping structure for future extensibility
+  - [x] Implement resource limits (timeout, memory)
+- [x] **New:** Create `solutionExecution.mjs` in `src/services/` 
+  - [x] Implement execution of solution code against test inputs
+  - [x] Add error handling and classification (syntax errors, runtime errors, timeouts)
+  - [x] Create feedback loop mechanism to Step 3 (solution generation)
 
-개선	효과
-TypeScript 전환	Zod 스키마 ↔︎ 타입 자동 추론, IDE 가독성 향상
-비동기 종속성 주입 (AWS SDK, LangChain)	로컬 테스트·스텁 교체 편리
-결과 / 상태 Enum 모듈화	“문자열 오타” 리스크 감소
-ESM Barrel 파일(index.js)	import { intentAnalysis, solutionGen } from './chains' 식 재사용
-Layer 활용	공통 모듈을 Lambda Layer에 넣어 배포 패키지 최소화
+### Phase 2: Test Design Modification
+- [x] **Modify:** Update `testSpecs.mjs` schema to make `expected_output` optional
+- [x] **Add:** Create new `FinalizedTestCaseSchema` and `FinalizedTestCasesOutputSchema` in `testSpecs.mjs`
+- [x] **Modify:** Update test design prompt in `src/prompts/testDesign.mjs` to focus on inputs and rationales only
+- [x] **Modify:** Update `schemas/index.mjs` to export new schemas
 
+### Phase 3: Pipeline Modification
+- [x] **Modify:** `pipeline.mjs` to implement the new execution-based flow
+  - [x] Reorder steps to integrate solution execution early
+  - [x] Implement feedback loops between validation and generation
+  - [x] Update the final output format with new fields
+- [x] **New:** Create `testCaseFinalization.mjs` service to replace old test generation
+  - [x] Implement logic to convert execution results to final test cases
+  - [x] (Optional) Add edge case suggestion and validation function stubs
 
+### Phase 4: LLM Validation Update
+- [x] **Modify:** Update validation prompt to focus on coherence and completeness
+- [x] **Modify:** Update validation chain in `chains/validation.mjs` to use new parameters
+- [x] **Add:** Implement fallback handling in validation step of pipeline
 
-⸻
+### Phase 5: Description and Schema Updates
+- [x] **Modify:** Update pipeline to use validated test cases for description examples
+- [x] **Add:** Implement `schemaVersion` field in DynamoDB record
+- [x] **Add:** Use the `selectExampleTestCases` function to choose good examples for description
 
-5. 진행 방법
-	1.	위 구조로 디렉터리·파일 scaffold를 먼저 만든 뒤,
-	2.	가장 작은 단위부터(유틸 → 체인 → 서비스) 함수 이동·테스트 추가,
-	3.	마지막으로 handler.mjs를 교체하면 점진적 마이그레이션 가능.
+### Phase 6: Testing and Error Handling
+- [ ] **Test:** Create test suite for code executor utility
+- [ ] **Test:** End-to-end testing of the new pipeline
+- [x] **Add:** Comprehensive error handling and retry mechanisms throughout pipeline
+
+## Status Updates
+- [x] Created implementation plan based on v3 requirements
+- [x] Completed Phase 1: Code Execution & Solution Validation
+- [x] Completed Phase 2: Test Design Modification
+- [x] Completed Phase 3: Pipeline Modification
+- [x] Completed Phase 4: LLM Validation Update
+- [x] Completed Phase 5: Description and Schema Updates
+- [-] Started Phase 6: Testing

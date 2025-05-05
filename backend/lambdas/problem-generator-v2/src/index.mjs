@@ -1035,7 +1035,9 @@ export { handler } from './handler.mjs';
 // The actual implementation has been modularized and can be found in:
 // - handler.mjs: Main entry point
 // - services/pipeline.mjs: Pipeline orchestration
-// - chains/: Individual LLM chain modules
-// - prompts/: Prompt templates
-// - schemas/: Zod schemas for structured output
+// - chains/: Individual LLM chain modules organized by functionality
+//   - Each chain folder (e.g., chains/testDesign/) contains:
+//     - index.mjs: Chain logic
+//     - prompt.mjs: Prompt templates
+//     - schema.mjs: Zod schemas
 // - utils/: Utility functions

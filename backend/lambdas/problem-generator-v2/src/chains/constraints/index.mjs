@@ -1,6 +1,6 @@
 import { StructuredOutputParser } from "@langchain/core/output_parsers";
-import { ConstraintsOutputSchema } from "../schemas/constraints.mjs";
-import { constraintsDerivationPromptTemplate } from "../prompts/constraints.mjs";
+import { ConstraintsOutputSchema } from "./schema.mjs";
+import { constraintsDerivationPromptTemplate } from "./prompt.mjs";
 
 /**
  * Creates a Constraints Derivation chain.
@@ -22,9 +22,16 @@ export function createConstraintsChain(llm) {
  * @param {string} params.test_specs - The test specifications.
  * @param {string} params.language - The target programming language.
  * @param {string} params.difficulty - The difficulty level for the problem.
+ * @param {string} [params.input_schema_description=""] - Description of input structure
  * @returns {Promise<Object>} The derived constraints.
  */
-export async function runConstraintsDerivation(llm, { solution_code, test_specs, language, difficulty }) {
+export async function runConstraintsDerivation(llm, { 
+  solution_code, 
+  test_specs, 
+  language, 
+  difficulty,
+  input_schema_description = ""
+}) {
   const chain = createConstraintsChain(llm);
   const parser = StructuredOutputParser.fromZodSchema(ConstraintsOutputSchema);
   
@@ -33,6 +40,7 @@ export async function runConstraintsDerivation(llm, { solution_code, test_specs,
     test_specs,
     language,
     difficulty,
+    input_schema_description,
     format_instructions: parser.getFormatInstructions(),
   };
   

@@ -1,6 +1,6 @@
 import { StructuredOutputParser } from "@langchain/core/output_parsers";
-import { IntentOutputSchema } from "../schemas/intent.mjs";
-import { intentAnalysisPromptTemplate } from "../prompts/intentAnalysis.mjs";
+import { IntentOutputSchema } from "./schema.mjs";
+import { intentAnalysisPromptTemplate } from "./prompt.mjs";
 
 /**
  * Creates an Intent Extraction chain.
@@ -20,17 +20,15 @@ export function createIntentAnalysisChain(llm) {
  * @param {Object} params - Parameters for the chain.
  * @param {string} params.user_prompt - The user's original prompt.
  * @param {string} params.difficulty - The difficulty level for the problem.
- * @param {string} params.language - The target programming language.
  * @returns {Promise<Object>} The extracted intent.
  */
-export async function runIntentAnalysis(llm, { user_prompt, difficulty, language }) {
+export async function runIntentAnalysis(llm, { user_prompt, difficulty }) {
   const chain = createIntentAnalysisChain(llm);
   const parser = StructuredOutputParser.fromZodSchema(IntentOutputSchema);
   
   const input = {
     user_prompt,
     difficulty,
-    language,
     format_instructions: parser.getFormatInstructions(),
   };
   

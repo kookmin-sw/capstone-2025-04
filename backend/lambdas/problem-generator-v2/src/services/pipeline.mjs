@@ -1,12 +1,13 @@
 import { v4 as uuidv4 } from "uuid";
 import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
 import { 
-  GOOGLE_AI_API_KEY, 
-  GEMINI_MODEL_NAME, 
-  GENERATOR_VERBOSE, 
+  getGoogleAiApiKey,
+  getGeminiModelName,
+  isGeneratorVerbose,
   DEFAULT_LANGUAGE,
   DEFAULT_TARGET_LANGUAGE,
-  MAX_RETRIES
+  MAX_RETRIES,
+  PROBLEMS_TABLE_NAME
 } from "../utils/constants.mjs";
 import { cleanLlmOutput } from "../utils/cleanLlmOutput.mjs";
 import { withRetry } from "../utils/retry.mjs";
@@ -24,7 +25,6 @@ import {
   runIntentAnalysis,
   runTestDesign,
   runSolutionGeneration,
-  runTestGeneration,
   runValidation,
   runConstraintsDerivation,
   runDescriptionGeneration,
@@ -32,23 +32,13 @@ import {
   runTranslation
 } from "../chains/index.mjs";
 
-// LLM Initialization
-let llm;
-if (GOOGLE_AI_API_KEY) {
-  console.log(`Using Google AI (${GEMINI_MODEL_NAME})`);
-  llm = new ChatGoogleGenerativeAI({
-    modelName: GEMINI_MODEL_NAME,
-    apiKey: GOOGLE_AI_API_KEY,
-    maxOutputTokens: 9126, // Adjust as needed
-  });
-} else {
-  console.error(
-    "FATAL: No LLM provider configured. Set GOOGLE_AI_API_KEY environment variable."
-  );
-}
+// Import new v3 execution services
+import { executeSolutionWithTestCases } from "./solutionExecution.mjs";
+import { finalizeTestCasesWithEdgeCases, selectExampleTestCases } from "./testCaseFinalization.mjs";
 
 /**
  * Main problem generation pipeline that orchestrates all steps.
+ * Updated to V3 with execution-based validation.
  * 
  * @param {object} event - The Lambda event object.
  * @param {awslambda.ResponseStream} responseStream - The Lambda response stream.
@@ -56,6 +46,32 @@ if (GOOGLE_AI_API_KEY) {
 export async function pipeline(event, responseStream) {
   // Initialize SSE stream
   const stream = initializeSseStream(responseStream);
+  
+  // Initialize LLM at runtime - use getters to ensure we get the latest values
+  let llm;
+  try {
+    const apiKey = getGoogleAiApiKey();
+    const modelName = getGeminiModelName();
+    
+    if (apiKey) {
+      console.log(`Initializing Google AI (${modelName})`);
+      console.log(`API Key length: ${apiKey.length}`);
+      
+      llm = new ChatGoogleGenerativeAI({
+        modelName: modelName,
+        apiKey: apiKey,
+        maxOutputTokens: 9126, // Adjust as needed
+      });
+      
+      console.log("✅ LLM initialized successfully");
+    } else {
+      console.error(
+        "FATAL: No LLM provider configured. Set GOOGLE_AI_API_KEY environment variable."
+      );
+    }
+  } catch (error) {
+    console.error("Failed to initialize LLM:", error);
+  }
   
   // Check if LLM is configured
   if (!llm) {
@@ -107,19 +123,19 @@ export async function pipeline(event, responseStream) {
       language: DEFAULT_LANGUAGE,
       creatorId: creatorId,
       author: author,
+      schemaVersion: "v3", // Add schema version for V3
     };
 
     await createProblem(initialItem);
     
     // --- Generation Pipeline Steps ---
     
-    // --- Step 1: Intent Analysis ---
+    // --- Step 1: Intent Analysis (Unchanged) ---
     sendStatus(stream, 1, "Analyzing prompt and extracting intent...");
     
     const { intent, intentJson } = await runIntentAnalysis(llm, {
       user_prompt: userPrompt,
       difficulty,
-      language: DEFAULT_LANGUAGE
     });
     
     if (!intent || !intent.goal) {
@@ -133,8 +149,8 @@ export async function pipeline(event, responseStream) {
     
     sendStatus(stream, 1, "✅ Intent extracted: " + intent.goal);
     
-    // --- Step 2: Test Design ---
-    sendStatus(stream, 2, "Designing test cases based on intent...");
+    // --- Step 2: Test Design (Modified to focus on inputs only) ---
+    sendStatus(stream, 2, "Designing test case inputs based on intent...");
     
     const { testSpecs, testSpecsJson } = await runTestDesign(llm, {
       intent,
@@ -152,13 +168,16 @@ export async function pipeline(event, responseStream) {
       testSpecifications: testSpecsJson,
     });
     
-    sendStatus(stream, 2, `✅ Test cases designed: ${testSpecs.length} cases with rationales.`);
+    sendStatus(stream, 2, `✅ Test case inputs designed: ${testSpecs.length} cases with rationales.`);
     
-    // --- Steps 3, 4, 5: Generation & Validation Loop ---
+    // --- Step 3-4: Solution Generation & Execution Validation Loop ---
     let solutionCode = null;
-    let testGenCode = null;
-    let validationResult = null;
-    let validationFeedback = null; // Store feedback for retries
+    let validatedSolutionCode = null;
+    let executionResults = null;
+    let executionFeedback = null;
+    let finalTestCases = null;
+    let finalTestCasesJson = null;
+    let description = null; // Declare the description variable
     
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       const isRetry = attempt > 0;
@@ -171,7 +190,8 @@ export async function pipeline(event, responseStream) {
         analyzed_intent: intent.goal,
         test_specs: testSpecsJson,
         language: DEFAULT_LANGUAGE,
-        feedback_section: validationFeedback
+        feedback_section: executionFeedback, // Use execution feedback instead of validation feedback
+        input_schema_description: intent.input_schema_description // Add input schema description
       });
       
       await updateProblemStatus(problemId, {
@@ -181,113 +201,198 @@ export async function pipeline(event, responseStream) {
       
       sendStatus(stream, 3, `✅ Solution code generated.${attemptMsg}`);
       
-      // --- Step 4: Test Case Generation ---
-      sendStatus(stream, 4, `Generating test case code...${attemptMsg}`);
+      // --- Step 4: Solution Execution & Validation (NEW) ---
+      sendStatus(stream, 4, `Executing solution against test inputs...${attemptMsg}`);
       
-      testGenCode = await runTestGeneration(llm, {
-        test_specs: testSpecsJson,
-        solution_code: solutionCode,
-        language: DEFAULT_LANGUAGE,
-        feedback_section: validationFeedback
-      });
-      
-      await updateProblemStatus(problemId, {
-        generationStatus: `step4_attempt_${attempt}`,
-        testGeneratorCode: testGenCode,
-      });
-      
-      sendStatus(stream, 4, `✅ Test generator code generated.${attemptMsg}`);
-      
-      // --- Step 5: Validation ---
-      sendStatus(stream, 5, `Validating generated code (LLM Review)...${attemptMsg}`);
-      
-      validationResult = await runValidation(llm, {
-        intent_json: intentJson,
-        solution_code: solutionCode,
-        test_gen_code: testGenCode,
-        test_specs: testSpecsJson,
-        language: DEFAULT_LANGUAGE
-      });
-      
-      console.log(`Step 5 Output (Validation Attempt ${attempt + 1}):`, validationResult);
-      
-      if (validationResult.status?.toLowerCase() === "pass") {
-        validationFeedback = null; // Clear feedback on success
-        await updateProblemStatus(problemId, {
-          generationStatus: "step5_complete",
-          validationDetails: JSON.stringify(validationResult),
-        });
-        sendStatus(stream, 5, "✅ Validation successful!");
-        break; // Exit the retry loop
-      } else {
-        // Validation failed
-        validationFeedback = validationResult.details || "Validation failed without details.";
-        const errorMsg = `LLM Validation failed (Attempt ${attempt + 1}): ${validationFeedback}`;
+      try {
+        // Execute the solution against all test inputs
+        executionResults = await executeSolutionWithTestCases(solutionCode, testSpecs, DEFAULT_LANGUAGE);
         
         await updateProblemStatus(problemId, {
-          generationStatus: `step5_failed_attempt_${attempt}`,
+          generationStatus: `step4_attempt_${attempt}`,
+          executionResults: JSON.stringify({
+            success: executionResults.success,
+            testResultsCount: executionResults.testResults.length,
+            errorsCount: executionResults.errors.length
+          }),
+        });
+        
+        if (executionResults.success) {
+          // Execution successful - no errors
+          validatedSolutionCode = solutionCode;
+          executionFeedback = null;
+          
+          sendStatus(stream, 4, `✅ Solution successfully executed against all test inputs.${attemptMsg}`);
+          break; // Exit the retry loop
+        } else {
+          // Execution failed - generate feedback for solution regeneration
+          executionFeedback = executionResults.feedback;
+          const errorMsg = `Solution execution failed (Attempt ${attempt + 1}): ${executionResults.errors.length} error(s)`;
+          
+          await updateProblemStatus(problemId, {
+            generationStatus: `step4_failed_attempt_${attempt}`,
+            errorMessage: errorMsg,
+            executionFeedback,
+          });
+          
+          sendStatus(stream, 4, `⚠️ Solution execution failed. ${isRetry ? "Retrying..." : ""} Feedback: ${executionFeedback}`);
+          
+          if (attempt === MAX_RETRIES) {
+            // Exhausted all retries
+            sendError(stream, `Solution execution failed after ${MAX_RETRIES + 1} attempts. Last error: ${executionFeedback}`);
+            throw new Error(`Solution execution failed after ${MAX_RETRIES + 1} attempts. Last error: ${executionFeedback}`);
+          }
+        }
+      } catch (error) {
+        // Unexpected execution error
+        const errorMsg = `Solution execution error (Attempt ${attempt + 1}): ${error.message}`;
+        
+        await updateProblemStatus(problemId, {
+          generationStatus: `step4_error_attempt_${attempt}`,
           errorMessage: errorMsg,
-          validationDetails: JSON.stringify(validationResult),
         });
-        
-        sendStatus(stream, 5, `⚠️ Validation failed. ${isRetry ? "Retrying..." : ""} Feedback: ${validationFeedback}`);
+        console.log("error", errorMsg);
+        sendStatus(stream, 4, `⚠️ Error during solution execution. ${isRetry ? "Retrying..." : ""}`);
         
         if (attempt === MAX_RETRIES) {
           // Exhausted all retries
-          sendError(stream, `Validation failed after ${MAX_RETRIES + 1} attempts. Last error: ${validationFeedback}`);
-          throw new Error(`Validation failed after ${MAX_RETRIES + 1} attempts. Last error: ${validationFeedback}`);
+          sendError(stream, `Solution execution failed after ${MAX_RETRIES + 1} attempts due to errors.`);
+          throw error;
         }
+        
+        // Use generic feedback for retry
+        executionFeedback = "Execution error. Please check your solution code structure and ensure it follows the expected format.";
       }
     }
     
-    // --- Step 6: Constraints Derivation ---
-    sendStatus(stream, 6, "Deriving problem constraints...");
+    // --- Step 5: Test Case Finalization (NEW) ---
+    sendStatus(stream, 5, "Finalizing test cases from execution results...");
+    
+    try {
+      // Finalize test cases with optional edge case generation
+      const finalizationResult = await finalizeTestCasesWithEdgeCases(
+        validatedSolutionCode,
+        executionResults,
+        llm, // Pass LLM for potential edge case generation (optional)
+        DEFAULT_LANGUAGE
+      );
+      
+      finalTestCases = finalizationResult.finalTestCases;
+      finalTestCasesJson = JSON.stringify(finalTestCases);
+      
+      await updateProblemStatus(problemId, {
+        generationStatus: "step5_complete",
+        finalTestCases: finalTestCasesJson,
+        testCaseStats: JSON.stringify({
+          totalCases: finalTestCases.length,
+          edgeCasesAdded: finalizationResult.edgeCasesAdded,
+          edgeCasesFailed: finalizationResult.edgeCasesFailed
+        })
+      });
+      
+      sendStatus(stream, 5, `✅ Test cases finalized: ${finalTestCases.length} cases with verified outputs.`);
+    } catch (error) {
+      console.error("Test case finalization error:", error);
+      sendStatus(stream, 5, "⚠️ Error during test case finalization. Using direct execution results.");
+      
+      // Fallback to using direct execution results
+      finalTestCases = executionResults.testResults;
+      finalTestCasesJson = JSON.stringify(finalTestCases);
+      
+      await updateProblemStatus(problemId, {
+        generationStatus: "step5_fallback",
+        finalTestCases: finalTestCasesJson,
+        finalizeError: error.message
+      });
+    }
+    
+    // --- Step 6: LLM-Based Validation (Refocused on coherence and completeness) ---
+    sendStatus(stream, 6, "Validating problem coherence and completeness...");
+    
+    let validationResult = null;
+    
+    try {
+      validationResult = await runValidation(llm, {
+        intent_json: intentJson,
+        solution_code: validatedSolutionCode,
+        test_cases_json: finalTestCasesJson,
+        difficulty,
+        input_schema_description: intent.input_schema_description // Add input schema description
+      });
+      
+      await updateProblemStatus(problemId, {
+        generationStatus: "step6_complete",
+        validationDetails: JSON.stringify(validationResult),
+      });
+      
+      sendStatus(stream, 6, `✅ Validation complete: ${validationResult.status}`);
+    } catch (error) {
+      console.error("Validation error:", error);
+      sendStatus(stream, 6, "⚠️ Error during validation. Continuing with generation.");
+      
+      // Fallback validation result
+      validationResult = {
+        status: "Pass",
+        details: "Validation skipped due to error but proceeding as solution was execution-verified."
+      };
+      
+      await updateProblemStatus(problemId, {
+        generationStatus: "step6_fallback",
+        validationDetails: JSON.stringify(validationResult),
+        validationError: error.message
+      });
+    }
+    
+    // --- Step 7: Constraints Derivation (Largely Unchanged) ---
+    sendStatus(stream, 7, "Deriving problem constraints...");
     
     const { constraints, constraintsJson } = await runConstraintsDerivation(llm, {
-      solution_code: solutionCode,
-      test_specs: testSpecsJson,
-      language: DEFAULT_LANGUAGE,
-      difficulty
-    });
-    
-    await updateProblemStatus(problemId, {
-      generationStatus: "step6_complete",
-      constraints: constraintsJson,
-    });
-    
-    sendStatus(stream, 6, "✅ Constraints derived.");
-    
-    // --- Step 7: Description Generation ---
-    sendStatus(stream, 7, "Generating final problem description...");
-    
-    let exampleSpecsStr = "[]";
-    try {
-      if (testSpecs.length > 0) {
-        exampleSpecsStr = JSON.stringify(testSpecs.slice(0, 2)); // Take first 2 examples
-      }
-    } catch (e) {
-      console.warn("Could not prepare examples for description generation:", e);
-    }
-    
-    const problemDescription = await runDescriptionGeneration(llm, {
-      analyzed_intent: intent.goal,
-      constraints: constraintsJson,
-      test_specs_examples: exampleSpecsStr,
+      solution_code: validatedSolutionCode,
+      test_specs: finalTestCasesJson, // Use finalized test cases instead of original specs
       difficulty,
-      language: DEFAULT_LANGUAGE
+      input_schema_description: intent.input_schema_description // Add input schema description
     });
     
     await updateProblemStatus(problemId, {
       generationStatus: "step7_complete",
-      description: problemDescription,
+      constraints: constraintsJson,
     });
     
-    sendStatus(stream, 7, "✅ Problem description generated.");
+    sendStatus(stream, 7, "✅ Constraints derived.");
     
-    // --- Step 7.5: Title Generation ---
-    sendStatus(stream, 7.5, "Generating problem title...");
+    // --- Step 8: Description Generation ---
+    sendStatus(stream, 8, "Generating problem description...");
     
-    const descriptionSnippet = problemDescription.substring(0, 200); // Take a snippet
+    // Select a subset of test cases for examples
+    const exampleTestCases = selectExampleTestCases(finalTestCases, 2);
+    const exampleTestCasesJson = JSON.stringify(exampleTestCases);
+    
+    try {
+      description = await runDescriptionGeneration(llm, {
+        analyzed_intent: intent.goal,
+        constraints: constraintsJson,
+        test_specs_examples: exampleTestCasesJson,
+        difficulty,
+        language: DEFAULT_LANGUAGE,
+        input_schema_description: intent.input_schema_description // Add input schema description
+      });
+      
+      await updateProblemStatus(problemId, {
+        generationStatus: "step8_complete",
+        description,
+      });
+      
+      sendStatus(stream, 8, "✅ Problem description generated.");
+    } catch (error) {
+      console.error("Description generation error:", error);
+      sendError(stream, "Failed to generate problem description: " + error.message);
+      throw error;
+    }
+    
+    // --- Step 9: Title Generation (Unchanged) ---
+    sendStatus(stream, 9, "Generating problem title...");
+    
+    const descriptionSnippet = description.substring(0, 200); // Take a snippet
     
     let problemTitle = await runTitleGeneration(llm, {
       difficulty,
@@ -301,19 +406,19 @@ export async function pipeline(event, responseStream) {
     }
     
     await updateProblemStatus(problemId, {
-      generationStatus: "step7_5_complete",
+      generationStatus: "step9_complete",
       title: problemTitle,
     });
     
-    sendStatus(stream, 7.5, "✅ Problem title generated.");
+    sendStatus(stream, 9, "✅ Problem title generated.");
     
-    // --- Step 8: Translation ---
+    // --- Step 10: Translation (Unchanged) ---
     let translatedTitle = problemTitle; // Default to original
-    let translatedDescription = problemDescription; // Default to original
+    let translatedDescription = description; // Default to original
     const targetLanguage = DEFAULT_TARGET_LANGUAGE;
     
     if (targetLanguage && targetLanguage.toLowerCase() !== "none") {
-      sendStatus(stream, 8, `Translating title and description to ${targetLanguage}...`);
+      sendStatus(stream, 10, `Translating title and description to ${targetLanguage}...`);
       
       try {
         // Translate Title
@@ -332,30 +437,30 @@ export async function pipeline(event, responseStream) {
         // Translate Description
         translatedDescription = await runTranslation(llm, {
           target_language: targetLanguage,
-          text_to_translate: problemDescription
+          text_to_translate: description
         });
         
         await updateProblemStatus(problemId, {
-          generationStatus: "step8_complete",
+          generationStatus: "step10_complete",
           title_translated: translatedTitle,
           description_translated: translatedDescription,
           targetLanguage,
         });
         
-        sendStatus(stream, 8, `✅ Title and description translated to ${targetLanguage}.`);
+        sendStatus(stream, 10, `✅ Title and description translated to ${targetLanguage}.`);
       } catch (translationError) {
         console.error(`Translation to ${targetLanguage} failed:`, translationError);
         await updateProblemStatus(problemId, {
           translationError: `Failed to translate to ${targetLanguage}: ${translationError.message}`,
         });
-        sendStatus(stream, 8, `⚠️ Translation to ${targetLanguage} failed. Using original text.`);
+        sendStatus(stream, 10, `⚠️ Translation to ${targetLanguage} failed. Using original text.`);
       }
     } else {
-      sendStatus(stream, 8, `Skipping translation (no target language specified).`);
+      sendStatus(stream, 10, `Skipping translation (no target language specified).`);
     }
     
-    // --- Step 9: Finalization ---
-    sendStatus(stream, 9, "Finalizing and saving...");
+    // --- Step 11: Finalization ---
+    sendStatus(stream, 11, "Finalizing and saving...");
     
     const completedAt = new Date().toISOString();
     const finalUpdates = {
@@ -378,13 +483,14 @@ export async function pipeline(event, responseStream) {
       difficulty,
       language: DEFAULT_LANGUAGE,
       createdAt,
+      schemaVersion: "v3", // Add schema version
       intent: intentJson,
-      testSpecifications: testSpecsJson,
-      solutionCode,
-      testGeneratorCode: testGenCode,
+      testInputs: testSpecsJson, // Original test inputs
+      finalTestCases: finalTestCasesJson, // Execution-verified test cases
+      validatedSolutionCode, // Validated solution code
       validationDetails: JSON.stringify(validationResult),
       constraints: constraintsJson,
-      description: targetLanguage && targetLanguage.toLowerCase() !== "none" ? translatedDescription : problemDescription,
+      description: targetLanguage && targetLanguage.toLowerCase() !== "none" ? translatedDescription : description,
       title: targetLanguage && targetLanguage.toLowerCase() !== "none" ? translatedTitle : problemTitle,
       title_translated: translatedTitle,
       description_translated: translatedDescription,
@@ -396,7 +502,7 @@ export async function pipeline(event, responseStream) {
     };
     
     sendResult(stream, finalProblemData);
-    sendStatus(stream, 9, "✅ Generation complete!");
+    sendStatus(stream, 11, "✅ Generation complete!");
     
   } catch (error) {
     console.error("!!! Pipeline Error:", error);

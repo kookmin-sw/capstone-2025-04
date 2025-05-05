@@ -10,6 +10,9 @@ Generate the solution code in {language} for the following problem intent and te
 Problem Goal:
 {analyzed_intent}
 
+Input Schema:
+{input_schema_description}
+
 Test Specifications:
 {test_specs}
 
@@ -17,6 +20,11 @@ Requirements:
 - The code must be correct and aim to pass all the specified test cases.
 {feedback_section}
 
+- **CRITICAL:** The main logic must be encapsulated within a function named exactly *solution* that accepts a single argument representing the problem input.
+- The solution function must accept input in the exact format specified in the Input Schema above.
+- The solution function must return output in a consistent, JSON-serializable format where:
+  - Dictionary/Map keys should be strings (not numbers or other types)
+  - For special values, use string representations: "Infinity" (not float('inf')), "-Infinity", "NaN"
 - The code should be efficient and follow standard coding practices for {language}.
 - Adhere strictly to {language} syntax and standard libraries.
 

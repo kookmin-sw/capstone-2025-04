@@ -1,8 +1,8 @@
 import { StringOutputParser } from "@langchain/core/output_parsers";
 import { StructuredOutputParser } from "@langchain/core/output_parsers";
-import { solutionGenerationPromptTemplate } from "../prompts/solutionGen.mjs";
-import { cleanLlmOutput } from "../utils/cleanLlmOutput.mjs";
-import { SolutionOutputSchema } from "../schemas/solution.mjs";
+import { solutionGenerationPromptTemplate } from "./prompt.mjs";
+import { cleanLlmOutput } from "../../utils/cleanLlmOutput.mjs";
+import { SolutionOutputSchema } from "./schema.mjs";
 
 /**
  * Creates a Solution Generation chain.
@@ -36,15 +36,40 @@ export function createStructuredSolutionGenerationChain(llm) {
  * @param {string} params.test_specs - The test specifications from the previous step.
  * @param {string} params.language - The target programming language.
  * @param {string} [params.feedback_section=""] - Optional feedback from previous validation failures.
+ * @param {string} [params.input_schema_description=""] - Description of input structure
  * @returns {Promise<string>} The generated solution code.
  */
-export async function runSolutionGeneration(llm, { analyzed_intent, test_specs, language, feedback_section = "" }) {
+export async function runSolutionGeneration(llm, { 
+  analyzed_intent, 
+  test_specs, 
+  language, 
+  feedback_section = "",
+  input_schema_description = "" 
+}) {
   const chain = createSolutionGenerationChain(llm);
+  
+  // Extract input schema from test specs if not provided
+  let inputSchema = input_schema_description;
+  if (!inputSchema) {
+    try {
+      // Try to extract input schema from test specs
+      const parsedSpecs = typeof test_specs === 'string' ? JSON.parse(test_specs) : test_specs;
+      if (parsedSpecs && parsedSpecs.length > 0 && parsedSpecs[0].input) {
+        const example = parsedSpecs[0].input;
+        inputSchema = `Input appears to be an object with structure similar to: ${JSON.stringify(example)}`;
+      } else {
+        inputSchema = "Input format not explicitly defined, derive from test cases.";
+      }
+    } catch (e) {
+      inputSchema = "Input format not explicitly defined, derive from test cases.";
+    }
+  }
   
   const input = {
     analyzed_intent,
     test_specs,
     language,
+    input_schema_description: inputSchema,
     feedback_section: feedback_section ? `\n\n**Previous Attempt Feedback:**\n${feedback_section}\nPlease address this feedback in the new solution.` : ""
   };
   
@@ -61,15 +86,40 @@ export async function runSolutionGeneration(llm, { analyzed_intent, test_specs, 
  * @param {string} params.test_specs - The test specifications from the previous step.
  * @param {string} params.language - The target programming language.
  * @param {string} [params.feedback_section=""] - Optional feedback from previous validation failures.
+ * @param {string} [params.input_schema_description=""] - Description of input structure
  * @returns {Promise<string>} The generated solution code.
  */
-export async function runStructuredSolutionGeneration(llm, { analyzed_intent, test_specs, language, feedback_section = "" }) {
+export async function runStructuredSolutionGeneration(llm, { 
+  analyzed_intent, 
+  test_specs, 
+  language, 
+  feedback_section = "",
+  input_schema_description = "" 
+}) {
   const chain = createStructuredSolutionGenerationChain(llm);
+  
+  // Extract input schema from test specs if not provided
+  let inputSchema = input_schema_description;
+  if (!inputSchema) {
+    try {
+      // Try to extract input schema from test specs
+      const parsedSpecs = typeof test_specs === 'string' ? JSON.parse(test_specs) : test_specs;
+      if (parsedSpecs && parsedSpecs.length > 0 && parsedSpecs[0].input) {
+        const example = parsedSpecs[0].input;
+        inputSchema = `Input appears to be an object with structure similar to: ${JSON.stringify(example)}`;
+      } else {
+        inputSchema = "Input format not explicitly defined, derive from test cases.";
+      }
+    } catch (e) {
+      inputSchema = "Input format not explicitly defined, derive from test cases.";
+    }
+  }
   
   const input = {
     analyzed_intent,
     test_specs,
     language,
+    input_schema_description: inputSchema,
     feedback_section: feedback_section ? `\n\n**Previous Attempt Feedback:**\n${feedback_section}\nPlease address this feedback in the new solution.` : ""
   };
   

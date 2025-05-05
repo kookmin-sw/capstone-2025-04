@@ -1,5 +1,19 @@
 import { GENERATOR_VERBOSE } from "../utils/constants.mjs";
 
+// Mock awslambda object for local testing
+const mockAwsLambda = {
+  HttpResponseStream: {
+    from: (responseStream, metadata) => {
+      // Just return the original stream in local testing with the metadata attached
+      responseStream.metadata = metadata;
+      return responseStream;
+    }
+  }
+};
+
+// Use the AWS Lambda object if available, otherwise use mock
+const lambdaRuntime = typeof awslambda !== 'undefined' ? awslambda : mockAwsLambda;
+
 /**
  * Initializes an SSE response stream with appropriate headers.
  * 
@@ -16,7 +30,7 @@ export function initializeSseStream(responseStream) {
       // CORS headers can be added here if needed
     },
   };
-  return awslambda.HttpResponseStream.from(responseStream, sseMetadata);
+  return lambdaRuntime.HttpResponseStream.from(responseStream, sseMetadata);
 }
 
 /**
@@ -27,7 +41,8 @@ export function initializeSseStream(responseStream) {
  * @param {object} payload - The JSON payload for the event.
  */
 export function sendSse(stream, eventType, payload) {
-  const message = `event: ${eventType}\ndata: ${JSON.stringify(payload)}\n\n`;
+  const data = JSON.stringify(payload);
+  const message = `data: ${JSON.stringify({type: eventType, payload})}\n\n`;
   stream.write(message);
   if (GENERATOR_VERBOSE) {
     console.log(`SSE Sent: ${eventType} - Payload:`, payload);
@@ -49,10 +64,16 @@ export function sendStatus(stream, step, message) {
  * Sends an error message via SSE.
  * 
  * @param {awslambda.HttpResponseStream} stream - The response stream.
- * @param {string} errorMessage - The error message.
+ * @param {string|Error} error - The error message or Error object.
  */
-export function sendError(stream, errorMessage) {
+export function sendError(stream, error) {
+  // Convert Error objects or anything else to a string message
+  const errorMessage = error instanceof Error 
+    ? error.message 
+    : (typeof error === 'object' ? JSON.stringify(error) : String(error));
+  
   sendSse(stream, "error", { payload: errorMessage });
+  console.error("Error in pipeline:", errorMessage);
 }
 
 /**

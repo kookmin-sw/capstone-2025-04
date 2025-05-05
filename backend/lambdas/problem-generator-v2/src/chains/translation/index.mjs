@@ -1,7 +1,7 @@
 import { StringOutputParser } from "@langchain/core/output_parsers";
-import { translationPromptTemplate } from "../prompts/translation.mjs";
-import { cleanLlmOutput } from "../utils/cleanLlmOutput.mjs";
-import { TranslationOutputSchema } from "../schemas/translation.mjs";
+import { translationPromptTemplate } from "./prompt.mjs";
+import { cleanLlmOutput } from "../../utils/cleanLlmOutput.mjs";
+import { TranslationOutputSchema } from "./schema.mjs";
 
 /**
  * Creates a Translation chain.

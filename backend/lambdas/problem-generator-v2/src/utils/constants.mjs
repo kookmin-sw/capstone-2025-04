@@ -1,11 +1,35 @@
 // Environment Variables
-export const PROBLEMS_TABLE_NAME =
-  process.env.PROBLEMS_TABLE_NAME || "default-problems-table";
-export const GOOGLE_AI_API_KEY = process.env.GOOGLE_AI_API_KEY;
-export const GENERATOR_VERBOSE =
-  process.env.GENERATOR_VERBOSE?.toLowerCase() === "true";
-export const GEMINI_MODEL_NAME =
-  process.env.GEMINI_MODEL_NAME || "gemini-2.5-pro-exp-03-25"; // Or "gemini-pro" etc.
+
+// Helper function to get environment variables at runtime
+function getEnv(key, defaultValue = null) {
+  const value = process.env[key];
+  return value !== undefined ? value : defaultValue;
+}
+
+// Basic configuration
+export function getProblemsTableName() {
+  return getEnv('PROBLEMS_TABLE_NAME', 'default-problems-table');
+}
+
+export function getGoogleAiApiKey() {
+  return getEnv('GOOGLE_AI_API_KEY');
+}
+
+export function isGeneratorVerbose() {
+  return getEnv('GENERATOR_VERBOSE', 'false').toLowerCase() === 'true';
+}
+
+export function getGeminiModelName() {
+  return getEnv('GEMINI_MODEL_NAME', 'gemini-2.5-pro-exp-03-25');
+}
+
+// Constants with default values
 export const DEFAULT_LANGUAGE = "python3.12"; // Or make configurable
 export const DEFAULT_TARGET_LANGUAGE = "Korean"; // Target language for translation
 export const MAX_RETRIES = 2; // Max number of retries on validation failure 
+
+// For backward compatibility
+export const PROBLEMS_TABLE_NAME = getProblemsTableName();
+export const GOOGLE_AI_API_KEY = getGoogleAiApiKey();
+export const GENERATOR_VERBOSE = isGeneratorVerbose();
+export const GEMINI_MODEL_NAME = getGeminiModelName(); 
