@@ -50,31 +50,37 @@ export const handler = async (event) => {
         TableName: tableName,
         IndexName: "CreatorIdIndex",
         KeyConditionExpression: "creatorId = :creatorId",
+        FilterExpression: "generationStatus = :completed",
         ExpressionAttributeValues: {
           ":creatorId": creatorId,
+          ":completed": "completed"
         },
         ProjectionExpression:
-          "problemId, title, title_translated, difficulty, algorithmType, createdAt, creatorId, author",
+          "problemId, title, title_translated, difficulty, algorithmType, createdAt, creatorId, author, generationStatus",
       };
 
-      console.log("Querying by creatorId:", queryParams);
+      console.log("Querying by creatorId with completed status:", queryParams);
       const queryCommand = new QueryCommand(queryParams);
       const queryResult = await dynamoDB.send(queryCommand);
       problems = queryResult.Items || [];
-      console.log(`Found ${problems.length} problems for creator ${creatorId}`);
+      console.log(`Found ${problems.length} completed problems for creator ${creatorId}`);
     } else {
       // If no creatorId, use Scan as before
       const scanParams = {
         TableName: tableName,
+        FilterExpression: "generationStatus = :completed",
+        ExpressionAttributeValues: {
+          ":completed": "completed"
+        },
         ProjectionExpression:
-          "problemId, title, title_translated, difficulty, algorithmType, createdAt, creatorId, author",
+          "problemId, title, title_translated, difficulty, algorithmType, createdAt, creatorId, author, generationStatus",
       };
 
-      console.log("Scanning all problems");
+      console.log("Scanning all completed problems");
       const scanCommand = new ScanCommand(scanParams);
       const scanResult = await dynamoDB.send(scanCommand);
       problems = scanResult.Items || [];
-      console.log(`Found ${problems.length} problems in total`);
+      console.log(`Found ${problems.length} completed problems in total`);
     }
 
     // --- SUCCESS RESPONSE ---
