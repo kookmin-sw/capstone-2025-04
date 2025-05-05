@@ -15,6 +15,7 @@ const API_BASE_URL =
 export interface ProblemSummary {
   problemId: string;
   title: string;
+  title_translated?: string; // Translated title if targetLanguage exists
   difficulty: string; // 예: "Easy", "Medium", "Hard" 또는 생성된 값 그대로
   algorithmType?: string; // 선택적 필드
   createdAt: string;

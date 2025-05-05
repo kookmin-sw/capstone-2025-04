@@ -67,7 +67,7 @@ const CodingTestPage: React.FC = () => {
   // --- Filtering logic ---
   const filteredProblems = allProblems.filter(
     (problem) =>
-      problem.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (problem.title_translated || problem.title)?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       problem.algorithmType?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       // problem.creatorId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       problem.author?.toLowerCase().includes(searchTerm.toLowerCase()) // Also allow filtering by author
@@ -77,7 +77,7 @@ const CodingTestPage: React.FC = () => {
   const sortedProblems = [...filteredProblems].sort((a, b) => {
     const getValueA = () => {
       switch (sortColumn) {
-        case "title": return a.title || "";
+        case "title": return a.title_translated || a.title || "";
         case "algorithmType": return a.algorithmType || "기타";
         case "difficulty": return a.difficulty || "";
         // case "creatorId": return a.creatorId || "Unknown"; // Handle missing creatorId
@@ -89,7 +89,7 @@ const CodingTestPage: React.FC = () => {
 
     const getValueB = () => {
        switch (sortColumn) {
-        case "title": return b.title || "";
+        case "title": return b.title_translated || b.title || "";
         case "algorithmType": return b.algorithmType || "기타";
         case "difficulty": return b.difficulty || "";
         // case "creatorId": return b.creatorId || "Unknown";
@@ -284,7 +284,7 @@ const CodingTestPage: React.FC = () => {
                           >
                             <td className="px-6 py-4 whitespace-nowrap">
                               <div className="text-sm font-medium text-gray-900 truncate max-w-xs">
-                                {problem.title}
+                                {problem.title_translated || problem.title}
                               </div>
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap">

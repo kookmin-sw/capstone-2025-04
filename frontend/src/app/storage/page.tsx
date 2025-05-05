@@ -56,7 +56,7 @@ const StoragePage: React.FC = () => {
   // Filter problems by search term
   const filteredProblems = userProblems.filter(
     (problem) =>
-      problem.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (problem.title_translated || problem.title)?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       problem.algorithmType?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
@@ -64,7 +64,7 @@ const StoragePage: React.FC = () => {
   const sortedProblems = [...filteredProblems].sort((a, b) => {
     // Default values for null/undefined fields
     const getValueA = () => {
-      if (sortColumn === "title") return a.title || "";
+      if (sortColumn === "title") return a.title_translated || a.title || "";
       if (sortColumn === "algorithmType") return a.algorithmType || "기타";
       if (sortColumn === "difficulty") return a.difficulty || "";
       if (sortColumn === "createdAt") return a.createdAt || "";
@@ -72,7 +72,7 @@ const StoragePage: React.FC = () => {
     };
     
     const getValueB = () => {
-      if (sortColumn === "title") return b.title || "";
+      if (sortColumn === "title") return b.title_translated || b.title || "";
       if (sortColumn === "algorithmType") return b.algorithmType || "기타";
       if (sortColumn === "difficulty") return b.difficulty || "";
       if (sortColumn === "createdAt") return b.createdAt || "";
@@ -274,7 +274,7 @@ const StoragePage: React.FC = () => {
                         >
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div className="text-sm font-medium text-gray-900">
-                              {problem.title}
+                              {problem.title_translated || problem.title}
                             </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
