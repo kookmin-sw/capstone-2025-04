@@ -26,7 +26,7 @@ export function getGeminiModelName() {
 // Constants with default values
 export const DEFAULT_LANGUAGE = "python3.12"; // Or make configurable
 export const DEFAULT_TARGET_LANGUAGE = "Korean"; // Target language for translation
-export const MAX_RETRIES = 2; // Max number of retries on validation failure 
+export const MAX_RETRIES = 5; // Max number of retries on validation failure 
 
 // Allowed judge types for simple scoring
 export const ALLOWED_JUDGE_TYPES = ["equal", "unordered_equal", "float_eps"];

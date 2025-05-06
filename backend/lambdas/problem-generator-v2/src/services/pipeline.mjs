@@ -28,6 +28,7 @@ import {
   runSolutionGeneration,
   runValidation,
   runConstraintsDerivation,
+  runStartCodeGeneration,
   runDescriptionGeneration,
   runTitleGeneration,
   runTranslation
@@ -125,7 +126,7 @@ export async function pipeline(event, responseStream) {
       language: DEFAULT_LANGUAGE,
       creatorId: creatorId,
       author: author,
-      schemaVersion: "v3.1_judge_type_enforced", // Updated schema version
+      schemaVersion: "v3.2_start_code", // Updated schema version
     };
 
     await createProblem(initialItem);
@@ -525,6 +526,63 @@ export async function pipeline(event, responseStream) {
       throw new Error("Constraints derivation failed after all retry attempts");
     }
     
+    // --- Step 6.5: Start Code Generation (With Retry) ---
+    let startCode;
+    let startCodeGenerationSuccess = false;
+
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      const isRetry = attempt > 0;
+      const attemptMsg = isRetry ? ` (Attempt ${attempt + 1}/${MAX_RETRIES + 1})` : "";
+
+      sendStatus(stream, 6.5, `Generating start code template...${attemptMsg}`);
+
+      try {
+        startCode = await runStartCodeGeneration(llm, {
+          language: DEFAULT_LANGUAGE,
+          input_schema_description: intent.input_schema_description,
+          output_format_description: intent.output_format_description,
+          constraints_json: constraintsJson,
+          solution_code: validatedSolutionCode, 
+        });
+
+        if (!startCode || startCode.trim() === '') {
+          throw new Error("Generated start code is empty or invalid");
+        }
+
+        await updateProblemStatus(problemId, {
+          generationStatus: `step6_5_complete_attempt_${attempt}`,
+          startCode, // Save to DynamoDB
+        });
+
+        sendStatus(stream, 6.5, `✅ Start code template generated.${attemptMsg}`);
+        startCodeGenerationSuccess = true;
+        break; // Exit retry loop on success
+
+      } catch (error) {
+        console.error(`Start code generation error (Attempt ${attempt + 1}/${MAX_RETRIES + 1}):`, error);
+
+        await updateProblemStatus(problemId, {
+          generationStatus: `step6_5_failed_attempt_${attempt}`,
+          startCodeError: error.message
+        });
+
+        if (attempt === MAX_RETRIES) {
+          const errorMessage = `Start code generation failed after ${MAX_RETRIES + 1} attempts. Last error: ${error.message}`;
+          // Decide if this is fatal. For now, making it fatal.
+          // Could potentially proceed with a default/empty start code or warning.
+          sendError(stream, errorMessage);
+          throw new Error(errorMessage);
+        }
+
+        sendStatus(stream, 6.5, `⚠️ Start code generation failed: ${error.message.substring(0, 100)}... Retrying (${attempt + 1}/${MAX_RETRIES})...`);
+        await new Promise(resolve => setTimeout(resolve, 1000)); // Small delay
+      }
+    }
+
+    if (!startCodeGenerationSuccess) {
+      throw new Error("Start code generation failed after all retry attempts");
+    }
+    
     // --- Step 7: LLM-Based Validation (with Retry) ---
     let validationResult = null;
     let validationSuccess = false;
@@ -810,13 +868,15 @@ export async function pipeline(event, responseStream) {
       generationStatus: "completed",
       title: problemTitle,
       title_translated: translatedTitle,
+      description: description, // Save original description
       description_translated: translatedDescription,
       targetLanguage,
+      startCode, // Save start code
       completedAt,
       creatorId,
       author,
-      judgeType: constraints.judge_type, // Save to DB
-      epsilon: constraints.judge_type === 'float_eps' ? constraints.epsilon : undefined, // Save to DB
+      judgeType: constraints.judge_type, 
+      epsilon: constraints.judge_type === 'float_eps' ? constraints.epsilon : undefined, 
     };
     
     await updateProblemStatus(problemId, finalUpdates);
@@ -828,19 +888,20 @@ export async function pipeline(event, responseStream) {
       difficulty,
       language: DEFAULT_LANGUAGE,
       createdAt,
-      schemaVersion: "v3.1_judge_type_enforced", // Updated schema version
+      schemaVersion: "v3.2_start_code", 
       intent: intentJson,
-      testInputs: testSpecsJson, // Original test inputs
-      finalTestCases: finalTestCasesJson, // Execution-verified test cases
-      validatedSolutionCode, // Validated solution code
+      testInputs: testSpecsJson, 
+      finalTestCases: finalTestCasesJson, 
+      validatedSolutionCode, 
+      startCode, // Include startCode in final data
       validationDetails: JSON.stringify(validationResult),
-      constraints: constraintsJson, // Contains judge_type and epsilon
-      judgeType: constraints.judge_type, // Explicit top-level field
-      epsilon: constraints.judge_type === 'float_eps' ? constraints.epsilon : undefined, // Explicit top-level field
+      constraints: constraintsJson, 
+      judgeType: constraints.judge_type, 
+      epsilon: constraints.judge_type === 'float_eps' ? constraints.epsilon : undefined, 
       description: targetLanguage && targetLanguage.toLowerCase() !== "none" ? translatedDescription : description,
       title: targetLanguage && targetLanguage.toLowerCase() !== "none" ? translatedTitle : problemTitle,
-      title_translated: translatedTitle,
-      description_translated: translatedDescription,
+      title_translated: translatedTitle, // Keep for direct access
+      description_translated: translatedDescription, // Keep for direct access
       targetLanguage,
       generationStatus: "completed",
       completedAt,

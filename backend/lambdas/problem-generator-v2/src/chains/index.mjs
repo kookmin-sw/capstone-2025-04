@@ -8,3 +8,4 @@ export * from "./constraints/index.mjs";
 export * from "./description/index.mjs";
 export * from "./title/index.mjs";
 export * from "./translation/index.mjs";
+export * from "./startCode/index.mjs";
