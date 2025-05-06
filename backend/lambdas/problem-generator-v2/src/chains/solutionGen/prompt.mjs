@@ -27,8 +27,19 @@ Requirements:
   - For special values, use string representations: "Infinity" (not float('inf')), "-Infinity", "NaN"
 - The code should be efficient and follow standard coding practices for {language}.
 - Adhere strictly to {language} syntax and standard libraries.
+{language_specific_requirements}
 
 **CRITICAL:** Output **ONLY** the raw source code for the solution. Do not include explanations, comments about the code, markdown formatting (like \`\`\`python), or any other text.
 
 {language} Solution Code:`
-); 
+);
+
+/**
+ * Get language-specific requirements based on the programming language
+ */
+export function getLanguageSpecificRequirements(language) {
+  if (language.toLowerCase().includes('python')) {
+    return "- If using recursion, include \"import sys\" and \"sys.setrecursionlimit(300000)\" at the beginning of your solution to prevent stack overflow errors.";
+  }
+  return "";
+} 

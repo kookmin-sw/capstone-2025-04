@@ -15,7 +15,7 @@ INTENT_JSON:
 Input Schema: {input_schema_description}
 
 Guidelines:
-1. Create diverse test cases covering: empty inputs, single elements, typical cases, sorted (ascending/descending), 
+1. Create 8-12 diverse test cases covering: empty inputs, single elements, typical cases, sorted (ascending/descending), 
    boundary values, and edge cases appropriate for {difficulty} level.
    **If the Input Schema indicates that inputs can contain duplicates (e.g., \`[1, 5, 2, 5]\`) or involve repeated structures (e.g., paths in a graph \`A->B->A->C\`), ensure your test cases explicitly include such scenarios.**
 2. Each test must include a short "rationale" explaining *why* it is included.
@@ -61,6 +61,8 @@ Few-shot examples (for a graph problem):
 2. RIGHT: {{ "input": {{"n": 6, "edges": [[0,1],[1,2],[0,3],[3,4],[4,5]]}}, "rationale": "Graph with two paths" }}
 3. WRONG: {{ "input": {{"n": 100, "edges": [[i, i+1] for i in range(99)]}}, "rationale": "Long path" }} // DON'T DO THIS - not valid JSON
 4. RIGHT: {{ "input": {{"n": 5, "edges": [[0,1],[1,2],[2,3],[3,4]]}}, "rationale": "Graph forming a single path" }}
+
+**CRITICAL:** Ensure the entire output is a single, complete, valid JSON array starting with \`[\` and ending correctly with \`]\`. Do not truncate the output.
 
 {format_instructions}
 

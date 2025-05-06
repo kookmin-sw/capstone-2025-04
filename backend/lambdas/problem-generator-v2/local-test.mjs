@@ -225,7 +225,15 @@ async function promptAndRunTest() {
 const sampleEvent = {
   body: {
     // prompt: "정수 배열에서 가장 긴 연속된 증가 부분 수열의 길이를 찾는 문제",
-    prompt: "그래프 문제 아무거나",
+    // prompt: "그래프 문제 아무거나",
+    // prompt: "다이나믹 프로그래밍 기본 문제를 생성해 주세요.",
+    // prompt: "DFS와 BFS를 활용한 그래프 문제를 생성해 주세요.",
+    // prompt: "효율적인 정렬 알고리즘을 활용하는 문제를 생성해 주세요.",
+    prompt: "이진 탐색 알고리즘을 활용하는 문제를 생성해 주세요.",
+    // prompt: "그리디 알고리즘 접근법을 사용하는 문제를 생성해 주세요.",
+    // prompt: "문자열 처리 문제를 생성해 주세요.",
+    // prompt: "트리 구조를 활용하는 문제를 생성해 주세요.",
+    // prompt: "그래프 탐색 문제를 생성해 주세요.",
     difficulty: "Medium",
     creatorId: "test-user",
     author: "Local Tester"

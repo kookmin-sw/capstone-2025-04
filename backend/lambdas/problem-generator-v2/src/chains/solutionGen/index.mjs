@@ -1,6 +1,6 @@
 import { StringOutputParser } from "@langchain/core/output_parsers";
 import { StructuredOutputParser } from "@langchain/core/output_parsers";
-import { solutionGenerationPromptTemplate } from "./prompt.mjs";
+import { solutionGenerationPromptTemplate, getLanguageSpecificRequirements } from "./prompt.mjs";
 import { cleanLlmOutput } from "../../utils/cleanLlmOutput.mjs";
 import { SolutionOutputSchema } from "./schema.mjs";
 
@@ -89,7 +89,8 @@ export async function runSolutionGeneration(llm, {
     test_specs: test_specs_str,
     language,
     input_schema_description: inputSchema,
-    feedback_section: feedback_section ? `\n\n**Previous Attempt Feedback:**\n${feedback_section}\nPlease address this feedback in the new solution.` : ""
+    feedback_section: feedback_section ? `\n\n**Previous Attempt Feedback:**\n${feedback_section}\nPlease address this feedback in the new solution.` : "",
+    language_specific_requirements: getLanguageSpecificRequirements(language)
   };
   
   const output = await chain.invoke(input);
@@ -139,7 +140,8 @@ export async function runStructuredSolutionGeneration(llm, {
     test_specs,
     language,
     input_schema_description: inputSchema,
-    feedback_section: feedback_section ? `\n\n**Previous Attempt Feedback:**\n${feedback_section}\nPlease address this feedback in the new solution.` : ""
+    feedback_section: feedback_section ? `\n\n**Previous Attempt Feedback:**\n${feedback_section}\nPlease address this feedback in the new solution.` : "",
+    language_specific_requirements: getLanguageSpecificRequirements(language)
   };
   
   // No need for manual cleaning with structured output

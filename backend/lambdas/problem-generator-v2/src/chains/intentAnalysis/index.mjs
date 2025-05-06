@@ -21,20 +21,38 @@ export function createIntentAnalysisChain(llm) {
  * @returns {string} Cleaned text that should be valid JSON
  */
 function cleanJsonOutput(rawText) {
-  // Remove markdown code blocks if present
-  let cleanedText = rawText.replace(/```json\n|\n```/g, '');
-  
-  // Fix the specific "Ventilation" issue seen in key_constraints array
-  // Look for instances where unquoted text appears after a properly quoted string
-  cleanedText = cleanedText.replace(/"(.*?)"(\s+\w+)"(,|])/g, '"$1"$3');
-  
-  // More general fix for extra text in array elements
-  // This regex looks for text that's not inside quotes and appears after a string in an array
-  cleanedText = cleanedText.replace(/(".*?")([^",\]\n}]*)("|\]|,)/g, '$1$3');
+  // Remove markdown code blocks if present (e.g., ```json ... ```)
+  let cleanedText = rawText.replace(/^```json\s*\n?([\s\S]*?)\n?```$/g, '$1').trim();
+  // Also handle generic markdown blocks ``` ... ```
+  cleanedText = cleanedText.replace(/^```\s*\n?([\s\S]*?)\n?```$/g, '$1').trim();
+
+  // Regex to target extraneous characters (like '侬') specifically after a quoted string
+  // and before a comma or closing bracket, typically within an array.
+  // This regex looks for:
+  // 1. A quoted string: ("[^"]*")
+  // 2. Optional whitespace: \s*
+  // 3. One or more "junk" characters: ([^\w\s"'{}\[\]:,.\-+"`']+)
+  //    - These are characters NOT typically part of valid JSON structure or English text values.
+  //    - This should capture '侬' but not ': "value"'.
+  // 4. Optional whitespace: \s*
+  // 5. A comma or closing bracket: (,|])
+  // It replaces the match with the quoted string (p1) and the delimiter (p3), removing the junk (p2).
+  const junkCharPattern = /("[^"]*")\s*([^\w\s"'{}\[\]:,.\-+"`']+\s*)(,|\])/g;
+  if (junkCharPattern.test(cleanedText)) {
+    console.log("Attempting to remove specific junk characters from arrays...");
+    cleanedText = cleanedText.replace(junkCharPattern, (match, p1String, p2Junk, p3Delimiter) => {
+      console.warn(`Removed junk characters: '${p2Junk.trim()}' between '${p1String}' and '${p3Delimiter}'`);
+      return p1String + p3Delimiter;
+    });
+  }
   
   // Fix specific issue with malformed arrays where strings are missing commas
+  // e.g., ["item1" "item2"] -> ["item1", "item2"]
   cleanedText = cleanedText.replace(/(".*?")\s+(".*?")/g, '$1, $2');
   
+  // Remove trailing commas before closing braces or brackets
+  cleanedText = cleanedText.replace(/,\s*([}\]])/g, '$1');
+
   return cleanedText;
 }
 

@@ -16,6 +16,64 @@ export function createTestDesignChain(llm) {
 }
 
 /**
+ * Attempts to recover a truncated JSON array from the LLM output.
+ * 
+ * @param {string} rawText - Raw LLM output that might be truncated
+ * @returns {string|null} Recovered JSON string or null if recovery failed
+ */
+function recoverTruncatedJson(rawText) {
+  try {
+    // Remove markdown code blocks if present
+    let cleanedText = rawText.replace(/^```json\s*\n?([\s\S]*?)\n?```$/g, '$1').trim();
+    // Also handle generic markdown blocks
+    cleanedText = cleanedText.replace(/^```\s*\n?([\s\S]*?)\n?```$/g, '$1').trim();
+    
+    // Try to parse as-is first
+    try {
+      JSON.parse(cleanedText);
+      return cleanedText; // If it parses successfully, return cleaned text
+    } catch (initialError) {
+      // Continue with recovery attempts
+      console.log("JSON parsing failed, attempting recovery");
+    }
+    
+    // Check if it starts with a bracket but doesn't end with one
+    if (cleanedText.trim().startsWith('[') && !cleanedText.trim().endsWith(']')) {
+      console.log("Found truncated JSON array, attempting to close it");
+      
+      // Find the last complete object (which ends with '}')
+      const lastCompleteObjectEnd = cleanedText.lastIndexOf('}');
+      
+      if (lastCompleteObjectEnd > 0) {
+        // Extract everything up to the last complete object and add a closing bracket
+        const recoveredJson = cleanedText.substring(0, lastCompleteObjectEnd + 1) + ']';
+        console.log("Recovered JSON by closing array after last complete object");
+        
+        // Validate if the recovered JSON is valid
+        try {
+          const parsed = JSON.parse(recoveredJson);
+          if (Array.isArray(parsed)) {
+            console.log(`Successfully recovered array with ${parsed.length} items`);
+            return recoveredJson;
+          } else {
+            console.log("Recovered structure is not an array");
+            return null;
+          }
+        } catch (recoveryError) {
+          console.log("Recovery failed, recovered JSON is still invalid:", recoveryError.message);
+          return null;
+        }
+      }
+    }
+    
+    return null; // Recovery failed
+  } catch (error) {
+    console.error("Error in JSON recovery attempt:", error);
+    return null;
+  }
+}
+
+/**
  * Runs the test design step (Step 2).
  *
  * @param {ChatGoogleGenerativeAI} llm - The language model to use.
@@ -80,14 +138,67 @@ export async function runTestDesign(
     // Attempt to log raw output if attached to the error
     if (error.llmOutput) {
       console.log("Raw LLM output on error:", error.llmOutput);
+      
+      // Attempt to recover truncated JSON
+      const recoveredJson = recoverTruncatedJson(error.llmOutput);
+      if (recoveredJson) {
+        try {
+          const parsedRecovery = JSON.parse(recoveredJson);
+          console.log(`Recovery successful! Parsed ${parsedRecovery.length} test cases.`);
+          
+          return {
+            testSpecs: parsedRecovery,
+            testSpecsJson: recoveredJson,
+            wasRecovered: true
+          };
+        } catch (recoveryParseError) {
+          console.error("Failed to parse recovered JSON:", recoveryParseError);
+        }
+      } else {
+        console.log("JSON recovery attempt failed");
+      }
     } else if (error.cause?.llmOutput) {
       console.log(
         "Raw LLM output on error (from cause):",
         error.cause.llmOutput,
       );
+      // Try recovery for this case too
+      const recoveredJson = recoverTruncatedJson(error.cause.llmOutput);
+      if (recoveredJson) {
+        try {
+          const parsedRecovery = JSON.parse(recoveredJson);
+          console.log(`Recovery successful! Parsed ${parsedRecovery.length} test cases.`);
+          
+          return {
+            testSpecs: parsedRecovery,
+            testSpecsJson: recoveredJson,
+            wasRecovered: true
+          };
+        } catch (recoveryParseError) {
+          console.error("Failed to parse recovered JSON:", recoveryParseError);
+        }
+      }
     } else if (error.output) {
       // The parser might attach the failed output here
       console.log("Raw LLM output from parser error:", error.output);
+      // Try recovery here too if it's a string
+      if (typeof error.output === 'string') {
+        const recoveredJson = recoverTruncatedJson(error.output);
+        if (recoveredJson) {
+          try {
+            const parsedRecovery = JSON.parse(recoveredJson);
+            console.log(`Recovery successful! Parsed ${parsedRecovery.length} test cases.`);
+            
+            return {
+              testSpecs: parsedRecovery,
+              testSpecsJson: recoveredJson,
+              wasRecovered: true
+            };
+          } catch (recoveryParseError) {
+            console.error("Failed to parse recovered JSON:", recoveryParseError);
+          }
+        }
+      }
     }
     throw error; // Re-throw the error to be handled by the pipeline
   }
