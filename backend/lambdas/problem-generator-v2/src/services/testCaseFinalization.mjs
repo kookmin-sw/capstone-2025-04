@@ -161,9 +161,10 @@ export async function finalizeTestCasesWithEdgeCases(
  * 
  * @param {Array} finalTestCases - Array of finalized test cases
  * @param {number} maxExamples - Maximum number of examples to select
+ * @param {Object} inputSchemaDetails - Optional structured details about input schema, including duplicate handling
  * @returns {Array} Selected test cases for examples
  */
-export function selectExampleTestCases(finalTestCases, maxExamples = 2) {
+export function selectExampleTestCases(finalTestCases, maxExamples = 2, inputSchemaDetails = null) {
   if (!finalTestCases || !Array.isArray(finalTestCases) || finalTestCases.length === 0) {
     return [];
   }
@@ -178,11 +179,16 @@ export function selectExampleTestCases(finalTestCases, maxExamples = 2) {
   // 1. Shorter inputs (when serialized as JSON)
   // 2. Non-edge cases (based on rationale)
   // 3. Examples that showcase special formats (like "Infinity" for unreachable nodes)
+  // 4. If input schema allows duplicates, include examples with duplicates based on rationale
 
   // Check if any test case has "Infinity" in the expected output
   const hasInfinityValues = finalTestCases.some(testCase => 
     JSON.stringify(testCase.expected_output).includes("Infinity")
   );
+
+  // Get flags from inputSchemaDetails with safe defaults
+  const allowsDuplicates = inputSchemaDetails?.allows_duplicates_in_collections ?? false;
+  const allowsRevisitingNodes = inputSchemaDetails?.can_revisit_nodes_in_paths ?? false;
 
   // Sort by simplicity
   const sortedBySimplicity = [...finalTestCases].sort((a, b) => {
@@ -193,6 +199,30 @@ export function selectExampleTestCases(finalTestCases, maxExamples = 2) {
       
       if (aHasInfinity && !bHasInfinity) return -1;
       if (!aHasInfinity && bHasInfinity) return 1;
+    }
+    
+    // If duplicates are allowed, prioritize examples with duplicates mentioned in rationale
+    if (allowsDuplicates) {
+      const aDuplicateWords = ['duplicate', 'repeated', 'same element', 'duplicated'];
+      const bDuplicateWords = ['duplicate', 'repeated', 'same element', 'duplicated'];
+      
+      const aShowsDuplicates = aDuplicateWords.some(word => a.rationale.toLowerCase().includes(word));
+      const bShowsDuplicates = bDuplicateWords.some(word => b.rationale.toLowerCase().includes(word));
+      
+      if (aShowsDuplicates && !bShowsDuplicates) return -1;
+      if (!aShowsDuplicates && bShowsDuplicates) return 1;
+    }
+    
+    // If revisiting nodes in paths is allowed, prioritize examples that mention this
+    if (allowsRevisitingNodes) {
+      const aRevisitWords = ['cycle', 'revisit', 'repeated node', 'path with'];
+      const bRevisitWords = ['cycle', 'revisit', 'repeated node', 'path with'];
+      
+      const aShowsRevisit = aRevisitWords.some(word => a.rationale.toLowerCase().includes(word));
+      const bShowsRevisit = bRevisitWords.some(word => b.rationale.toLowerCase().includes(word));
+      
+      if (aShowsRevisit && !bShowsRevisit) return -1;
+      if (!aShowsRevisit && bShowsRevisit) return 1;
     }
     
     // Prefer test cases without "edge" in the rationale

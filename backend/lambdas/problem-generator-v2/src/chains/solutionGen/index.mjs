@@ -48,6 +48,25 @@ export async function runSolutionGeneration(llm, {
 }) {
   const chain = createSolutionGenerationChain(llm);
   
+  // Debug log for test_specs
+  console.log("DEBUG - runSolutionGeneration input test_specs:", {
+    type: typeof test_specs,
+    isString: typeof test_specs === 'string',
+    length: typeof test_specs === 'string' ? test_specs.length : (Array.isArray(test_specs) ? test_specs.length : 'N/A')
+  });
+  
+  // Ensure test_specs is a string (JSON) as expected by the prompt
+  let test_specs_str = test_specs;
+  if (typeof test_specs !== 'string') {
+    try {
+      test_specs_str = JSON.stringify(test_specs);
+      console.log("DEBUG - Converted test_specs to string");
+    } catch (e) {
+      console.error("DEBUG - Failed to stringify test_specs:", e.message);
+      test_specs_str = "[]"; // Fallback to empty array if stringify fails
+    }
+  }
+  
   // Extract input schema from test specs if not provided
   let inputSchema = input_schema_description;
   if (!inputSchema) {
@@ -67,7 +86,7 @@ export async function runSolutionGeneration(llm, {
   
   const input = {
     analyzed_intent,
-    test_specs,
+    test_specs: test_specs_str,
     language,
     input_schema_description: inputSchema,
     feedback_section: feedback_section ? `\n\n**Previous Attempt Feedback:**\n${feedback_section}\nPlease address this feedback in the new solution.` : ""

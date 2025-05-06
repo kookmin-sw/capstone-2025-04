@@ -26,13 +26,14 @@ Final Test Cases (already verified by executing the solution):
 Difficulty Level: {difficulty}
 
 Review Checklist:
-1. **Consistency:** Does the \`validatedSolutionCode\` correctly implement the \`goal\` described in the \`intent_json\`? Does it seem appropriate for the \`difficulty\` level? Are edge cases handled properly?
+1. **Consistency:** Does the \`validatedSolutionCode\` correctly implement the \`goal\` described in the \`intent_json\`? Does it seem appropriate for the \`difficulty\` level? Are edge cases (including those involving duplicates, if specified in Input Schema) handled properly?
 
 2. **Test Coverage:** Do the \`finalTestCases\` (inputs and rationales) adequately cover the scenarios implied by the intent and {difficulty} level? 
    - Are there obvious gaps in test coverage?
    - Is the variety and complexity of test cases appropriate for the {difficulty} level?
    - Are edge cases well-represented (e.g., empty inputs, minimal inputs, boundary conditions)?
    - Do test rationales accurately describe why those cases are important?
+   - **If the Input Schema allows for duplicates or repeated structures, are there test cases specifically addressing these scenarios?**
 
 3. **Solution Quality vs. Constraints:** 
    - Time Complexity: Does the \`validatedSolutionCode\` have a time complexity appropriate for the problem type and difficulty level?
@@ -43,7 +44,7 @@ Review Checklist:
    - Is the output format consistent across all test cases?
    - Are special values (like infinity) represented consistently?
    - Do the expected outputs match the likely expected format described by the problem intent?
-   - Does the solution follow the input schema structure accurately?
+   - Does the solution follow the input schema structure accurately, **especially regarding duplicate elements or repeated structures if applicable?**
 
 5. **Self-Critique:** Propose one extreme input example that might not be covered by the existing test cases and explain why it would be valuable to include.
 

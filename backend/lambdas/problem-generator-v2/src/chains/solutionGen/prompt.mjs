@@ -21,7 +21,7 @@ Requirements:
 {feedback_section}
 
 - **CRITICAL:** The main logic must be encapsulated within a function named exactly *solution* that accepts a single argument representing the problem input.
-- The solution function must accept input in the exact format specified in the Input Schema above.
+- The solution function must accept input in the exact format specified in the Input Schema above, **paying close attention to whether duplicate elements or repeated structures are allowed and how they are represented.**
 - The solution function must return output in a consistent, JSON-serializable format where:
   - Dictionary/Map keys should be strings (not numbers or other types)
   - For special values, use string representations: "Infinity" (not float('inf')), "-Infinity", "NaN"

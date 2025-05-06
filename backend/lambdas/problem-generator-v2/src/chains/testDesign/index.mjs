@@ -51,6 +51,8 @@ export async function runTestDesign(
   try {
     // Invoke the chain. The output should already be parsed by the chain's last step.
     const testSpecs = await chain.invoke(input);
+    
+    console.log("DEBUG - testDesign raw result:", JSON.stringify(testSpecs));
 
     // Validate the output type (should be an array based on the schema)
     if (!Array.isArray(testSpecs)) {
@@ -62,6 +64,11 @@ export async function runTestDesign(
       throw new Error(
         "Test Design step did not return a valid array of test specifications.",
       );
+    }
+    
+    console.log("DEBUG - testDesign success, array length:", testSpecs.length);
+    if (testSpecs.length > 0) {
+      console.log("DEBUG - first test case:", JSON.stringify(testSpecs[0]));
     }
 
     return {

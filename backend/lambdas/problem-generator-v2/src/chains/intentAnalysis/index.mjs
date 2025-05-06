@@ -60,6 +60,39 @@ export async function runIntentAnalysis(llm, { user_prompt, difficulty }) {
     const chain = createIntentAnalysisChain(llm);
     const intent = await chain.invoke(input);
     
+    // Ensure input_schema_details exists with proper default values
+    intent.input_schema_details = intent.input_schema_details || {};
+    
+    // Set defaults if not provided by the LLM
+    if (!intent.input_schema_details.hasOwnProperty('allows_duplicates_in_collections')) {
+      intent.input_schema_details.allows_duplicates_in_collections = false;
+    }
+    
+    if (!intent.input_schema_details.hasOwnProperty('can_revisit_nodes_in_paths')) {
+      intent.input_schema_details.can_revisit_nodes_in_paths = false;
+      
+      // Only apply minimal fallback detection for graph problems
+      if (
+        intent.concepts && 
+        (intent.concepts.some(concept => 
+          concept.toLowerCase().includes('graph') || 
+          concept.toLowerCase().includes('tree') || 
+          concept.toLowerCase().includes('network')
+        ))
+      ) {
+        // Very minimal fallback for graph problems if LLM didn't specify
+        const lowercaseGoal = intent.goal.toLowerCase();
+        if (
+          lowercaseGoal.includes('cycle') || 
+          lowercaseGoal.includes('path') || 
+          lowercaseGoal.includes('circuit')
+        ) {
+          // Only if the goal clearly indicates paths/cycles
+          intent.input_schema_details.can_revisit_nodes_in_paths = true;
+        }
+      }
+    }
+    
     return {
       intent,
       intentJson: JSON.stringify(intent),
@@ -98,6 +131,39 @@ export async function runIntentAnalysis(llm, { user_prompt, difficulty }) {
           // Validate against our schema
           const validatedIntent = IntentOutputSchema.parse(intent);
           console.log("Successfully validated against schema");
+          
+          // Ensure input_schema_details exists with proper default values for recovered intent
+          validatedIntent.input_schema_details = validatedIntent.input_schema_details || {};
+          
+          // Set defaults if not provided by the LLM
+          if (!validatedIntent.input_schema_details.hasOwnProperty('allows_duplicates_in_collections')) {
+            validatedIntent.input_schema_details.allows_duplicates_in_collections = false;
+          }
+          
+          if (!validatedIntent.input_schema_details.hasOwnProperty('can_revisit_nodes_in_paths')) {
+            validatedIntent.input_schema_details.can_revisit_nodes_in_paths = false;
+            
+            // Only apply minimal fallback detection for graph problems
+            if (
+              validatedIntent.concepts && 
+              (validatedIntent.concepts.some(concept => 
+                concept.toLowerCase().includes('graph') || 
+                concept.toLowerCase().includes('tree') || 
+                concept.toLowerCase().includes('network')
+              ))
+            ) {
+              // Very minimal fallback for graph problems if LLM didn't specify
+              const lowercaseGoal = validatedIntent.goal.toLowerCase();
+              if (
+                lowercaseGoal.includes('cycle') || 
+                lowercaseGoal.includes('path') || 
+                lowercaseGoal.includes('circuit')
+              ) {
+                // Only if the goal clearly indicates paths/cycles
+                validatedIntent.input_schema_details.can_revisit_nodes_in_paths = true;
+              }
+            }
+          }
           
           return {
             intent: validatedIntent,

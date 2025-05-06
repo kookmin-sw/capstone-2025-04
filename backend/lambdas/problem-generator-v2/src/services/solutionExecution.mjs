@@ -20,7 +20,38 @@ const EXECUTION_TIMEOUT_MS = 5000; // 5 seconds timeout per test case
  * @returns {Promise<object>} Execution results including validated test cases and any errors
  */
 export async function executeSolutionWithTestCases(solutionCode, testSpecs, language = 'python3.12') {
-  if (!solutionCode || !testSpecs || !Array.isArray(testSpecs) || testSpecs.length === 0) {
+  // Debug logs for input validation
+  console.log("DEBUG - executeSolutionWithTestCases inputs:", {
+    hasSolutionCode: !!solutionCode,
+    solutionCodeLength: solutionCode ? solutionCode.length : 0,
+    testSpecsExists: !!testSpecs,
+    isArray: testSpecs ? Array.isArray(testSpecs) : false, 
+    testSpecsLength: testSpecs && Array.isArray(testSpecs) ? testSpecs.length : 0,
+    language
+  });
+  
+  // Try to recover if testSpecs is a string instead of an array
+  let parsedTestSpecs = testSpecs;
+  if (testSpecs && typeof testSpecs === 'string') {
+    console.log("DEBUG - testSpecs is a string, attempting to parse");
+    try {
+      parsedTestSpecs = JSON.parse(testSpecs);
+      console.log("DEBUG - parsed testSpecs:", {
+        isArray: Array.isArray(parsedTestSpecs),
+        length: Array.isArray(parsedTestSpecs) ? parsedTestSpecs.length : 0
+      });
+    } catch (e) {
+      console.log("DEBUG - failed to parse testSpecs string:", e.message);
+      // Keep the original testSpecs
+    }
+  }
+  
+  if (!solutionCode || !parsedTestSpecs || !Array.isArray(parsedTestSpecs) || parsedTestSpecs.length === 0) {
+    const reason = !solutionCode ? "solutionCode missing" :
+                  !parsedTestSpecs ? "testSpecs missing" :
+                  !Array.isArray(parsedTestSpecs) ? "testSpecs not an array" :
+                  "testSpecs array is empty";
+    console.log(`DEBUG - throwing error: ${reason}`);
     throw new Error('Invalid arguments: solution code or test specs missing');
   }
 
@@ -33,7 +64,7 @@ export async function executeSolutionWithTestCases(solutionCode, testSpecs, lang
   };
 
   // Execute each test case
-  for (const [index, testCase] of testSpecs.entries()) {
+  for (const [index, testCase] of parsedTestSpecs.entries()) {
     const { input, rationale } = testCase;
     
     if (input === undefined) {

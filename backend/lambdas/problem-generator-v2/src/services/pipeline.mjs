@@ -61,6 +61,7 @@ export async function pipeline(event, responseStream) {
         modelName: modelName,
         apiKey: apiKey,
         maxOutputTokens: 9126, // Adjust as needed
+        temperature: 0.2,
       });
       
       console.log("✅ LLM initialized successfully");
@@ -236,8 +237,31 @@ export async function pipeline(event, responseStream) {
       sendStatus(stream, 4, `Executing solution against test inputs...${attemptMsg}`);
       
       try {
+        // Debug logs
+        console.log("DEBUG - solutionCode:", solutionCode ? solutionCode.substring(0, 100) + "..." : null);
+        console.log("DEBUG - testSpecs:", JSON.stringify({
+          isArray: Array.isArray(testSpecs),
+          length: testSpecs ? testSpecs.length : 0,
+          firstTestCase: testSpecs && testSpecs.length > 0 ? testSpecs[0] : null
+        }));
+        
+        // Ensure testSpecs is an array before passing to executeSolutionWithTestCases
+        let testSpecsToUse = testSpecs;
+        
+        // If we don't have valid testSpecs, try to parse from testSpecsJson
+        if (!Array.isArray(testSpecs) || testSpecs.length === 0) {
+          console.log("DEBUG - Attempting to parse testSpecsJson");
+          try {
+            testSpecsToUse = JSON.parse(testSpecsJson);
+            console.log("DEBUG - Successfully parsed testSpecsJson to array, length:", testSpecsToUse.length);
+          } catch (parseError) {
+            console.error("DEBUG - Failed to parse testSpecsJson:", parseError.message);
+            throw new Error("Invalid test specs: could not parse as JSON array");
+          }
+        }
+        
         // Execute the solution against all test inputs
-        executionResults = await executeSolutionWithTestCases(solutionCode, testSpecs, DEFAULT_LANGUAGE);
+        executionResults = await executeSolutionWithTestCases(solutionCode, testSpecsToUse, DEFAULT_LANGUAGE);
         
         await updateProblemStatus(problemId, {
           generationStatus: `step4_attempt_${attempt}`,
@@ -395,7 +419,7 @@ export async function pipeline(event, responseStream) {
     sendStatus(stream, 8, "Generating problem description...");
     
     // Select a subset of test cases for examples
-    const exampleTestCases = selectExampleTestCases(finalTestCases, 2);
+    const exampleTestCases = selectExampleTestCases(finalTestCases, 2, intent.input_schema_details);
     const exampleTestCasesJson = JSON.stringify(exampleTestCases);
     
     try {
