@@ -15,9 +15,12 @@ const API_BASE_URL =
 export interface ProblemSummary {
   problemId: string;
   title: string;
+  title_translated?: string; // Translated title if targetLanguage exists
   difficulty: string; // 예: "Easy", "Medium", "Hard" 또는 생성된 값 그대로
   algorithmType?: string; // 선택적 필드
   createdAt: string;
+  creatorId?: string; // Add creatorId field
+  author?: string; // Add author field
 }
 
 /**
@@ -131,12 +134,16 @@ const handleApiResponse = async (response: Response): Promise<unknown> => {
 // --- API Functions ---
 
 /**
- * 모든 문제의 요약 목록을 가져옵니다.
- * GET /problems
+ * 모든 문제의 요약 목록을 가져옵니다. creatorId를 지정하면 특정 유저가 만든 문제만 가져옵니다.
+ * GET /problems or GET /problems?creatorId={creatorId}
  * (인증 불필요)
  */
-export const getProblems = async (): Promise<ProblemSummary[]> => {
-  const response = await fetch(`${API_BASE_URL}/problems`, {
+export const getProblems = async (creatorId?: string): Promise<ProblemSummary[]> => {
+  const url = creatorId
+    ? `${API_BASE_URL}/problems?creatorId=${encodeURIComponent(creatorId)}`
+    : `${API_BASE_URL}/problems`;
+    
+  const response = await fetch(url, {
     method: "GET",
     headers: {
       "Content-Type": "application/json",
@@ -186,6 +193,8 @@ export const getProblemById = async (
   console.log(response);
   return handleApiResponse(response) as Promise<ProblemDetail>;
 };
+
+
 
 // TODO: Add functions for other problem-related endpoints if they are created later
 // e.g., creating problems manually (POST /problems - requires auth)

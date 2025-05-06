@@ -40,8 +40,7 @@ export const handler = async (event) => {
         body: JSON.stringify({ message: "인증 정보가 없습니다." }),
       };
     }
-    const username = claims["cognito:username"]; // Use username for consistency
-
+    const userId = claims.sub;
     // --- Get current post data using SDK v3 style ---
     const getCommand = new GetCommand({
       TableName: tableName,
@@ -62,18 +61,18 @@ export const handler = async (event) => {
     // --- Process Like/Unlike using Set ---
     // Ensure likedUsers is treated as a Set (DynamoDB stores it as SS - String Set)
     const likedUsers = new Set(post.likedUsers || []);
-    const isLiked = likedUsers.has(username);
+    const isLiked = likedUsers.has(userId);
     let newLikesCount;
     let updateExpression;
     let expressionAttributeValues;
 
     if (isLiked) {
       // Unlike: Remove user from likedUsers (DELETE action), decrement likesCount
-      likedUsers.delete(username); // Modify the set locally
+      likedUsers.delete(userId); // Modify the set locally
       updateExpression =
         "DELETE likedUsers :user SET likesCount = if_not_exists(likesCount, :one) - :dec";
       expressionAttributeValues = {
-        ":user": new Set([username]), // DELETE requires a Set value
+        ":user": new Set([userId]), // DELETE requires a Set value
         ":one": 1, // Default if likesCount doesn't exist (shouldn't happen)
         ":dec": 1,
       };
@@ -82,11 +81,11 @@ export const handler = async (event) => {
       // Or, calculate count separately and use SET likesCount = :count
     } else {
       // Like: Add user to likedUsers (ADD action), increment likesCount
-      likedUsers.add(username); // Modify the set locally
+      likedUsers.add(userId); // Modify the set locally
       updateExpression =
         "ADD likedUsers :user SET likesCount = if_not_exists(likesCount, :zero) + :inc";
       expressionAttributeValues = {
-        ":user": new Set([username]), // ADD requires a Set value
+        ":user": new Set([userId]), // ADD requires a Set value
         ":zero": 0,
         ":inc": 1,
       };

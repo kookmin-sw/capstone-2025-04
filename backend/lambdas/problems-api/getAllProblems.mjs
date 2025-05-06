@@ -2,6 +2,7 @@ import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import {
   DynamoDBDocumentClient,
   ScanCommand, // Using Scan for simplicity, consider GSI + Query for large tables
+  QueryCommand, // Added for querying by creatorId
 } from "@aws-sdk/lib-dynamodb";
 
 // Initialize DynamoDB Client
@@ -37,24 +38,50 @@ export const handler = async (event) => {
 
   console.log("Received event for getAllProblems:", event);
 
-  // Scan parameters - Fetch only necessary attributes for a list view
-  const params = {
-    TableName: tableName,
-    // Select attributes needed for a list display (e.g., ID, title, difficulty)
-    // Adjust this based on frontend requirements
-    ProjectionExpression:
-      "problemId, title, difficulty, algorithmType, createdAt",
-    // Add FilterExpression if needed, e.g., FilterExpression: "generationStatus = :status", ExpressionAttributeValues: {":status": "completed"}
-  };
+  // Check for creatorId query parameter
+  const creatorId = event.queryStringParameters?.creatorId;
+  console.log("creatorId parameter:", creatorId);
 
+  let problems = [];
   try {
-    // Using Scan - potentially inefficient for very large tables.
-    // Consider adding a GSI (e.g., on 'generationStatus' or 'createdAt') and using QueryCommand for better performance.
-    const command = new ScanCommand(params);
-    const result = await dynamoDB.send(command);
-    const problems = result.Items || [];
+    if (creatorId) {
+      // If creatorId is provided, use Query with GSI
+      const queryParams = {
+        TableName: tableName,
+        IndexName: "CreatorIdIndex",
+        KeyConditionExpression: "creatorId = :creatorId",
+        FilterExpression: "generationStatus = :completed",
+        ExpressionAttributeValues: {
+          ":creatorId": creatorId,
+          ":completed": "completed"
+        },
+        ProjectionExpression:
+          "problemId, title, title_translated, difficulty, algorithmType, createdAt, creatorId, author, generationStatus",
+      };
 
-    console.log(`Found ${problems.length} problems.`);
+      console.log("Querying by creatorId with completed status:", queryParams);
+      const queryCommand = new QueryCommand(queryParams);
+      const queryResult = await dynamoDB.send(queryCommand);
+      problems = queryResult.Items || [];
+      console.log(`Found ${problems.length} completed problems for creator ${creatorId}`);
+    } else {
+      // If no creatorId, use Scan as before
+      const scanParams = {
+        TableName: tableName,
+        FilterExpression: "generationStatus = :completed",
+        ExpressionAttributeValues: {
+          ":completed": "completed"
+        },
+        ProjectionExpression:
+          "problemId, title, title_translated, difficulty, algorithmType, createdAt, creatorId, author, generationStatus",
+      };
+
+      console.log("Scanning all completed problems");
+      const scanCommand = new ScanCommand(scanParams);
+      const scanResult = await dynamoDB.send(scanCommand);
+      problems = scanResult.Items || [];
+      console.log(`Found ${problems.length} completed problems in total`);
+    }
 
     // --- SUCCESS RESPONSE ---
     return {
@@ -64,7 +91,7 @@ export const handler = async (event) => {
       body: JSON.stringify(problems),
     };
   } catch (error) {
-    console.error("Error scanning problems table:", error);
+    console.error("Error retrieving problems:", error);
     // --- ERROR RESPONSE ---
     return {
       statusCode: 500,

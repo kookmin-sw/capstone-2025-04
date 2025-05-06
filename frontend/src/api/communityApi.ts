@@ -24,6 +24,7 @@ export interface PostDetail {
   title: string;
   content: string;
   author: string;
+  userId: string;
   createdAt: string;
   updatedAt?: string | null;
   likesCount: number;
@@ -37,6 +38,7 @@ export interface Comment {
   commentId: string;
   content: string;
   author: string;
+  userId: string;
   createdAt: string;
 }
 
@@ -49,6 +51,7 @@ export interface GetCommentsResponse {
 export interface CreatePostPayload {
   title: string;
   content: string;
+  author: string;
   problemId?: string;
 }
 
@@ -80,6 +83,7 @@ export interface LikeResponse {
 // For POST /community/{postId}/comment
 export interface CreateCommentPayload {
   content: string;
+  author: string;
 }
 
 // --- Authentication Helper ---

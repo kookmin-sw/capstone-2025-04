@@ -29,13 +29,13 @@ export const handler = async (event) => {
 
   try {
     const body = JSON.parse(event.body || "{}");
-    const { title, content, problemId } = body;
+    const { title, content, problemId, author } = body;
 
-    if (!title || !content) {
+    if (!title || !content || !author) {
       return {
         statusCode: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
-        body: JSON.stringify({ message: "title과 content는 필수 항목입니다." }),
+        body: JSON.stringify({ message: "title, content, author는 필수 항목입니다." }),
       };
     }
 
@@ -50,7 +50,6 @@ export const handler = async (event) => {
       };
     }
 
-    const author = claims["cognito:username"];
     const userId = claims.sub; // Use 'sub' from JWT as userId
     const postId = uuidv4();
     const createdAt = new Date().toISOString();

@@ -6,6 +6,7 @@ import Footer from "@/components/Footer";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuthenticator } from "@aws-amplify/ui-react";
+import { fetchUserAttributes } from "aws-amplify/auth";
 import { toast } from "sonner";
 import { createPost } from "@/api/communityApi";
 // import CodeEditor from "@/components/CodeEditor";
@@ -28,7 +29,7 @@ const CreatePageContent: React.FC = () => {
 
   const { authStatus } = useAuthenticator((context) => [context.authStatus]);
   const isAuthenticated = authStatus === "authenticated";
-
+  
   useEffect(() => {
     // If coming from a test, set initial values
     if (fromTest && testId) {
@@ -53,10 +54,13 @@ const CreatePageContent: React.FC = () => {
 
     setIsSubmitting(true);
     try {
+      const userAttributes = await fetchUserAttributes();
+      const author = userAttributes.nickname || userAttributes.cognito_username || "익명";
       // Prepare payload, include job_id if relevant
-      const payload: { title: string; content: string; problemId?: string } = {
+      const payload: { title: string; content: string; problemId?: string; author: string } = {
         title,
         content,
+        author,
       };
       if (fromTest && testId) {
         // Assuming testId can be used as job_id, adjust if needed

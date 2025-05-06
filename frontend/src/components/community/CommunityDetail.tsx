@@ -16,11 +16,13 @@ import {
   PostDetail,
   Comment,
 } from "@/api/communityApi"; // Import API functions and types
+import { fetchUserAttributes } from "aws-amplify/auth";
 // Remove dummy data function
 
 interface CommunityDetailProps {
   id: string;
 }
+
 const CommunityDetail: React.FC<CommunityDetailProps> = ({ id }) => {
   const router = useRouter();
   const { user, authStatus } = useAuthenticator((context) => [
@@ -28,8 +30,9 @@ const CommunityDetail: React.FC<CommunityDetailProps> = ({ id }) => {
     context.authStatus,
   ]);
   const isAuthenticated = authStatus === "authenticated";
-  const currentUsername = user?.username; // Or use signInDetails?.loginId depending on config
-
+  console.log("user:", user);
+  const currentUserId = user?.userId; // Or use signInDetails?.loginId depending on config
+  
   const [post, setPost] = useState<PostDetail | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [commentCount, setCommentCount] = useState(0);
@@ -69,8 +72,8 @@ const CommunityDetail: React.FC<CommunityDetailProps> = ({ id }) => {
         setLikeCount(postResult.value.likesCount ?? 0);
         // Check if current user liked this post
         setIsLiked(
-          !!currentUsername &&
-            postResult.value.likedUsers?.includes(currentUsername)
+          !!currentUserId &&
+            postResult.value.likedUsers?.includes(currentUserId)
         );
       } else {
         console.error("Failed to fetch post:", postResult.reason);
@@ -107,7 +110,7 @@ const CommunityDetail: React.FC<CommunityDetailProps> = ({ id }) => {
       setIsLoadingPost(false);
       setIsLoadingComments(false);
     }
-  }, [id, currentUsername, errorPost, errorComments]); // Add dependencies
+  }, [id, currentUserId, errorPost, errorComments]); // Add dependencies
 
   useEffect(() => {
     if (id) {
@@ -135,7 +138,9 @@ const CommunityDetail: React.FC<CommunityDetailProps> = ({ id }) => {
 
     setIsSubmittingComment(true);
     try {
-      await createComment(id, { content: newComment });
+      const userAttributes = await fetchUserAttributes();
+      const author = userAttributes.nickname || userAttributes.cognito_username || "익명";
+      await createComment(id, { content: newComment, author });
       toast.success("댓글이 성공적으로 등록되었습니다.");
       setNewComment(""); // Clear input
       // Refetch comments to show the new one
@@ -178,7 +183,7 @@ const CommunityDetail: React.FC<CommunityDetailProps> = ({ id }) => {
 
   // Handle Post Deletion
   const handleDeletePost = async () => {
-    if (!isAuthenticated || !post || post.author !== currentUsername) {
+    if (!isAuthenticated || !post || post.userId !== currentUserId) {
       toast.error("게시글을 삭제할 권한이 없습니다.");
       return;
     }
@@ -207,7 +212,7 @@ const CommunityDetail: React.FC<CommunityDetailProps> = ({ id }) => {
     if (
       !isAuthenticated ||
       !commentToDelete ||
-      commentToDelete.author !== currentUsername
+      commentToDelete.userId !== currentUserId
     ) {
       toast.error("댓글을 삭제할 권한이 없습니다.");
       return;
@@ -272,7 +277,7 @@ const CommunityDetail: React.FC<CommunityDetailProps> = ({ id }) => {
     );
   }
 
-  const isAuthor = isAuthenticated && post.author === currentUsername;
+  const isAuthor = isAuthenticated && post.userId === currentUserId;
 
   return (
     <div className="max-w-5xl mx-auto p-8">
@@ -399,7 +404,7 @@ const CommunityDetail: React.FC<CommunityDetailProps> = ({ id }) => {
                       </div>
                       {/* Delete Button for Comment Author */}
                       {isAuthenticated &&
-                        comment.author === currentUsername && (
+                        comment.userId === currentUserId && (
                           <button
                             onClick={() =>
                               handleDeleteComment(comment.commentId)
