@@ -36,7 +36,9 @@ export function initDynamoDBClient(useMock = false) {
       throw error;
     }
   } else {
-    dynamoDBClient = new DynamoDBClient({});
+    dynamoDBClient = new DynamoDBClient({
+      region: 'ap-northeast-2',
+    });
     docClient = DynamoDBDocumentClient.from(dynamoDBClient);
     console.log('✅ Real DynamoDB clients initialized successfully');
   }

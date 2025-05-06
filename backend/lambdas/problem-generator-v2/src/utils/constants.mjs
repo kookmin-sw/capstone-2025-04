@@ -8,7 +8,7 @@ function getEnv(key, defaultValue = null) {
 
 // Basic configuration
 export function getProblemsTableName() {
-  return getEnv('PROBLEMS_TABLE_NAME', 'default-problems-table');
+  return getEnv('PROBLEMS_TABLE_NAME', 'alpaco-Problems-production');
 }
 
 export function getGoogleAiApiKey() {

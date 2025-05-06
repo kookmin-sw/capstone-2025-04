@@ -133,13 +133,44 @@ export async function pipeline(event, responseStream) {
     // --- Step 1: Intent Analysis (Unchanged) ---
     sendStatus(stream, 1, "Analyzing prompt and extracting intent...");
     
-    const { intent, intentJson } = await runIntentAnalysis(llm, {
-      user_prompt: userPrompt,
-      difficulty,
-    });
+    let intent, intentJson;
+    try {
+      const result = await runIntentAnalysis(llm, {
+        user_prompt: userPrompt,
+        difficulty,
+      });
+      intent = result.intent;
+      intentJson = result.intentJson;
+      
+      if (result.wasRecovered) {
+        console.log("Intent analysis was recovered from malformed JSON");
+        sendStatus(stream, 1, "⚠️ Intent analysis required recovery from malformed output");
+      }
+    } catch (intentError) {
+      console.error("Intent analysis failed:", intentError);
+      
+      // This is a critical error that prevents further progress
+      const errorMessage = `Intent analysis failed: ${intentError.message}`;
+      
+      // Update problem status
+      await updateProblemStatus(problemId, {
+        generationStatus: "step1_failed",
+        errorMessage: errorMessage.substring(0, 1000), // Limit error message size
+      });
+      
+      // Send detailed error to the stream
+      sendError(stream, errorMessage);
+      throw new Error("Step 1 failed to produce valid intent: " + intentError.message);
+    }
     
     if (!intent || !intent.goal) {
-      throw new Error("Step 1 failed to produce valid intent.");
+      const errorMessage = "Intent analysis produced invalid output (missing goal)";
+      await updateProblemStatus(problemId, {
+        generationStatus: "step1_invalid",
+        errorMessage: errorMessage,
+      });
+      sendError(stream, errorMessage);
+      throw new Error(errorMessage);
     }
     
     await updateProblemStatus(problemId, {
