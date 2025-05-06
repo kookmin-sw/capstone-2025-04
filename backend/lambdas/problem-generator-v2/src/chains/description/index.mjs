@@ -32,20 +32,22 @@ export function createStructuredDescriptionChain(llm) {
  * @param {ChatGoogleGenerativeAI} llm - The language model to use.
  * @param {Object} params - Parameters for the chain.
  * @param {string} params.analyzed_intent - The analyzed intent.
- * @param {string} params.constraints - Constraints as JSON string.
+ * @param {string} params.constraints - Constraints as JSON string (should include judge_type and epsilon).
  * @param {string} params.test_specs_examples - Examples from test specs as JSON string.
  * @param {string} params.difficulty - The difficulty level for the problem.
  * @param {string} params.language - The target programming language.
  * @param {string} [params.input_schema_description=""] - Description of input structure
+ * @param {string} [params.epsilon_value_from_constraints="not applicable"] - Epsilon value from constraints if applicable.
  * @returns {Promise<string>} The generated problem description.
  */
 export async function runDescriptionGeneration(llm, { 
   analyzed_intent, 
-  constraints, 
+  constraints, // This is the JSON string of the constraints object
   test_specs_examples, 
   difficulty, 
   language,
-  input_schema_description = ""
+  input_schema_description = "",
+  epsilon_value_from_constraints = "not applicable" // 기본값 설정
 }) {
   const chain = createDescriptionChain(llm);
   
@@ -68,11 +70,12 @@ export async function runDescriptionGeneration(llm, {
   
   const input = {
     analyzed_intent,
-    constraints,
+    constraints, // Pass the constraints JSON string directly
     test_specs_examples,
     difficulty,
     language,
-    input_schema_description: inputSchema
+    input_schema_description: inputSchema,
+    epsilon_value_from_constraints // 프롬프트에 epsilon 값 전달
   };
   
   const output = await chain.invoke(input);
@@ -85,20 +88,22 @@ export async function runDescriptionGeneration(llm, {
  * @param {ChatGoogleGenerativeAI} llm - The language model to use.
  * @param {Object} params - Parameters for the chain.
  * @param {string} params.analyzed_intent - The analyzed intent.
- * @param {string} params.constraints - Constraints as JSON string.
+ * @param {string} params.constraints - Constraints as JSON string (should include judge_type and epsilon).
  * @param {string} params.test_specs_examples - Examples from test specs as JSON string.
  * @param {string} params.difficulty - The difficulty level for the problem.
  * @param {string} params.language - The target programming language.
  * @param {string} [params.input_schema_description=""] - Description of input structure
+ * @param {string} [params.epsilon_value_from_constraints="not applicable"] - Epsilon value from constraints if applicable.
  * @returns {Promise<string>} The generated problem description.
  */
 export async function runStructuredDescriptionGeneration(llm, { 
   analyzed_intent, 
-  constraints, 
+  constraints, // This is the JSON string of the constraints object
   test_specs_examples, 
   difficulty, 
   language,
-  input_schema_description = ""
+  input_schema_description = "",
+  epsilon_value_from_constraints = "not applicable" // 기본값 설정
 }) {
   const chain = createStructuredDescriptionChain(llm);
   
@@ -121,11 +126,12 @@ export async function runStructuredDescriptionGeneration(llm, {
   
   const input = {
     analyzed_intent,
-    constraints,
+    constraints, // Pass the constraints JSON string directly
     test_specs_examples,
     difficulty,
     language,
-    input_schema_description: inputSchema
+    input_schema_description: inputSchema,
+    epsilon_value_from_constraints // 프롬프트에 epsilon 값 전달
   };
   
   // No need for manual cleaning with structured output

@@ -118,11 +118,22 @@ export async function updateProblemStatus(problemId, updates) {
 
   // Dynamically build the update expression parts
   for (const [key, value] of Object.entries(updates)) {
+    // Skip undefined values
+    if (value === undefined) {
+      continue;
+    }
+    
     const namePlaceholder = `#${key}`;
     const valuePlaceholder = `:${key}Val`;
     updateExpressionParts.push(`${namePlaceholder} = ${valuePlaceholder}`);
     expressionAttributeNames[namePlaceholder] = key;
     expressionAttributeValues[valuePlaceholder] = value;
+  }
+
+  // If there are no updates after filtering undefined values, skip the operation
+  if (updateExpressionParts.length === 0) {
+    console.warn("⚠️ Skipping DynamoDB update: No valid updates after filtering undefined values.");
+    return;
   }
 
   const updateExpression = `SET ${updateExpressionParts.join(", ")}`;
@@ -147,6 +158,8 @@ export async function updateProblemStatus(problemId, updates) {
     }
   } catch (error) {
     console.error(`❌ Error updating DynamoDB for ${problemId}:`, error);
+    // Add more detail to help with debugging
+    console.error(`❌ Update details: Expression='${updateExpression}', Values=${JSON.stringify(expressionAttributeValues)}`);
     // Not making it fatal, just log the error
   }
 }

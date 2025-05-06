@@ -23,6 +23,9 @@ Validated Solution Code:
 Final Test Cases (already verified by executing the solution):
 {test_cases_json}
 
+Constraints (including judge_type and epsilon if applicable):
+{constraints_json}
+
 Difficulty Level: {difficulty}
 
 Review Checklist:
@@ -40,11 +43,15 @@ Review Checklist:
    - Space Complexity: Does the solution use memory efficiently?
    - Does the solution handle potential large inputs reasonably for typical competitive programming limits (e.g., 1-2s, 256-512MB)?
 
-4. **Output Format Consistency:** 
+4. **Output Format Consistency & Judge Type Alignment:** 
    - Is the output format consistent across all test cases?
    - Are special values (like infinity) represented consistently?
    - Do the expected outputs match the likely expected format described by the problem intent?
    - Does the solution follow the input schema structure accurately, **especially regarding duplicate elements or repeated structures if applicable?**
+   - **CRITICAL: Review the 'judge_type' (and 'epsilon' if present) from the \`constraints_json\`. Is the problem's nature, the solution's output format, and the test cases' expected outputs fully consistent with this specified \`judge_type\`?** 
+     - For 'equal': Output must be unique and deterministic.
+     - For 'unordered_equal': Output elements are correct, order doesn't matter.
+     - For 'float_eps': Output is a float, and differences are handled by epsilon.
 
 5. **Self-Critique:** Propose one extreme input example that might not be covered by the existing test cases and explain why it would be valuable to include.
 

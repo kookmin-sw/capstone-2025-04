@@ -18,7 +18,7 @@ Test Specification Examples (use for Examples section, format appropriately):
 Instructions:
 - Write a clear and engaging **Problem Narrative** based on the intent. **DO NOT include a main title heading (like '### Problem Title') at the beginning of the narrative.**
 - Clearly define the **Input Format** section based on the Input Schema provided. **If inputs can contain duplicate values (e.g., in lists/arrays) or repeated structures (e.g., paths in graphs), explicitly state this.**
-- Clearly define the **Output Format** section based PRECISELY on the examples provided. Describe the output format EXACTLY as demonstrated in the Examples section. Pay close attention to:
+- Clearly define the **Output Format** section based PRECISELY on the examples provided and the "judge_type" from the Constraints Details. Describe the output format EXACTLY as demonstrated in the Examples section. Pay close attention to:
   - Data types (numbers, strings, objects, arrays)
   - Structure (dictionaries, lists, nested structures)
   - Special values (for unreachable nodes, infinity values, etc.)
@@ -26,7 +26,11 @@ Instructions:
   - If examples use string keys like "0", "1", etc., explicitly mention that keys are strings
   - If examples use string values like "Infinity" for special cases, explicitly mention this format
   - DO NOT add any formatting rules not directly supported by the examples
-- Create a **Constraints** section using the information from the "Constraints Details (JSON)". Format it clearly (e.g., using bullet points).
+  - **Consider the "judge_type" (from Constraints Details) when describing the output. For example:**
+    - If "judge_type" is "equal": "The output must be exactly X."
+    - If "judge_type" is "unordered_equal": "The output is a collection of items. The order of items does not matter."
+    - If "judge_type" is "float_eps": "The output is a floating-point number. Your answer will be considered correct if its absolute or relative error does not exceed {epsilon_value_from_constraints}." (Make sure to phrase this naturally based on the epsilon value.)
+- Create a **Constraints** section using the information from the "Constraints Details (JSON)". Format it clearly (e.g., using bullet points). **Explicitly list the judge_type and epsilon (if applicable) in this section.**
 - Create an **Examples** section with 1-2 simple examples derived from the "Test Specification Examples". Show the input and corresponding output clearly for each example, using markdown code blocks. **If relevant, choose examples that illustrate the handling of duplicate elements or repeated structures.**
 - Ensure the overall tone, narrative complexity, and example difficulty match the specified **{difficulty}** level.
 

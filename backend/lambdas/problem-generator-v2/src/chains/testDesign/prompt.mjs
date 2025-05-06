@@ -25,10 +25,15 @@ Guidelines:
 4. The outputs will be determined by executing a validated solution code later.
 5. Include inputs that test different aspects of the problem (edge cases, performance, etc.).
 6. IMPORTANT: All values MUST be valid JSON literals.  
-   DO NOT use code expressions like list(range(1000)) **or "..." ellipses**.  
-   If you need a long sequence, enumerate **every element explicitly**, e.g.  
-   RIGHT: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19]
+   - DO NOT use code expressions like list(range(1000)), **Python list comprehensions ([i, i+1] for i in range(99))**, or "..." ellipses.
+   - DO NOT use variables, loops, or any programming language constructs.
+   - If you need a long sequence, enumerate **every element explicitly**, e.g.  
+     RIGHT: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19]
+   - For large graphs or arrays, provide the complete explicit representation:
+     RIGHT: "edges": [[0,1],[1,2],[2,3],[3,4],[4,5]]
+     WRONG: "edges": [[i, i+1] for i in range(5)]
 7. CRITICAL: All input values MUST follow the input schema defined above. Ensure your test cases match the expected structure exactly.
+8. When creating large test cases with many elements, ALWAYS write out each element explicitly in valid JSON syntax (no shortcuts, no ellipses, no code).
 
 Target difficulty level: {difficulty}
 
@@ -48,14 +53,16 @@ Few-shot examples (for an array sum problem):
 4. {{ "input": [-10, 5, -3, 8], "rationale": "Mix of positive and negative numbers" }}
 5. {{ "input": [2, 2, 2], "rationale": "Array with duplicate elements (same value repeated)" }}
 6. WRONG: {{ "input": list(range(100)), "rationale": "Large sequence" }} // DON'T DO THIS - not valid JSON
-7. RIGHT: {{ "input": [0,1,2,3,4,5,6,7,8,9,10], "rationale": "Long sequence fully enumerated" }}
+7. WRONG: {{ "input": [i for i in range(10)], "rationale": "List comprehension" }} // DON'T DO THIS - not valid JSON
+8. RIGHT: {{ "input": [0,1,2,3,4,5,6,7,8,9,10], "rationale": "Long sequence fully enumerated" }}
 
-Few-shot examples (for a graph problem - just to illustrate format, adapt to your problem type):
-1. Example with a simple path: Input would contain a graph structure with nodes, edges and start/end points.
-2. Example with multiple paths: Input would contain a more complex graph structure offering different route options.
-3. Example with a cycle: If applicable, input would contain a graph with edges that form a cycle.
+Few-shot examples (for a graph problem):
+1. RIGHT: {{ "input": {{"n": 5, "edges": [[0,1],[1,2],[2,3],[3,4]]}}, "rationale": "Simple path graph" }}
+2. RIGHT: {{ "input": {{"n": 6, "edges": [[0,1],[1,2],[0,3],[3,4],[4,5]]}}, "rationale": "Graph with two paths" }}
+3. WRONG: {{ "input": {{"n": 100, "edges": [[i, i+1] for i in range(99)]}}, "rationale": "Long path" }} // DON'T DO THIS - not valid JSON
+4. RIGHT: {{ "input": {{"n": 5, "edges": [[0,1],[1,2],[2,3],[3,4]]}}, "rationale": "Graph forming a single path" }}
 
 {format_instructions}
 
-ONLY return a valid JSON array.`
+ONLY return a valid JSON array. Never use programming language constructs like list comprehensions, loops, or variables.`
 ); 

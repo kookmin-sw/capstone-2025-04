@@ -1,6 +1,7 @@
 import { StructuredOutputParser } from "@langchain/core/output_parsers";
 import { IntentOutputSchema } from "./schema.mjs";
 import { intentAnalysisPromptTemplate } from "./prompt.mjs";
+import { ALLOWED_JUDGE_TYPES } from "../../utils/constants.mjs";
 
 /**
  * Creates an Intent Extraction chain.
@@ -52,6 +53,7 @@ export async function runIntentAnalysis(llm, { user_prompt, difficulty }) {
   const input = {
     user_prompt,
     difficulty,
+    allowed_judge_types_string: ALLOWED_JUDGE_TYPES.join(', '),
     format_instructions: parser.getFormatInstructions(),
   };
   

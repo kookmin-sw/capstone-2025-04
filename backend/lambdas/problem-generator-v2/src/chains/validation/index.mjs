@@ -22,6 +22,7 @@ export function createValidationChain(llm) {
  * @param {string} params.intent_json - JSON string of the intent object.
  * @param {string} params.solution_code - The validated solution code.
  * @param {string} params.test_cases_json - JSON string of the finalized test cases with verified outputs.
+ * @param {string} params.constraints_json - JSON string of the derived constraints (including judge_type).
  * @param {string} params.difficulty - The difficulty level of the problem.
  * @param {string} params.language - The target programming language.
  * @param {string} [params.input_schema_description=""] - Description of input structure
@@ -31,6 +32,7 @@ export async function runValidation(llm, {
   intent_json, 
   solution_code, 
   test_cases_json, 
+  constraints_json,
   difficulty, 
   language,
   input_schema_description = "" 
@@ -42,6 +44,7 @@ export async function runValidation(llm, {
     intent_json,
     solution_code,
     test_cases_json,
+    constraints_json,
     difficulty,
     language,
     input_schema_description,

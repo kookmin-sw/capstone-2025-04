@@ -7,7 +7,8 @@ import {
   DEFAULT_LANGUAGE,
   DEFAULT_TARGET_LANGUAGE,
   MAX_RETRIES,
-  PROBLEMS_TABLE_NAME
+  PROBLEMS_TABLE_NAME,
+  ALLOWED_JUDGE_TYPES
 } from "../utils/constants.mjs";
 import { cleanLlmOutput } from "../utils/cleanLlmOutput.mjs";
 import { withRetry } from "../utils/retry.mjs";
@@ -124,7 +125,7 @@ export async function pipeline(event, responseStream) {
       language: DEFAULT_LANGUAGE,
       creatorId: creatorId,
       author: author,
-      schemaVersion: "v3", // Add schema version for V3
+      schemaVersion: "v3.1_judge_type_enforced", // Updated schema version
     };
 
     await createProblem(initialItem);
@@ -219,11 +220,11 @@ export async function pipeline(event, responseStream) {
       sendStatus(stream, 3, `Generating solution code...${attemptMsg}`);
       
       solutionCode = await runSolutionGeneration(llm, {
-        analyzed_intent: intent.goal,
+        analyzed_intent: `${intent.goal} (Output format: ${intent.output_format_description})`,
         test_specs: testSpecsJson,
         language: DEFAULT_LANGUAGE,
-        feedback_section: executionFeedback, // Use execution feedback instead of validation feedback
-        input_schema_description: intent.input_schema_description // Add input schema description
+        feedback_section: executionFeedback,
+        input_schema_description: intent.input_schema_description
       });
       
       await updateProblemStatus(problemId, {
@@ -361,8 +362,26 @@ export async function pipeline(event, responseStream) {
       });
     }
     
-    // --- Step 6: LLM-Based Validation (Refocused on coherence and completeness) ---
-    sendStatus(stream, 6, "Validating problem coherence and completeness...");
+    // --- Step 6: Constraints Derivation ---
+    sendStatus(stream, 6, "Deriving problem constraints (including judge_type)...");
+    
+    const { constraints, constraintsJson } = await runConstraintsDerivation(llm, {
+      solution_code: validatedSolutionCode,
+      test_specs: finalTestCasesJson, // Use finalized test cases instead of original specs
+      difficulty,
+      input_schema_description: intent.input_schema_description, // Add input schema description
+      output_format_description: intent.output_format_description // Pass the description
+    });
+    
+    await updateProblemStatus(problemId, {
+      generationStatus: "step6_complete",
+      constraints: constraintsJson,
+    });
+    
+    sendStatus(stream, 6, `✅ Constraints derived. Judge Type: ${constraints.judge_type}`);
+    
+    // --- Step 7: LLM-Based Validation (with judge_type check) ---
+    sendStatus(stream, 7, "Validating problem coherence and completeness...");
     
     let validationResult = null;
     
@@ -371,19 +390,20 @@ export async function pipeline(event, responseStream) {
         intent_json: intentJson,
         solution_code: validatedSolutionCode,
         test_cases_json: finalTestCasesJson,
+        constraints_json: constraintsJson, // Pass full constraints for judge_type check
         difficulty,
         input_schema_description: intent.input_schema_description // Add input schema description
       });
       
       await updateProblemStatus(problemId, {
-        generationStatus: "step6_complete",
+        generationStatus: "step7_complete",
         validationDetails: JSON.stringify(validationResult),
       });
       
-      sendStatus(stream, 6, `✅ Validation complete: ${validationResult.status}`);
+      sendStatus(stream, 7, `✅ Validation complete: ${validationResult.status}`);
     } catch (error) {
       console.error("Validation error:", error);
-      sendStatus(stream, 6, "⚠️ Error during validation. Continuing with generation.");
+      sendStatus(stream, 7, "⚠️ Error during validation. Continuing with generation.");
       
       // Fallback validation result
       validationResult = {
@@ -392,28 +412,11 @@ export async function pipeline(event, responseStream) {
       };
       
       await updateProblemStatus(problemId, {
-        generationStatus: "step6_fallback",
+        generationStatus: "step7_fallback",
         validationDetails: JSON.stringify(validationResult),
         validationError: error.message
       });
     }
-    
-    // --- Step 7: Constraints Derivation (Largely Unchanged) ---
-    sendStatus(stream, 7, "Deriving problem constraints...");
-    
-    const { constraints, constraintsJson } = await runConstraintsDerivation(llm, {
-      solution_code: validatedSolutionCode,
-      test_specs: finalTestCasesJson, // Use finalized test cases instead of original specs
-      difficulty,
-      input_schema_description: intent.input_schema_description // Add input schema description
-    });
-    
-    await updateProblemStatus(problemId, {
-      generationStatus: "step7_complete",
-      constraints: constraintsJson,
-    });
-    
-    sendStatus(stream, 7, "✅ Constraints derived.");
     
     // --- Step 8: Description Generation ---
     sendStatus(stream, 8, "Generating problem description...");
@@ -422,6 +425,11 @@ export async function pipeline(event, responseStream) {
     const exampleTestCases = selectExampleTestCases(finalTestCases, 2, intent.input_schema_details);
     const exampleTestCasesJson = JSON.stringify(exampleTestCases);
     
+    // 추출 epsilon 값을 추출
+    const epsilonValue = (constraints && constraints.judge_type === 'float_eps' && constraints.epsilon !== undefined) 
+                       ? String(constraints.epsilon) 
+                       : "not applicable";
+    
     try {
       description = await runDescriptionGeneration(llm, {
         analyzed_intent: intent.goal,
@@ -429,7 +437,8 @@ export async function pipeline(event, responseStream) {
         test_specs_examples: exampleTestCasesJson,
         difficulty,
         language: DEFAULT_LANGUAGE,
-        input_schema_description: intent.input_schema_description // Add input schema description
+        input_schema_description: intent.input_schema_description, // Add input schema description
+        epsilon_value_from_constraints: epsilonValue // 추가: epsilon 값 전달
       });
       
       await updateProblemStatus(problemId, {
@@ -527,6 +536,8 @@ export async function pipeline(event, responseStream) {
       completedAt,
       creatorId,
       author,
+      judgeType: constraints.judge_type, // Save to DB
+      epsilon: constraints.judge_type === 'float_eps' ? constraints.epsilon : undefined, // Save to DB
     };
     
     await updateProblemStatus(problemId, finalUpdates);
@@ -538,13 +549,15 @@ export async function pipeline(event, responseStream) {
       difficulty,
       language: DEFAULT_LANGUAGE,
       createdAt,
-      schemaVersion: "v3", // Add schema version
+      schemaVersion: "v3.1_judge_type_enforced", // Updated schema version
       intent: intentJson,
       testInputs: testSpecsJson, // Original test inputs
       finalTestCases: finalTestCasesJson, // Execution-verified test cases
       validatedSolutionCode, // Validated solution code
       validationDetails: JSON.stringify(validationResult),
-      constraints: constraintsJson,
+      constraints: constraintsJson, // Contains judge_type and epsilon
+      judgeType: constraints.judge_type, // Explicit top-level field
+      epsilon: constraints.judge_type === 'float_eps' ? constraints.epsilon : undefined, // Explicit top-level field
       description: targetLanguage && targetLanguage.toLowerCase() !== "none" ? translatedDescription : description,
       title: targetLanguage && targetLanguage.toLowerCase() !== "none" ? translatedTitle : problemTitle,
       title_translated: translatedTitle,

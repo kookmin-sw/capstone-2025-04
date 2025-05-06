@@ -17,6 +17,9 @@ export const IntentOutputSchema = z
     input_schema_description: z
       .string()
       .describe("Clear description of the expected input object/structure and the types of its components (e.g., 'Input is an object with keys: nodes (int), edges (list of lists [u, v, w]), source (int)')."),
+    output_format_description: z
+      .string()
+      .describe("Clear description of the expected output format, emphasizing simple judgability (e.g., 'A single integer', 'An array of strings where order matters', 'A float accurate to 1e-5')."),
     input_schema_details: z
       .object({
         allows_duplicates_in_collections: z
