@@ -23,6 +23,11 @@ export function getGeminiModelName() {
   return getEnv('GEMINI_MODEL_NAME', 'gemini-2.5-pro-exp-03-25');
 }
 
+// Add this for the Code Executor Lambda
+export function getCodeExecutorLambdaArn() {
+  return getEnv('CODE_EXECUTOR_LAMBDA_ARN', 'arn:aws:lambda:ap-northeast-2:897722694537:function:alpaco-code-executor-production');
+}
+
 // Constants with default values
 export const DEFAULT_LANGUAGE = "python3.12"; // Or make configurable
 export const DEFAULT_TARGET_LANGUAGE = "Korean"; // Target language for translation
@@ -35,4 +40,5 @@ export const ALLOWED_JUDGE_TYPES = ["equal", "unordered_equal", "float_eps"];
 export const PROBLEMS_TABLE_NAME = getProblemsTableName();
 export const GOOGLE_AI_API_KEY = getGoogleAiApiKey();
 export const GENERATOR_VERBOSE = isGeneratorVerbose();
-export const GEMINI_MODEL_NAME = getGeminiModelName(); 
+export const GEMINI_MODEL_NAME = getGeminiModelName();
+export const CODE_EXECUTOR_LAMBDA_ARN = getCodeExecutorLambdaArn(); 

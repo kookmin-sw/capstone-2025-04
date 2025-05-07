@@ -1,33 +1,39 @@
 /**
  * codeExecutor.mjs
  *
- * Provides utilities for executing code snippets safely in a sandboxed environment.
- * Initially supporting Python 3.12, designed for future language extensibility.
+ * Provides utilities for executing code snippets.
+ * For Python, it now invokes a dedicated AWS Lambda function.
  */
 
-import { spawn } from "child_process";
-import { promises as fs } from "fs";
-import { randomUUID } from "crypto";
-import { join, dirname } from "path";
-import os from "os";
+// Removed: spawn, promises as fs, randomUUID, join, dirname, os
+// These are no longer needed for Python execution via Lambda.
+
+import { LambdaClient, InvokeCommand } from "@aws-sdk/client-lambda";
+import { TextDecoder } from "util"; // Node.js built-in
+import { CODE_EXECUTOR_LAMBDA_ARN, DEFAULT_LANGUAGE } from "./constants.mjs"; // Ensure DEFAULT_LANGUAGE is here if needed
 
 // Constants
-const DEFAULT_TIMEOUT_MS = 5000; // 5 seconds
-const MAX_MEMORY_MB = 512; // 512 MB
-const TEMP_DIR = process.env.LAMBDA_TEMP_DIR || os.tmpdir();
+const DEFAULT_TIMEOUT_MS = 5000; // 5 seconds - this will be passed to the executor lambda
+
+// Initialize Lambda Client
+// Consider making the region configurable if it can change
+const lambdaClient = new LambdaClient({ region: "ap-northeast-2" });
+
 
 /**
- * Execution result interface
+ * Execution result class - should remain compatible with the Python Lambda's output structure.
  */
 export class ExecutionResult {
-  // ... (ExecutionResult class remains the same) ...
   constructor({
     stdout = "",
     stderr = "",
     exitCode = null,
     executionTimeMs = 0,
     timedOut = false,
-    error = null,
+    error = null, // This 'error' field is for errors in THIS (JS) orchestration,
+                  // or unhandled errors from the invoked Lambda itself.
+                  // User code errors will be in stderr.
+    isSuccessful = false // Added this field explicitly based on Python lambda output
   }) {
     this.stdout = stdout;
     this.stderr = stderr;
@@ -35,14 +41,26 @@ export class ExecutionResult {
     this.executionTimeMs = executionTimeMs;
     this.timedOut = timedOut;
     this.error = error;
+    // isSuccessful is determined by the Python lambda and passed back.
+    // However, we can also calculate it as a getter for consistency if not provided.
+    // For now, we'll assume the Python lambda's 'isSuccessful' is the source of truth.
+    this.isSuccessful = isSuccessful;
   }
 
   /**
    * Returns true if the execution was successful (no errors, timeout, or non-zero exit code)
+   * This getter can be a fallback or primary way to determine success.
    */
-  get isSuccessful() {
-    return !this.error && !this.timedOut && this.exitCode === 0;
+  get wasSuccessful() {
+    // Prioritize the 'isSuccessful' field from the Python Lambda if available
+    // Otherwise, fallback to the original logic.
+    if (typeof this.isSuccessful === 'boolean') {
+        return this.isSuccessful;
+    }
+    // Fallback logic if isSuccessful is not explicitly provided by the executor
+    return !this.error && !this.timedOut && this.exitCode === 0 && !this.stderr;
   }
+
 
   /**
    * Returns a structured result object
@@ -54,8 +72,8 @@ export class ExecutionResult {
       exitCode: this.exitCode,
       executionTimeMs: this.executionTimeMs,
       timedOut: this.timedOut,
-      error: this.error ? this.error.message : null,
-      isSuccessful: this.isSuccessful,
+      error: this.error ? (this.error.message || String(this.error)) : null,
+      isSuccessful: this.wasSuccessful, // Use the getter
     };
   }
 
@@ -63,12 +81,17 @@ export class ExecutionResult {
    * Returns a classification of the error, if any
    */
   getErrorType() {
-    if (this.isSuccessful) return null;
+    if (this.wasSuccessful) return null; // Use the getter
     if (this.timedOut) return "TIMEOUT";
+    if (this.error) return "LAMBDA_INVOCATION_ERROR"; // Error invoking/within the executor lambda itself
 
+    // Errors from the user's code (via stderr from executor lambda)
     if (this.stderr) {
       if (this.stderr.includes("SyntaxError")) return "SYNTAX_ERROR";
-      if (this.stderr.includes("MemoryError")) return "MEMORY_ERROR";
+      if (this.stderr.includes("MemoryError")) return "MEMORY_ERROR"; // Assuming Python lambda reports this
+      if (this.stderr.includes("SolutionFunctionNotFoundError")) return "FUNCTION_NOT_FOUND_ERROR";
+      if (this.stderr.includes("ImportError")) return "IMPORT_ERROR";
+      // Add more specific error types based on Python lambda's stderr patterns
       return "RUNTIME_ERROR";
     }
 
@@ -76,203 +99,144 @@ export class ExecutionResult {
   }
 }
 
-/**
- * Creates a temporary file with the given code
- * @param {string} code - Code content to write to file
- * @param {string} extension - File extension
- * @returns {Promise<string>} Path to created file
- */
-async function createTempFile(code, extension = ".py") {
-  // ... (createTempFile remains the same) ...
-  const filename = `${randomUUID()}${extension}`;
-  const filepath = join(TEMP_DIR, filename);
-  await fs.writeFile(filepath, code, "utf8");
-  return filepath;
-}
+// createTempFile and cleanupTempFiles are no longer needed for Python execution
+// as file management is handled within the Python executor Lambda.
+// They can be removed or kept if you plan to add other local executors.
+// For now, let's comment them out to signify they are not used for Python.
+/*
+async function createTempFile(code, extension = ".py") { ... }
+async function cleanupTempFiles(filePaths) { ... }
+*/
 
 /**
- * Cleans up temporary files created during execution
- * @param {Array<string>} filePaths - Paths to files that should be deleted
- */
-async function cleanupTempFiles(filePaths) {
-  // ... (cleanupTempFiles remains the same) ...
-  for (const file of filePaths) {
-    try {
-      await fs.unlink(file);
-    } catch (error) {
-      console.warn(`Failed to delete temp file ${file}:`, error);
-    }
-  }
-}
-
-/**
- * Execute Python code with the given input
+ * Execute Python code by invoking the dedicated AWS Lambda function.
  * @param {string} code - Python code to execute
- * @param {any} input - Input to pass to the code (will be JSON stringified)
+ * @param {any} inputData - Input to pass to the code (will be part of JSON payload)
  * @param {object} options - Execution options
+ * @param {number} [options.timeoutMs=DEFAULT_TIMEOUT_MS] - Timeout for the execution.
  * @returns {Promise<ExecutionResult>} Execution result
  */
-export async function executePython(code, input, options = {}) {
-  const { timeoutMs = DEFAULT_TIMEOUT_MS, memoryLimitMb = MAX_MEMORY_MB } =
-    options;
+export async function executePythonViaLambda(code, inputData, options = {}) {
+  const { timeoutMs = DEFAULT_TIMEOUT_MS } = options;
 
-  // Files to cleanup at the end
-  const tempFiles = [];
+  const payload = {
+    code_to_execute: code,
+    input_data: inputData,
+    timeout_ms: timeoutMs,
+  };
 
+  const command = new InvokeCommand({
+    FunctionName: CODE_EXECUTOR_LAMBDA_ARN,
+    Payload: JSON.stringify(payload),
+    LogType: 'None',
+  });
+
+  const startTime = Date.now();
   try {
-    // Create a Python file with the solution code
-    const solutionFile = await createTempFile(code);
-    tempFiles.push(solutionFile);
+    const response = await lambdaClient.send(command);
+    const jsSideExecutionTimeMs = Date.now() - startTime; // JS-side measured time
 
-    // Create a runner file that imports the solution and executes it with the input
-    // Added a helper function `convert_non_json_values`
-    const runnerCode = `
-import sys
-import json
-import traceback
-import math # Import math for isnan
+    if (response.FunctionError) {
+        let errorDetails = "No additional details in payload.";
+        if (response.Payload && response.Payload.length > 0) {
+            try {
+                const errorPayloadString = new TextDecoder().decode(response.Payload);
+                try {
+                    const parsedError = JSON.parse(errorPayloadString);
+                    errorDetails = parsedError.errorMessage || parsedError.message || JSON.stringify(parsedError);
+                } catch (e) {
+                    errorDetails = errorPayloadString;
+                }
+            } catch (decodeError) {
+                errorDetails = "Error payload present but could not be decoded.";
+            }
+        }
+        console.error(`Code Executor Lambda FunctionError: ${response.FunctionError}. Details: ${errorDetails}`);
+        return new ExecutionResult({
+            stderr: `Executor Lambda Error: ${response.FunctionError}. Details: ${errorDetails.substring(0, 1000)}`,
+            exitCode: -1,
+            executionTimeMs: jsSideExecutionTimeMs,
+            error: new Error(`Executor Lambda Error: ${response.FunctionError}`),
+            isSuccessful: false
+        });
+    }
 
-# Import solution (user code)
-sys.path.append("${dirname(solutionFile)}")
-solution_file = "${solutionFile.replace(/\\/g, "\\\\")}"
-
-# Helper function to convert non-standard floats to JSON-compatible strings
-def convert_non_json_values(obj):
-    if isinstance(obj, float):
-        if math.isinf(obj):
-            return "Infinity" if obj > 0 else "-Infinity"
-        elif math.isnan(obj):
-            return "NaN"
-        return obj
-    elif isinstance(obj, dict):
-        return {k: convert_non_json_values(v) for k, v in obj.items()}
-    elif isinstance(obj, list):
-        return [convert_non_json_values(elem) for elem in obj]
-    else:
-        return obj
-
-# Input data
-input_data = json.loads("""${JSON.stringify(input).replace(/"/g, '\\"')}""")
-
-try:
-    # Execute in a try-except block to catch errors
-    with open(solution_file, 'r') as f:
-        solution_code = f.read()
-        # Using exec to execute the solution code in the current namespace
-        exec(solution_code, globals())
-
-    # Try to call solution function with input
-    result = None
-    if 'solution' in globals():
-        result = solution(input_data)
-    else:
-        # Look for other common function names
-        function_names = ['solve', 'answer', 'main']
-        for func_name in function_names:
-            if func_name in globals():
-                result = globals()[func_name](input_data)
-                break
-        else:
-            # If no known function found, set error result
-            print(json.dumps({"error": "Could not find standard solution function (solution, solve, answer, main)"}), file=sys.stderr)
-            sys.exit(1) # Exit with error code if function not found
-
-    # Convert result to be JSON serializable BEFORE printing
-    converted_result = convert_non_json_values(result)
-    print(json.dumps({"result": converted_result}))
-
-except Exception as e:
-    error_type = type(e).__name__
-    error_msg = str(e)
-    traceback_str = traceback.format_exc()
-    print(json.dumps({
-        "error": f"{error_type}: {error_msg}",
-        "traceback": traceback_str
-    }), file=sys.stderr)
-    sys.exit(1)
-`;
-
-    const runnerFile = await createTempFile(runnerCode);
-    tempFiles.push(runnerFile);
-
-    // Execute the Python code with timeout
-    const startTime = Date.now();
-
-    return new Promise((resolve) => {
-      // ... (rest of the Promise logic remains the same) ...
-      let stdout = "";
-      let stderr = "";
-      let killed = false;
-
-      // Use spawn to execute the python process
-      const pythonProcess = spawn("python3.12", [runnerFile], {
-        timeout: timeoutMs,
-        env: {
-          ...process.env,
-          PYTHONIOENCODING: "utf-8",
-          // Limit memory using resource module in Python
-          PYTHONPATH: process.env.PYTHONPATH || "",
-        },
+    if (response.StatusCode !== 200) {
+      console.error(`Code executor Lambda invocation failed with status code: ${response.StatusCode}`);
+      return new ExecutionResult({
+        error: new Error(`Code executor Lambda invocation failed with status code: ${response.StatusCode}`),
+        executionTimeMs: jsSideExecutionTimeMs,
+        isSuccessful: false
       });
+    }
 
-      // Set timeout
-      const timeoutId = setTimeout(() => {
-        killed = true;
-        pythonProcess.kill("SIGTERM");
-      }, timeoutMs);
-
-      // Capture stdout
-      pythonProcess.stdout.on("data", (data) => {
-        stdout += data.toString();
+    if (!response.Payload || response.Payload.length === 0) {
+      console.error("Code Executor Lambda returned 200/OK and no FunctionError, but payload was missing or empty.");
+      return new ExecutionResult({
+        error: new Error("Code executor Lambda returned 200/OK but no/empty payload."),
+        executionTimeMs: jsSideExecutionTimeMs,
+        isSuccessful: false
       });
+    }
 
-      // Capture stderr
-      pythonProcess.stderr.on("data", (data) => {
-        stderr += data.toString();
+    const outerResponsePayloadString = new TextDecoder().decode(response.Payload);
+    let outerResponseObject;
+    try {
+      outerResponseObject = JSON.parse(outerResponsePayloadString);
+    } catch (parseError) {
+      console.error("Failed to parse outer response payload from executor lambda:", parseError);
+      console.error("Offending outer payload string:", outerResponsePayloadString.substring(0, 1000));
+      return new ExecutionResult({
+        error: new Error(`Failed to parse outer response payload from executor lambda: ${parseError.message}`),
+        stderr: `Invalid JSON outer response from executor. Raw response (partial): ${outerResponsePayloadString.substring(0, 500)}`,
+        executionTimeMs: jsSideExecutionTimeMs,
+        isSuccessful: false
       });
+    }
 
-      // Handle process completion
-      pythonProcess.on("close", async (exitCode) => {
-        clearTimeout(timeoutId);
-        const executionTimeMs = Date.now() - startTime;
+    // The actual execution result is in the 'body' of the outerResponseObject,
+    // and that 'body' itself is a JSON string.
+    if (typeof outerResponseObject.body !== 'string') {
+        console.error("Executor lambda's response 'body' is not a string or is missing.");
+        console.error("Outer response object:", JSON.stringify(outerResponseObject).substring(0,1000));
+        return new ExecutionResult({
+            error: new Error("Executor lambda's response 'body' is not a string or is missing."),
+            executionTimeMs: jsSideExecutionTimeMs,
+            isSuccessful: false
+        });
+    }
 
-        // Clean up temp files
-        await cleanupTempFiles(tempFiles);
-
-        resolve(
-          new ExecutionResult({
-            stdout,
-            stderr,
-            exitCode,
-            executionTimeMs,
-            timedOut: killed,
-            error: killed ? new Error("Execution timed out") : null,
-          }),
-        );
-      });
-
-      // Handle process errors
-      pythonProcess.on("error", async (error) => {
-        clearTimeout(timeoutId);
-
-        // Clean up temp files
-        await cleanupTempFiles(tempFiles);
-
-        resolve(
-          new ExecutionResult({
-            error,
-            executionTimeMs: Date.now() - startTime,
-          }),
-        );
-      });
-    });
-  } catch (error) {
-    // Clean up temp files on error
-    await cleanupTempFiles(tempFiles);
-
+    let actualExecutionResult; // This will hold the fields like stdout, stderr, isSuccessful
+    try {
+        actualExecutionResult = JSON.parse(outerResponseObject.body);
+    } catch (bodyParseError) {
+        console.error("Failed to parse 'body' of the executor lambda's response:", bodyParseError);
+        console.error("Offending 'body' string:", outerResponseObject.body.substring(0, 1000));
+        return new ExecutionResult({
+            error: new Error(`Failed to parse 'body' of executor response: ${bodyParseError.message}`),
+            stderr: `Invalid JSON in executor 'body'. Raw body (partial): ${outerResponseObject.body.substring(0,500)}`,
+            executionTimeMs: jsSideExecutionTimeMs,
+            isSuccessful: false
+        });
+    }
+    
+    // Construct ExecutionResult using fields from actualExecutionResult
     return new ExecutionResult({
-      error,
-      executionTimeMs: 0,
+      stdout: actualExecutionResult.stdout,
+      stderr: actualExecutionResult.stderr,
+      exitCode: actualExecutionResult.exitCode,
+      executionTimeMs: actualExecutionResult.executionTimeMs || jsSideExecutionTimeMs, // Prefer lambda's time
+      timedOut: actualExecutionResult.timedOut,
+      error: actualExecutionResult.error ? new Error(actualExecutionResult.error) : null,
+      isSuccessful: actualExecutionResult.isSuccessful
+    });
+
+  } catch (error) {
+    console.error("Error invoking Code Executor Lambda or processing its response:", error);
+    return new ExecutionResult({
+      error: error,
+      executionTimeMs: Date.now() - startTime,
+      isSuccessful: false
     });
   }
 }
@@ -280,70 +244,85 @@ except Exception as e:
 /**
  * Parse execution result stdout to extract the result object
  * @param {ExecutionResult} executionResult - Execution result to parse
- * @returns {any} Parsed result or null if parsing fails
+ * @returns {any} Parsed result or null if parsing fails or stdout is not JSON from user code
  */
 export function parseExecutionResult(executionResult) {
-  // ... (parseExecutionResult remains the same, it should now receive valid JSON) ...
-  if (!executionResult.isSuccessful || !executionResult.stdout) {
+  // Use the getter for success check
+  if (!executionResult.wasSuccessful || !executionResult.stdout) {
+    // If not successful, or no stdout, there's no user code result to parse from stdout.
+    // Errors would be in stderr or the error field.
     return null;
   }
 
   try {
-    // Try to parse the output as JSON
-    const outputLines = executionResult.stdout.trim().split("\n");
-    // Get the last line, as previous lines might be debug prints from user code
-    const lastLine = outputLines[outputLines.length - 1];
+    // The Python executor lambda's stdout for successful user code execution
+    // should be a JSON string like: {"result": <actual_user_code_output>}
+    const parsedStdout = JSON.parse(executionResult.stdout.trim());
 
-    const parsedOutput = JSON.parse(lastLine);
-
-    // Check if the parsed output itself indicates an error from the runner script
-    if (parsedOutput && parsedOutput.error) {
-      console.warn(
-        "Execution resulted in an error reported by the runner:",
-        parsedOutput.error,
-      );
-      // We might want to handle this differently, perhaps by adding it to stderr or a specific error field
-      // For now, return null as it wasn't a successful result data structure
-      return null;
+    if (parsedStdout && typeof parsedStdout === 'object' && 'result' in parsedStdout) {
+      return parsedStdout.result;
+    } else if (parsedStdout && typeof parsedStdout === 'object' && 'error' in parsedStdout) {
+      // This case should ideally be caught by the Python Lambda and put into stderr.
+      // But if it slips through to stdout:
+      console.warn("User code printed an error structure to stdout:", parsedStdout.error);
+      // executionResult.stderr = executionResult.stderr ? `${executionResult.stderr}\n${JSON.stringify(parsedStdout)}` : JSON.stringify(parsedStdout);
+      // executionResult.isSuccessful = false; // Correct the success status
+      return null; // No valid 'result'
+    } else {
+        // This means stdout was valid JSON, but not the expected {"result": ...} structure.
+        // This could happen if the user's code prints arbitrary JSON not wrapped in "result".
+        // For strictness, we expect the {"result": ...} wrapper.
+        console.warn(
+            `Parsed stdout JSON does not have the expected 'result' key: "${executionResult.stdout.trim()}"`
+        );
+        return null;
     }
-
-    return parsedOutput.result;
   } catch (error) {
+    // This means stdout was not valid JSON at all.
+    // Could be due to user code printing non-JSON text to stdout.
     console.warn(
-      `Failed to parse execution result from stdout: "${executionResult.stdout.trim()}"`,
+      `Failed to parse execution result from stdout as JSON: "${executionResult.stdout.trim()}"`,
       error,
     );
+    // executionResult.stderr = executionResult.stderr ? `${executionResult.stderr}\nStdout: ${executionResult.stdout}` : `Stdout: ${executionResult.stdout}`;
+    // executionResult.isSuccessful = false; // Correct the success status
     return null; // Return null if JSON parsing fails
   }
 }
 
 /**
- * Language executor mapping for future extensibility
+ * Language executor mapping.
+ * Only Python is currently updated to use Lambda.
  */
 export const languageExecutors = {
-  "python3.12": executePython,
-  // Add more language executors as needed
+  "python3.12": executePythonViaLambda,
+  // If you had other local executors (e.g., for JavaScript), they would remain or be updated.
 };
 
 /**
  * Execute code in the appropriate language
  * @param {string} code - Code to execute
  * @param {any} input - Input to pass to the code
- * @param {string} language - Programming language
+ * @param {string} language - Programming language (defaults to DEFAULT_LANGUAGE if undefined)
  * @param {object} options - Execution options
  * @returns {Promise<ExecutionResult>} Execution result
  */
 export async function executeCode(
   code,
   input,
-  language = "python3.12",
+  language, // Can be undefined
   options = {},
 ) {
-  // ... (executeCode remains the same) ...
-  const executor = languageExecutors[language];
+  const langToUse = language || DEFAULT_LANGUAGE; // Use default if language is not provided
+  const executor = languageExecutors[langToUse];
 
   if (!executor) {
-    throw new Error(`Unsupported language: ${language}`);
+    // This should ideally not happen if langToUse is controlled
+    console.error(`Unsupported language: ${langToUse}`);
+    return new ExecutionResult({
+        error: new Error(`Unsupported language: ${langToUse}`),
+        isSuccessful: false
+    });
   }
 
   return executor(code, input, options);

@@ -102,6 +102,8 @@ infrastructure/api/lambda_zips/*.zip
 infrastructure/problems-api/lambda_zips/*.zip
 problem_generator_v2_lambda.zip
 problem_generator_deps.zip
+code_executor.zip
+code_grader.zip
 
 # cursor
 .cursor/
