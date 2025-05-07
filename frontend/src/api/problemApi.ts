@@ -1,8 +1,6 @@
-// src/api/problemApi.ts
 import { getStaticProblem, isStaticProblemId } from "./staticProblems";
 
 // Base URL for your API Gateway stage for Problems API
-// Use environment variable, fallback for local development
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_PROBLEM_API_BASE_URL || "http://localhost:3002"; // Example fallback, adjust if needed
 
@@ -15,38 +13,61 @@ const API_BASE_URL =
 export interface ProblemSummary {
   problemId: string;
   title: string;
-  title_translated?: string; // Translated title if targetLanguage exists
-  difficulty: string; // 예: "Easy", "Medium", "Hard" 또는 생성된 값 그대로
-  algorithmType?: string; // 선택적 필드
+  title_translated?: string;
+  difficulty: string;
+  algorithmType?: string; // Usually part of intent, might not be directly in summary
   createdAt: string;
-  creatorId?: string; // Add creatorId field
-  author?: string; // Add author field
+  creatorId?: string;
+  author?: string;
+  language?: string; // Add language to summary if available
 }
 
 /**
  * GET /problems/{problemId} API 응답 타입 (문제 상세)
- * problem-generator-v2가 DynamoDB에 저장하는 필드 및 getProblemById.mjs 반환값 기반
+ * problem-generator-v3가 DynamoDB에 저장하는 필드 및 getProblemById.mjs 반환값 기반
  */
 export interface ProblemDetail {
   problemId: string;
-  title: string;
-  title_translated?: string; // Translated title if targetLanguage exists
-  description: string;
-  description_translated?: string; // Translated description if targetLanguage exists
+  userPrompt?: string;
   difficulty: string;
-  constraints: string; // JSON 문자열 형태의 제약 조건
-  solutionCode: string;
-  testGeneratorCode: string;
-  analyzedIntent: string;
-  testSpecifications: string; // JSON 문자열 형태의 테스트 명세
-  generationStatus: string;
-  language: string;
-  targetLanguage?: string; // Translation target language (e.g., "ko")
+  language: string; // e.g., "python3.12" - The primary language of the generated problem
+  targetLanguage?: string;
   createdAt: string;
-  completedAt?: string; // 완료 시 존재
-  userPrompt?: string; // 생성 요청 시 사용된 프롬프트
-  errorMessage?: string; // 생성 실패 시 오류 메시지
-  // DynamoDB에 저장된 다른 필드가 있다면 추가 가능
+  completedAt?: string;
+  generationStatus: string;
+  errorMessage?: string;
+  
+  title: string;
+  title_translated?: string;
+  description: string; // Markdown format, potentially including constraints and examples
+  description_translated?: string;
+  
+  intent?: string; // JSON string of the intent object
+  // testSpecifications is now finalTestCases
+  finalTestCases: string; // JSON string of test cases with input, expected_output, rationale
+  
+  validatedSolutionCode?: string; // The validated solution code
+  startCode?: string;             // Starter code for the user
+  
+  constraints: string; // JSON string of derived constraints (time_limit, memory_limit, input_constraints, judge_type, epsilon)
+  judgeType?: string;   // Directly from parsed constraints or top-level
+  epsilon?: number;     // Directly from parsed constraints or top-level
+  
+  testGeneratorCode?: string; // May or may not be present in v3 output
+  analyzedIntent?: string;    // May or may not be present in v3 output, prefer `intent`
+  validationDetails?: string; // JSON string of LLM-based validation
+  
+  // User-related fields
+  creatorId?: string;
+  author?: string;
+  
+  // Schema version if needed
+  schemaVersion?: string;
+
+  // Other fields from DynamoDB if necessary
+  // e.g. executionResults, testCaseStats from pipeline might be stored
+  executionResults?: string; 
+  testCaseStats?: string;
 }
 
 // --- API Error Handling (Reusing from communityApi) ---
@@ -63,10 +84,6 @@ class ApiError extends Error {
   }
 }
 
-/**
- * API 응답을 처리하고 성공 시 데이터를 반환하거나 실패 시 ApiError를 throw합니다.
- * (communityApi.ts의 핸들러와 동일 로직)
- */
 const handleApiResponse = async (response: Response): Promise<unknown> => {
   if (!response.ok) {
     let errorMessage = `API Error: ${response.status} ${response.statusText}`;
@@ -93,7 +110,6 @@ const handleApiResponse = async (response: Response): Promise<unknown> => {
     throw new ApiError(errorMessage, response.status, errorData);
   }
 
-  // Handle no content responses
   if (
     response.status === 204 ||
     response.headers.get("content-length") === "0"
@@ -101,18 +117,15 @@ const handleApiResponse = async (response: Response): Promise<unknown> => {
     return undefined;
   }
 
-  // Try parsing JSON
   try {
     const successResponseClone = response.clone();
     return await successResponseClone.json();
   } catch (jsonError) {
     console.warn("Failed to parse response body as JSON.", jsonError);
-    // Fallback: try reading as text if JSON parsing fails
     try {
       const textBody = await response.text();
       if (textBody) {
         try {
-          // Attempt manual parsing if text body exists
           return JSON.parse(textBody);
         } catch (parseError) {
           console.error("Failed to manually parse text body:", parseError);
@@ -123,7 +136,7 @@ const handleApiResponse = async (response: Response): Promise<unknown> => {
           );
         }
       }
-      return undefined; // Return undefined if text body is also empty
+      return undefined;
     } catch (textError) {
       console.error("Failed to read response body as text:", textError);
       throw new ApiError("Failed to read API response body", response.status);
@@ -133,11 +146,6 @@ const handleApiResponse = async (response: Response): Promise<unknown> => {
 
 // --- API Functions ---
 
-/**
- * 모든 문제의 요약 목록을 가져옵니다. creatorId를 지정하면 특정 유저가 만든 문제만 가져옵니다.
- * GET /problems or GET /problems?creatorId={creatorId}
- * (인증 불필요)
- */
 export const getProblems = async (creatorId?: string): Promise<ProblemSummary[]> => {
   const url = creatorId
     ? `${API_BASE_URL}/problems?creatorId=${encodeURIComponent(creatorId)}`
@@ -147,34 +155,26 @@ export const getProblems = async (creatorId?: string): Promise<ProblemSummary[]>
     method: "GET",
     headers: {
       "Content-Type": "application/json",
-      // No Authorization header needed for public endpoints
     },
   });
   const result: unknown = await handleApiResponse(response);
-  // API가 항상 배열을 반환한다고 가정, 아닐 경우 빈 배열 반환
   return Array.isArray(result) ? result : [];
 };
 
-/**
- * 특정 문제의 상세 정보를 가져옵니다.
- * GET /problems/{problemId}
- * (인증 불필요)
- */
 export const getProblemById = async (
   problemId: string
 ): Promise<ProblemDetail> => {
   if (!problemId) {
     throw new Error("problemId is required to fetch problem details.");
   }
-  // 1. Check if it's a static problem ID (1-6)
   if (isStaticProblemId(problemId)) {
-    console.log(`[CodingTest API] Requested static problem: ${problemId}`);
+    console.log(`[Problem API] Requested static problem: ${problemId}`);
     const staticProblem = getStaticProblem(problemId);
     if (staticProblem) {
-      // Return static data as ProblemDetailAPI
+      // Ensure the static problem data is compatible with ProblemDetail
+      // The staticProblem data is already shaped as ProblemDetail (via ProblemDetailAPI alias)
       return Promise.resolve(staticProblem as ProblemDetail);
     } else {
-      // This shouldn't happen if isStaticProblemId is correct, but handle defensively
       console.error(`Static problem data not found for ID: ${problemId}`);
       throw new ApiError(
         `Static problem data missing for ID ${problemId}`,
@@ -186,17 +186,58 @@ export const getProblemById = async (
     method: "GET",
     headers: {
       "Content-Type": "application/json",
-      // No Authorization header needed
     },
   });
-  // handleApiResponse는 파싱된 객체를 반환할 것으로 예상됨
-  console.log(response);
   return handleApiResponse(response) as Promise<ProblemDetail>;
 };
 
+// API function to call the code-grader Lambda
+const CODE_GRADER_API_URL = process.env.NEXT_PUBLIC_CODE_GRADER_BASE_URL;
+
+export interface RunCodePayload {
+  executionMode: "RUN_CUSTOM_TESTS";
+  userCode: string;
+  language: string;
+  customTestCases: Array<Record<string, unknown> | string | number[]>; // Array of inputs
+  problemId?: string; // Optional, but good for time limits
+}
+
+export interface RunCodeSingleResult {
+  caseIdentifier: string;
+  input: Record<string, unknown> | string | number[];
+  runCodeOutput: {
+    stdout: string;
+    stderr: string;
+    exitCode: number;
+    executionTimeMs: number;
+    timedOut: boolean;
+    error: string | null;
+    isSuccessful: boolean;
+    runCodeLambdaError?: boolean; // Custom flag from grader
+    errorMessage?: string; // For runCodeLambdaError
+    trace?: string[]; // For runCodeLambdaError
+  };
+}
+export interface RunCodeResponse {
+  executionMode: "RUN_CUSTOM_TESTS_RESULTS";
+  results: RunCodeSingleResult[];
+}
 
 
-// TODO: Add functions for other problem-related endpoints if they are created later
-// e.g., creating problems manually (POST /problems - requires auth)
-// e.g., updating problems (PATCH /problems/{problemId} - requires auth)
-// e.g., deleting problems (DELETE /problems/{problemId} - requires auth)
+export const runCustomTests = async (payload: RunCodePayload, idToken: string): Promise<RunCodeResponse> => {
+  if (!CODE_GRADER_API_URL) {
+    throw new Error("Code Grader API URL is not configured.");
+  }
+
+  const response = await fetch(`${CODE_GRADER_API_URL}/grade`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      // Add Authorization header if your code-grader Lambda is protected by JWT Authorizer
+      "Authorization": `Bearer ${idToken}`,
+    },
+    body: JSON.stringify(payload),
+  });
+
+  return handleApiResponse(response) as Promise<RunCodeResponse>;
+};

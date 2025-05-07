@@ -18,6 +18,12 @@ ALLOWED_JUDGE_TYPES = ["equal", "unordered_equal", "float_eps"]
 DEFAULT_EPSILON = Decimal('1e-6')
 IS_SUBMISSION_VALUE = "Y"  # For GSI AllSubmissionsByTimeIndex
 
+CORS_HEADERS = {
+    'Access-Control-Allow-Origin': '*',  # TODO: Restrict this in production to your frontend domain
+    'Access-Control-Allow-Methods': 'GET,POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Amz-Date, X-Api-Key, X-Amz-Security-Token'
+}
+
 # Helper function to compare outputs (기존과 동일)
 def compare_outputs(actual, expected, judge_type, epsilon=DEFAULT_EPSILON):
     if judge_type == "equal":
@@ -97,6 +103,14 @@ def run_single_test_case(user_code, case_input, language, problem_time_limit_sec
 def lambda_handler(event, context):
     print(f"Received grading request: {json.dumps(event)}")
 
+    # Handle OPTIONS request for CORS preflight
+    if event.get('httpMethod') == 'OPTIONS' or event.get('requestContext', {}).get('http', {}).get('method') == 'OPTIONS':
+        return {
+            'statusCode': 200,
+            'headers': CORS_HEADERS,
+            'body': json.dumps({'message': 'CORS preflight check successful'})
+        }
+
     try:
         if 'body' in event:
             body_str = event['body']
@@ -106,35 +120,53 @@ def lambda_handler(event, context):
             
         # API Gateway JWT Authorizer claims
         claims = event.get('requestContext', {}).get('authorizer', {}).get('claims', {})
-        if not claims or not claims.get('cognito:username') or not claims.get('sub'):
-            print("❌ Missing or invalid claims:", claims)
+        # For Cognito authorizer, claims might be directly under authorizer
+        if not claims: # Fallback for some proxy integrations if claims is nested differently
+             claims = event.get('requestContext', {}).get('authorizer', {})
+
+        user_id_from_claims = claims.get('sub')
+        author_from_claims = claims.get('nickname') or claims.get('cognito:username') # Use nickname if available
+
+        if not user_id_from_claims or not author_from_claims:
+            print(f"❌ Missing or invalid claims: {json.dumps(claims)}")
             return {
                 'statusCode': 401,
-                'headers': {'Content-Type': 'application/json'},
-                'body': json.dumps({'message': '인증 정보가 없습니다.'})
+                'headers': {'Content-Type': 'application/json', **CORS_HEADERS},
+                'body': json.dumps({'message': '인증 정보가 없습니다. 사용자 ID 또는 작성자 정보를 확인할 수 없습니다.'})
             }
-        user_id = claims.get('sub')  # Extract userId from payload
-        author = claims.get('nickname') # Extract author from claims
+        
+        # Use claims for userId and author, payload might still contain them for testing or other modes
+        user_id = user_id_from_claims
+        author = author_from_claims
 
         execution_mode = payload.get('executionMode', "GRADE_SUBMISSION") # "GRADE_SUBMISSION" or "RUN_CUSTOM_TESTS"
         problem_id = payload.get('problemId') # Needed for GRADE_SUBMISSION, optional for RUN_CUSTOM_TESTS (for time_limit)
         user_code = payload.get('userCode')
-        language = payload.get('language', 'python3.12')
+        language = payload.get('language', 'python3.12') # Default to python3.12 if not provided
         submission_id_param = payload.get('submissionId')
 
         if not user_code:
             raise ValueError("Missing userCode in the request.")
+        
+        # For GRADE_SUBMISSION, problemId is always required.
+        # For RUN_CUSTOM_TESTS, problemId is optional (for time_limit).
+        # userId and author are now derived from claims for authenticated requests.
+
         if execution_mode == "GRADE_SUBMISSION":
             if not problem_id:
                 raise ValueError("Missing problemId for GRADE_SUBMISSION mode.")
-            if not user_id:
-                raise ValueError("Missing userId for GRADE_SUBMISSION mode.")
+            # userId and author are now from claims, no need to check payload for them in this mode
+        
         if execution_mode == "RUN_CUSTOM_TESTS" and 'customTestCases' not in payload:
             raise ValueError("Missing customTestCases for RUN_CUSTOM_TESTS mode.")
 
     except (json.JSONDecodeError, ValueError) as e:
         print(f"Input error: {str(e)}")
-        return {'statusCode': 400, 'body': json.dumps({'error': f'Invalid input: {str(e)}'})}
+        return {
+            'statusCode': 400,
+            'headers': {'Content-Type': 'application/json', **CORS_HEADERS},
+            'body': json.dumps({'error': f'Invalid input: {str(e)}'})
+        }
 
     # --------------------------
     # --- RUN CUSTOM TESTS MODE ---
@@ -142,17 +174,19 @@ def lambda_handler(event, context):
     if execution_mode == "RUN_CUSTOM_TESTS":
         custom_test_cases = payload.get('customTestCases', [])
         if not isinstance(custom_test_cases, list):
-             return {'statusCode': 400, 'body': json.dumps({'error': 'customTestCases must be a list.'})}
+             return {
+                 'statusCode': 400,
+                 'headers': {'Content-Type': 'application/json', **CORS_HEADERS},
+                 'body': json.dumps({'error': 'customTestCases must be a list.'})
+            }
 
         results_for_custom_tests = []
-        # Try to get problem's time limit if problemId is provided, otherwise use a default.
-        problem_time_limit_seconds = 2 # Default time limit for custom tests
-        if problem_id: # User might provide problemId to use its time limit
+        problem_time_limit_seconds = 2 
+        if problem_id: 
             try:
                 problems_table = dynamodb.Table(PROBLEMS_TABLE_NAME)
                 problem_item_response = problems_table.get_item(Key={'problemId': problem_id})
                 if 'Item' in problem_item_response and 'timeLimitSeconds' in problem_item_response['Item']:
-                    # Ensure timeLimitSeconds is a number
                     time_limit = problem_item_response['Item']['timeLimitSeconds']
                     problem_time_limit_seconds = float(time_limit) if isinstance(time_limit, (int, float, Decimal)) else 2.0
             except Exception as db_err:
@@ -163,22 +197,18 @@ def lambda_handler(event, context):
             case_identifier = f"Custom Case {i + 1}"
             print(f"Executing {case_identifier}...")
             try:
-                # For custom tests, the 'input' is directly the custom_case_input
-                # The structure of custom_case_input should match what 'solution(input_data)' expects
                 raw_execution_result = run_single_test_case(user_code, custom_case_input, language, problem_time_limit_seconds)
-
-                # Append the raw result from runCode lambda
                 results_for_custom_tests.append({
                     'caseIdentifier': case_identifier,
                     'input': custom_case_input,
-                    'runCodeOutput': raw_execution_result # This is the direct output of runCode lambda
+                    'runCodeOutput': raw_execution_result 
                 })
             except Exception as e:
                 print(f"Error processing {case_identifier}: {str(e)}\n{traceback.format_exc()}")
                 results_for_custom_tests.append({
                     'caseIdentifier': case_identifier,
                     'input': custom_case_input,
-                    'runCodeOutput': { # Mimic runCode error structure for consistency
+                    'runCodeOutput': { 
                         'error': f'Grader error during custom test: {str(e)}',
                         'stdout': '', 'stderr': f'Grader error: {str(e)}',
                         'exitCode': -1, 'executionTimeMs': 0,
@@ -188,6 +218,7 @@ def lambda_handler(event, context):
 
         return {
             'statusCode': 200,
+            'headers': {'Content-Type': 'application/json', **CORS_HEADERS},
             'body': json.dumps({
                 'executionMode': "RUN_CUSTOM_TESTS_RESULTS",
                 'results': results_for_custom_tests
@@ -195,7 +226,7 @@ def lambda_handler(event, context):
         }
 
     # --------------------------
-    # --- GRADE SUBMISSION MODE --- (Existing Logic)
+    # --- GRADE SUBMISSION MODE ---
     # --------------------------
     elif execution_mode == "GRADE_SUBMISSION":
         submission_id = submission_id_param if submission_id_param else str(uuid.uuid4())
@@ -217,7 +248,6 @@ def lambda_handler(event, context):
             judge_type = problem_data.get('judgeType', 'equal')
             epsilon_str = problem_data.get('epsilon')
             
-            # Ensure timeLimitSeconds is correctly parsed as a number
             time_limit_from_db = problem_data.get('timeLimitSeconds', 2)
             problem_time_limit_seconds = float(time_limit_from_db) if isinstance(time_limit_from_db, (int, float, Decimal)) else 2.0
 
@@ -253,14 +283,13 @@ def lambda_handler(event, context):
                         try:
                             run_code_result = run_single_test_case(user_code, case_input, language, problem_time_limit_seconds)
 
-                            # Check if run_single_test_case itself returned an error (e.g. runCode lambda failure)
                             if run_code_result.get('runCodeLambdaError'):
                                 case_status = "INTERNAL_ERROR"
                                 case_stderr = run_code_result.get('errorMessage', 'runCode Lambda execution error')
                                 if error_message_for_submission is None:
                                     error_message_for_submission = f"Case {case_number}: {case_stderr}"
                                 overall_status = "INTERNAL_ERROR"
-                                break # Stop grading
+                                break 
 
                             case_exec_time_ms = run_code_result.get('executionTimeMs', 0)
                             if case_exec_time_ms > max_execution_time_ms:
@@ -287,7 +316,7 @@ def lambda_handler(event, context):
                                     except json.JSONDecodeError:
                                         case_status = "RUNTIME_ERROR"
                                         case_stderr = "Output from solution was not valid JSON: " + actual_output_str[:200]
-                                else: # No stdout, successful execution
+                                else: 
                                     if expected_output is None or expected_output == "":
                                          case_status = "ACCEPTED"
                                     else:
@@ -321,16 +350,16 @@ def lambda_handler(event, context):
         submission_item = {
             'submissionId': submission_id, 
             'problemId': problem_id, 
-            'userId': user_id,  # Add userId to submission item
-            'author': author, # Add author to submission item
+            'userId': user_id,  # Use userId from claims
+            'author': author, # Use author from claims
             'language': language,
             'status': overall_status, 
             'executionTime': float_to_decimal(max_execution_time_ms / 1000.0),
             'results': final_results_list, 
             'submissionTime': submission_time,
-            'userCode': user_code[:10000],
+            'userCode': user_code[:10000], # Truncate user code if too long
             'errorMessage': error_message_for_submission if error_message_for_submission else None,
-            'is_submission': IS_SUBMISSION_VALUE  # Add is_submission field for GSI
+            'is_submission': IS_SUBMISSION_VALUE
         }
         submission_item_cleaned = {k: v for k, v in submission_item.items() if v is not None}
 
@@ -340,21 +369,28 @@ def lambda_handler(event, context):
             print(f"Submission {submission_id} saved to DynamoDB with status: {overall_status}")
         except Exception as db_err:
             print(f"Error saving submission {submission_id} to DynamoDB: {str(db_err)}")
+            # Update error message only if it's not already an internal error or if no message exists
             if overall_status != "INTERNAL_ERROR" and error_message_for_submission is None:
                 error_message_for_submission = f"Failed to save submission result to DB: {str(db_err)}"
+            # If already an internal error, don't overwrite potentially more specific message.
 
         final_response_body = {
             'submissionId': submission_id, 'status': overall_status,
             'executionTime': max_execution_time_ms / 1000.0, # Seconds
-            'results': submission_item_cleaned.get('results'),
+            'results': submission_item_cleaned.get('results'), # Use cleaned results
             'errorMessage': error_message_for_submission,
             'executionMode': "GRADE_SUBMISSION_RESULTS"
         }
         return {
             'statusCode': 200,
+            'headers': {'Content-Type': 'application/json', **CORS_HEADERS},
             'body': json.dumps(final_response_body, default=lambda o: str(o) if isinstance(o, Decimal) else o)
         }
     else:
-        # Should not happen if input validation for executionMode is correct
+        # This case should ideally not be reached if executionMode is validated earlier
         print(f"Unknown executionMode: {execution_mode}")
-        return {'statusCode': 400, 'body': json.dumps({'error': f'Unknown executionMode: {execution_mode}'})}
+        return {
+            'statusCode': 400,
+            'headers': {'Content-Type': 'application/json', **CORS_HEADERS},
+            'body': json.dumps({'error': f'Unknown executionMode: {execution_mode}'})
+        }

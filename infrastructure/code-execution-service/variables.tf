@@ -108,3 +108,16 @@ variable "problem_generator_tfstate_key" {
   type        = string
   default     = "problem-generator-v3/terraform.tfstate"
 }
+
+# Cognito remote state config
+variable "cognito_tfstate_bucket" {
+  description = "S3 bucket for cognito terraform state"
+  type        = string
+  default     = "alpaco-tfstate-bucket-kmu" # Should be same as other modules using cognito state
+}
+
+variable "cognito_tfstate_key" {
+  description = "S3 key for cognito terraform state"
+  type        = string
+  default     = "cognito/terraform.tfstate" # Standard key for cognito state
+}

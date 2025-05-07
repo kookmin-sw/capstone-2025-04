@@ -1,3 +1,13 @@
+# --- Remote State for Cognito ---
+data "terraform_remote_state" "cognito" {
+  backend = "s3"
+  config = {
+    bucket = var.cognito_tfstate_bucket
+    key    = var.cognito_tfstate_key
+    region = var.aws_region
+  }
+}
+
 resource "aws_api_gateway_rest_api" "grader_api" {
   name        = "${var.project_name}-CodeGraderAPI-${var.environment}"
   description = "API Gateway for the Code Grader Lambda"
@@ -5,6 +15,16 @@ resource "aws_api_gateway_rest_api" "grader_api" {
     types = ["REGIONAL"]
   }
   tags = var.common_tags
+}
+
+# --- Cognito Authorizer ---
+resource "aws_api_gateway_authorizer" "cognito_auth_grader" {
+  name                   = "${var.project_name}-GraderCognitoAuthorizer-${var.environment}"
+  rest_api_id            = aws_api_gateway_rest_api.grader_api.id
+  type                   = "COGNITO_USER_POOLS"
+  identity_source        = "method.request.header.Authorization"
+  provider_arns          = [data.terraform_remote_state.cognito.outputs.cognito_user_pool_arn]
+  # authorizer_result_ttl_in_seconds = 300 # Optional caching
 }
 
 resource "aws_api_gateway_resource" "grade_resource" {
@@ -16,8 +36,9 @@ resource "aws_api_gateway_resource" "grade_resource" {
 resource "aws_api_gateway_method" "grade_post" {
   rest_api_id   = aws_api_gateway_rest_api.grader_api.id
   resource_id   = aws_api_gateway_resource.grade_resource.id
-  http_method   = "POST" # 채점 요청은 POST가 적합
-  authorization = "NONE" # 필요에 따라 "AWS_IAM" 또는 Cognito Authorizer 등으로 변경
+  http_method   = "POST"
+  authorization = "COGNITO_USER_POOLS" # Apply Cognito Authorizer
+  authorizer_id = aws_api_gateway_authorizer.cognito_auth_grader.id
 }
 
 resource "aws_api_gateway_integration" "grade_post_lambda_integration" {
@@ -68,9 +89,9 @@ resource "aws_api_gateway_integration_response" "grade_options_integration_200" 
   http_method = aws_api_gateway_method.grade_options.http_method
   status_code = aws_api_gateway_method_response.grade_options_200.status_code
   response_parameters = {
-    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'",
-    "method.response.header.Access-Control-Allow-Methods" = "'POST,OPTIONS'",
-    "method.response.header.Access-Control-Allow-Origin"  = "'*'" # 실제 운영 환경에서는 특정 Origin으로 제한
+    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'", # Ensure Authorization is allowed
+    "method.response.header.Access-Control-Allow-Methods" = "'GET,POST,OPTIONS'", # Include all methods you want to allow
+    "method.response.header.Access-Control-Allow-Origin"  = "'*'" # Consider restricting this to specific origins in production
   }
   response_templates = {
     "application/json" = ""
@@ -89,6 +110,9 @@ resource "aws_api_gateway_deployment" "grader_api_deployment" {
       aws_api_gateway_method.grade_post.id,
       aws_api_gateway_integration.grade_post_lambda_integration.id,
       aws_api_gateway_method.grade_options.id,
+      aws_api_gateway_authorizer.cognito_auth_grader.id, # Add authorizer to triggers
+      aws_api_gateway_gateway_response.cors_4xx.id,
+      aws_api_gateway_gateway_response.cors_5xx.id,
     ]))
   }
   lifecycle {
@@ -119,6 +143,30 @@ resource "aws_api_gateway_stage" "grader_api_stage" {
     })
   }
   depends_on = [aws_api_gateway_account.grader_apigw_account, aws_cloudwatch_log_group.grader_api_gateway_logs]
+}
+
+# Add a gateway response for DEFAULT_4XX to add CORS headers to error responses
+resource "aws_api_gateway_gateway_response" "cors_4xx" {
+  rest_api_id   = aws_api_gateway_rest_api.grader_api.id
+  response_type = "DEFAULT_4XX"
+  
+  response_parameters = {
+    "gatewayresponse.header.Access-Control-Allow-Origin" = "'*'"
+    "gatewayresponse.header.Access-Control-Allow-Headers" = "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
+    "gatewayresponse.header.Access-Control-Allow-Methods" = "'GET,POST,OPTIONS'"
+  }
+}
+
+# Add a gateway response for DEFAULT_5XX to add CORS headers to error responses
+resource "aws_api_gateway_gateway_response" "cors_5xx" {
+  rest_api_id   = aws_api_gateway_rest_api.grader_api.id
+  response_type = "DEFAULT_5XX"
+  
+  response_parameters = {
+    "gatewayresponse.header.Access-Control-Allow-Origin" = "'*'"
+    "gatewayresponse.header.Access-Control-Allow-Headers" = "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
+    "gatewayresponse.header.Access-Control-Allow-Methods" = "'GET,POST,OPTIONS'"
+  }
 }
 
 resource "aws_api_gateway_method_settings" "grader_api_all_methods_settings" {
