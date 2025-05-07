@@ -30,7 +30,7 @@ export const handler = async (event) => {
   try {
     const { postId } = event.pathParameters || {}; // Use || {} for safety
     const body = JSON.parse(event.body || "{}");
-    const { content } = body;
+    const { content, author } = body;
 
     if (!content) {
       return {
@@ -51,7 +51,6 @@ export const handler = async (event) => {
       };
     }
 
-    const author = claims["given_name"] || claims["cognito:username"] || "익명";
     const userId = claims.sub;
     const commentId = uuidv4();
     const createdAt = new Date().toISOString();

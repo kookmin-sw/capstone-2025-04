@@ -16,11 +16,13 @@ import {
   PostDetail,
   Comment,
 } from "@/api/communityApi"; // Import API functions and types
+import { fetchUserAttributes } from "aws-amplify/auth";
 // Remove dummy data function
 
 interface CommunityDetailProps {
   id: string;
 }
+
 const CommunityDetail: React.FC<CommunityDetailProps> = ({ id }) => {
   const router = useRouter();
   const { user, authStatus } = useAuthenticator((context) => [
@@ -30,7 +32,7 @@ const CommunityDetail: React.FC<CommunityDetailProps> = ({ id }) => {
   const isAuthenticated = authStatus === "authenticated";
   console.log("user:", user);
   const currentUserId = user?.userId; // Or use signInDetails?.loginId depending on config
-
+  
   const [post, setPost] = useState<PostDetail | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [commentCount, setCommentCount] = useState(0);
@@ -136,7 +138,9 @@ const CommunityDetail: React.FC<CommunityDetailProps> = ({ id }) => {
 
     setIsSubmittingComment(true);
     try {
-      await createComment(id, { content: newComment });
+      const userAttributes = await fetchUserAttributes();
+      const author = userAttributes.nickname || userAttributes.cognito_username || "익명";
+      await createComment(id, { content: newComment, author });
       toast.success("댓글이 성공적으로 등록되었습니다.");
       setNewComment(""); // Clear input
       // Refetch comments to show the new one
