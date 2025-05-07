@@ -1,5 +1,5 @@
 {
-  "name": "problem-generator-v2",
+  "name": "problem-generator-v3",
   "version": "1.0.0",
   "description": "Lambda function to generate coding problems using LLMs with SSE",
   "main": "index.mjs",
