@@ -96,15 +96,15 @@ variable "submissions_table_name_override" {
   default     = ""
 }
 
-# Problem Generator v2 remote state config
+# Problem Generator v3 remote state config
 variable "problem_generator_tfstate_bucket" {
-  description = "S3 bucket for problem-generator-v2 terraform state"
+  description = "S3 bucket for problem-generator-v3 terraform state"
   type        = string
   default     = "alpaco-tfstate-bucket-kmu"
 }
 
 variable "problem_generator_tfstate_key" {
-  description = "S3 key for problem-generator-v2 terraform state"
+  description = "S3 key for problem-generator-v3 terraform state"
   type        = string
-  default     = "problem-generator-v2/terraform.tfstate"
+  default     = "problem-generator-v3/terraform.tfstate"
 }

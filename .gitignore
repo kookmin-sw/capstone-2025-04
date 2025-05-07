@@ -100,6 +100,7 @@ infrastructure/cognito/post_confirmation_lambda.zip
 
 infrastructure/api/lambda_zips/*.zip
 infrastructure/problems-api/lambda_zips/*.zip
+infrastructure/problem-generator-v3/problem_generator_v3_lambda.zip
 problem_generator_v2_lambda.zip
 problem_generator_deps.zip
 code_executor.zip
