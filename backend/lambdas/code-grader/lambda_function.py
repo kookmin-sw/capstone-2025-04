@@ -103,10 +103,20 @@ def lambda_handler(event, context):
             payload = json.loads(body_str) if isinstance(body_str, str) else body_str
         else:
             payload = event
+            
+        # API Gateway JWT Authorizer claims
+        claims = event.get('requestContext', {}).get('authorizer', {}).get('claims', {})
+        if not claims or not claims.get('cognito:username') or not claims.get('sub'):
+            print("❌ Missing or invalid claims:", claims)
+            return {
+                'statusCode': 401,
+                'headers': {'Content-Type': 'application/json'},
+                'body': json.dumps({'message': '인증 정보가 없습니다.'})
+            }
+        user_id = claims.get('sub')  # Extract userId from payload
 
         execution_mode = payload.get('executionMode', "GRADE_SUBMISSION") # "GRADE_SUBMISSION" or "RUN_CUSTOM_TESTS"
         problem_id = payload.get('problemId') # Needed for GRADE_SUBMISSION, optional for RUN_CUSTOM_TESTS (for time_limit)
-        user_id = payload.get('userId')  # Extract userId from payload
         user_code = payload.get('userCode')
         language = payload.get('language', 'python3.12')
         submission_id_param = payload.get('submissionId')

@@ -106,3 +106,5 @@ problem_generator_deps.zip
 # cursor
 .cursor/
 
+# local problem gen results
+problem-gen-result-*.json
