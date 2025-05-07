@@ -65,7 +65,7 @@ variable "generator_verbose" {
 variable "gemini_model_name" {
   description = "The specific Gemini model to use"
   type        = string
-  default     = "gemini-2.5-pro-exp-03-25" # Updated default to match local-test.mjs
+  default     = "gemini-2.5-flash-preview-04-17" #  "gemini-2.5-pro-exp-03-25"
 }
 
 variable "code_executor_lambda_arn" {

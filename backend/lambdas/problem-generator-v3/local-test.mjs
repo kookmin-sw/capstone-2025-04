@@ -1,7 +1,7 @@
 /**
  * local-test.mjs
  * 
- * 로컬 환경에서 problem-generator-v2 파이프라인을 테스트하기 위한 스크립트입니다.
+ * 로컬 환경에서 problem-generator-v3 파이프라인을 테스트하기 위한 스크립트입니다.
  * AWS Lambda의 streamifyResponse를 시뮬레이션하여 테스트합니다.
  */
 
@@ -9,16 +9,17 @@
 const args = process.argv.slice(2);
 
 // DynamoDB 모킹 설정
-const useMockDynamoDB = args.includes('mock');
-const useRealDynamoDB = args.includes('real');
+const argIncludesMock = args.includes('mock');
+const argIncludesReal = args.includes('real');
 
 // 환경 변수 설정 (다른 모듈에서도 참조할 수 있도록)
-if (useMockDynamoDB) {
+// 이 부분은 .env 및 DEFAULT_ENV 로딩 후 최종 결정됩니다.
+if (argIncludesMock) {
   process.env.MOCK_DYNAMODB = 'true';
-  console.log('🤖 DynamoDB 모킹 모드로 자동 실행합니다.');
-} else if (useRealDynamoDB) {
+  console.log('🗣️ Command line argument "mock" received, setting MOCK_DYNAMODB=true.');
+} else if (argIncludesReal) {
   process.env.MOCK_DYNAMODB = 'false';
-  console.log('🤖 실제 DynamoDB 연결 모드로 자동 실행합니다.');
+  console.log('🗣️ Command line argument "real" received, setting MOCK_DYNAMODB=false.');
 }
 
 import { pipeline } from './src/services/pipeline.mjs';
@@ -27,7 +28,7 @@ import fs from 'fs';
 import path from 'path';
 import dotenv from 'dotenv';
 import readline from 'readline';
-import { initDynamoDBClient } from './src/services/dynamoClient.mjs';
+import { initDynamoDBClient } from './src/services/dynamoClient.mjs'; // 이제 async 함수
 
 // 기본 환경 변수 설정
 const DEFAULT_ENV = {
@@ -44,17 +45,20 @@ const DEFAULT_ENV = {
 const envPath = path.resolve('.env');
 if (fs.existsSync(envPath)) {
   console.log('🔄 Loading environment variables from .env file');
-  dotenv.config();
-} else {
-  console.warn('⚠️ .env file not found, using default configuration');
-  // 기본 환경 변수 설정
-  Object.entries(DEFAULT_ENV).forEach(([key, value]) => {
-    if (!process.env[key]) {
-      process.env[key] = value;
-      console.log(`🔧 Setting default ${key}=${value}`);
-    }
-  });
+  dotenv.config(); // .env 파일이 MOCK_DYNAMODB를 덮어쓸 수 있음
 }
+
+// 기본 환경 변수 설정 (process.env에 아직 설정되지 않은 경우에만)
+Object.entries(DEFAULT_ENV).forEach(([key, value]) => {
+  if (!process.env[key]) {
+    process.env[key] = value;
+    console.log(`🔧 Setting default ${key}=${value} (as it was not previously set by arg or .env)`);
+  }
+});
+
+// 최종 MOCK_DYNAMODB 설정 로깅
+console.log(`⚙️ Final MOCK_DYNAMODB setting before execution: ${process.env.MOCK_DYNAMODB}`);
+
 
 // 필수 환경 변수 확인
 if (!process.env.GOOGLE_AI_API_KEY) {
@@ -62,15 +66,13 @@ if (!process.env.GOOGLE_AI_API_KEY) {
   console.error('Please set it in your .env file or environment variables');
   process.exit(1);
 } else {
-  // 기본 환경 변수가 올바르게 설정되었는지 디버그 출력
   console.log('✅ GOOGLE_AI_API_KEY is set (length:', process.env.GOOGLE_AI_API_KEY.length, ')');
-  // API 키의 처음 몇 자만 표시하여 확인
   if (process.env.GOOGLE_AI_API_KEY.length > 5) {
     console.log('   First few chars:', process.env.GOOGLE_AI_API_KEY.substring(0, 5) + '...');
   }
 }
 
-// AWS Lambda responseStream을 시뮬레이션하는 클래스
+// AWS Lambda responseStream을 시뮬레이션하는 클래스 (변경 없음)
 class MockResponseStream extends Readable {
   constructor(options = {}) {
     super({ ...options, objectMode: true });
@@ -78,30 +80,23 @@ class MockResponseStream extends Readable {
     this._isClosed = false;
   }
 
-  // Lambda responseStream의 write 메소드 시뮬레이션
   write(chunk) {
     if (this._isClosed) return;
-    
-    // 청크를 저장하고 콘솔에 출력
     this.chunks.push(chunk);
-    
-    // SSE 포맷으로 출력되는 경우, 파싱하여 보기 좋게 출력
     try {
       const dataStr = chunk.toString();
       if (dataStr.startsWith('data: ')) {
-        const jsonStr = dataStr.substring(6); // 'data: ' 제거
+        const jsonStr = dataStr.substring(6);
         const data = JSON.parse(jsonStr);
-        
         if (data.type === 'status') {
           console.log(`🔄 Step ${data.payload.step}: ${data.payload.message}`);
         } else if (data.type === 'error') {
-          console.error(`❌ Error: ${data.payload}`);
+          console.error(`❌ Error: ${data.payload.payload}`); // Error payload is nested
         } else if (data.type === 'result') {
           console.log('✅ Result received!');
-          // 결과를 파일로 저장
           fs.writeFileSync(
             `problem-gen-result-${Date.now()}.json`, 
-            JSON.stringify(data.payload, null, 2),
+            JSON.stringify(data.payload.payload, null, 2), // Result payload is nested
             'utf8'
           );
           console.log(`💾 Result saved to file.`);
@@ -112,11 +107,9 @@ class MockResponseStream extends Readable {
     } catch (e) {
       console.log(`Raw chunk: ${chunk}`);
     }
-    
     return true;
   }
 
-  // Lambda responseStream의 end 메소드 시뮬레이션
   end() {
     if (this._isClosed) return;
     this._isClosed = true;
@@ -124,10 +117,7 @@ class MockResponseStream extends Readable {
     console.log('🏁 Stream ended');
   }
 
-  // Node.js Readable의 필수 구현 메소드
-  _read() {
-    // 필요한 경우 여기서 데이터를 push
-  }
+  _read() {}
 }
 
 /**
@@ -147,10 +137,11 @@ async function runTest(eventData) {
   console.log(`  - MOCK_DYNAMODB: ${process.env.MOCK_DYNAMODB}`);
   console.log(`  - GOOGLE_AI_API_KEY: ${process.env.GOOGLE_AI_API_KEY ? '[SET]' : '[MISSING]'}`);
   
-  // 명시적으로 DynamoDB 클라이언트 초기화
+  // DynamoDB 클라이언트는 process.env.MOCK_DYNAMODB를 기반으로 초기화됩니다.
+  // initDynamoDBClient는 async 함수이므로 await를 사용해야 합니다.
   const useMock = process.env.MOCK_DYNAMODB === 'true';
-  console.log(`🔄 Explicitly initializing DynamoDB client in ${useMock ? 'MOCK' : 'REAL'} mode`);
-  initDynamoDBClient(useMock);
+  console.log(`🔄 Explicitly initializing DynamoDB client in ${useMock ? 'MOCK' : 'REAL'} mode for runTest`);
+  await initDynamoDBClient(useMock); // await 추가
   
   const mockResponseStream = new MockResponseStream();
   const mockContext = { awsRequestId: 'local-test-' + Date.now() };
@@ -179,40 +170,32 @@ async function promptAndRunTest() {
     console.log('🌟 Problem Generator V3 Local Testing Tool 🌟');
     console.log('------------------------------------------------------------');
     console.log('Environment setup:');
-    console.log(`- Using ${process.env.MOCK_DYNAMODB === 'true' ? 'MOCK' : 'REAL'} DynamoDB`);
+    console.log(`- Using ${process.env.MOCK_DYNAMODB === 'true' ? 'MOCK' : 'REAL'} DynamoDB (based on current env)`);
     console.log(`- Google AI Model: ${process.env.GEMINI_MODEL_NAME}`);
     console.log('------------------------------------------------------------');
     
-    // 프롬프트, 난이도 등 입력 받기
     const prompt = await question('문제 생성 프롬프트를 입력하세요: ');
     const difficulty = await question('난이도를 입력하세요 (Easy, Medium, Hard) [Medium]: ') || 'Medium';
     const creatorId = await question('작성자 ID를 입력하세요 (선택사항): ');
     const author = await question('작성자 이름을 입력하세요 (선택사항): ');
     
-    // 생성된 이벤트 객체
     const eventData = {
-      body: {
-        prompt,
-        difficulty, 
-        creatorId,
-        author
-      }
+      body: { prompt, difficulty, creatorId, author }
     };
     
-    // 모킹 모드 확인
-    const useMock = await question('DynamoDB 모킹을 사용하시겠습니까? (y/n) [y]: ');
-    if (useMock.toLowerCase() === 'n') {
+    const useMockInput = await question(`DynamoDB 모킹을 사용하시겠습니까? (y/n) [current: ${process.env.MOCK_DYNAMODB === 'true' ? 'y' : 'n'}]: `) || (process.env.MOCK_DYNAMODB === 'true' ? 'y' : 'n');
+    if (useMockInput.toLowerCase() === 'n') {
       process.env.MOCK_DYNAMODB = 'false';
       console.log('⚠️ DynamoDB 모킹을 비활성화합니다. 실제 AWS 자격 증명이 필요합니다.');
-      initDynamoDBClient(false);
+      await initDynamoDBClient(false); // await 추가
     } else {
       process.env.MOCK_DYNAMODB = 'true';
       console.log('✅ DynamoDB 모킹을 활성화합니다.');
-      initDynamoDBClient(true);
+      await initDynamoDBClient(true); // await 추가
     }
     
     console.log('\n📝 테스트를 시작합니다...');
-    await runTest(eventData);
+    await runTest(eventData); // runTest 내부에서 initDynamoDBClient가 다시 호출될 수 있지만, mockMode가 이미 설정되어 문제는 없습니다.
     
   } catch (error) {
     console.error('💥 Error occurred:', error);
@@ -221,38 +204,31 @@ async function promptAndRunTest() {
   }
 }
 
-// 테스트를 위한 샘플 이벤트 - 직접 수정 가능
+// 테스트를 위한 샘플 이벤트
 const sampleEvent = {
   body: {
-    // prompt: "정수 배열에서 가장 긴 연속된 증가 부분 수열의 길이를 찾는 문제",
-    // prompt: "그래프 문제 아무거나",
-    // prompt: "다이나믹 프로그래밍 기본 문제를 생성해 주세요.",
-    // prompt: "DFS와 BFS를 활용한 그래프 문제를 생성해 주세요.",
-    // prompt: "효율적인 정렬 알고리즘을 활용하는 문제를 생성해 주세요.",
-    // prompt: "이진 탐색 알고리즘을 활용하는 문제를 생성해 주세요.",
-    // prompt: "그리디 알고리즘 접근법을 사용하는 문제를 생성해 주세요.",
     prompt: "문자열 처리 문제를 생성해 주세요.",
-    // prompt: "트리 구조를 활용하는 문제를 생성해 주세요.",
-    // prompt: "그래프 탐색 문제를 생성해 주세요.",
-    // prompt: "배낭문제 하나 부탁해.",
-    // prompt: "동전 문제 만들어줘.",
     difficulty: "Medium",
     creatorId: "test-user",
     author: "Local Tester"
   }
 };
 
-// 명령줄 인자에 따라 실행 모드 결정
-if (args.includes('auto')) {
-  console.log('🤖 자동 테스트 모드로 실행합니다.');
-  initDynamoDBClient(useMockDynamoDB);
-  runTest(sampleEvent);
-} else if (useMockDynamoDB) {
-  initDynamoDBClient(true);
-  runTest(sampleEvent);
-} else if (useRealDynamoDB) {
-  initDynamoDBClient(false);
-  runTest(sampleEvent);
-} else {
-  promptAndRunTest();
-} 
+// 메인 실행 로직
+(async () => {
+  // process.env.MOCK_DYNAMODB는 이미 위에서 args, .env, defaults 순으로 설정되었습니다.
+  // initDynamoDBClient는 runTest 또는 promptAndRunTest 내부에서 호출됩니다.
+
+  if (args.includes('auto') || argIncludesMock || argIncludesReal) {
+    // 'auto', 'mock', 'real' 중 하나라도 있으면 non-interactive 모드로 간주
+    // MOCK_DYNAMODB 환경 변수는 이미 설정되어 있음
+    // runTest 내부에서 initDynamoDBClient가 호출됨
+    console.log(`🤖 Non-interactive mode. DynamoDB Mock: ${process.env.MOCK_DYNAMODB}.`);
+    // 명시적으로 한번 여기서 init 하고 runTest 안에서 다시 init 해도 괜찮음.
+    // 또는 runTest 안에서만 init 하게끔 통일. 여기선 runTest에 맡기는 것으로.
+    await runTest(sampleEvent);
+  } else {
+    // 그 외의 경우 (인자 없음 등) 대화형 모드 실행
+    await promptAndRunTest();
+  }
+})();

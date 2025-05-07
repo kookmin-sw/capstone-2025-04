@@ -7,16 +7,17 @@ const mockAwsLambda = {
       // Just return the original stream in local testing with the metadata attached
       responseStream.metadata = metadata;
       return responseStream;
-    }
-  }
+    },
+  },
 };
 
 // Use the AWS Lambda object if available, otherwise use mock
-const lambdaRuntime = typeof awslambda !== 'undefined' ? awslambda : mockAwsLambda;
+const lambdaRuntime =
+  typeof awslambda !== "undefined" ? awslambda : mockAwsLambda;
 
 /**
  * Initializes an SSE response stream with appropriate headers.
- * 
+ *
  * @param {awslambda.ResponseStream} responseStream - The raw Lambda response stream.
  * @returns {awslambda.HttpResponseStream} Configured HTTP response stream.
  */
@@ -35,15 +36,16 @@ export function initializeSseStream(responseStream) {
 
 /**
  * Sends an SSE message to the response stream.
- * 
+ *
  * @param {awslambda.HttpResponseStream} stream - The response stream.
  * @param {string} eventType - The event type (e.g., 'status', 'result', 'error').
  * @param {object} payload - The JSON payload for the event.
  */
 export function sendSse(stream, eventType, payload) {
-  const data = JSON.stringify(payload);
-  const message = `data: ${JSON.stringify({type: eventType, payload})}\n\n`;
+  // v2와 동일한 형식으로 수정
+  const message = `event: ${eventType}\ndata: ${JSON.stringify(payload)}\n\n`;
   stream.write(message);
+
   if (GENERATOR_VERBOSE) {
     console.log(`SSE Sent: ${eventType} - Payload:`, payload);
   }
@@ -51,7 +53,7 @@ export function sendSse(stream, eventType, payload) {
 
 /**
  * Sends a status update via SSE.
- * 
+ *
  * @param {awslambda.HttpResponseStream} stream - The response stream.
  * @param {number} step - The current step number.
  * @param {string} message - The status message.
@@ -62,26 +64,29 @@ export function sendStatus(stream, step, message) {
 
 /**
  * Sends an error message via SSE.
- * 
+ *
  * @param {awslambda.HttpResponseStream} stream - The response stream.
  * @param {string|Error} error - The error message or Error object.
  */
 export function sendError(stream, error) {
   // Convert Error objects or anything else to a string message
-  const errorMessage = error instanceof Error 
-    ? error.message 
-    : (typeof error === 'object' ? JSON.stringify(error) : String(error));
-  
+  const errorMessage =
+    error instanceof Error
+      ? error.message
+      : typeof error === "object"
+        ? JSON.stringify(error)
+        : String(error);
+
   sendSse(stream, "error", { payload: errorMessage });
   console.error("Error in pipeline:", errorMessage);
 }
 
 /**
  * Sends a final result via SSE.
- * 
+ *
  * @param {awslambda.HttpResponseStream} stream - The response stream.
  * @param {object} result - The result object.
  */
 export function sendResult(stream, result) {
   sendSse(stream, "result", { payload: result });
-} 
+}

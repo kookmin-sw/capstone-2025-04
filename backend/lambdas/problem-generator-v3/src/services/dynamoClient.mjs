@@ -6,56 +6,56 @@ import {
   GetCommand,
 } from "@aws-sdk/lib-dynamodb";
 import { PROBLEMS_TABLE_NAME, GENERATOR_VERBOSE } from "../utils/constants.mjs";
-import { 
-  createMockDynamoDBClient, 
-  createMockDynamoDBDocumentClient 
-} from '../../mock-dynamodb.mjs';
+// Removed static import of mock-dynamodb.mjs
 
 // DynamoDB 클라이언트와 관련 설정
 let dynamoDBClient = null;
 let docClient = null;
-let mockMode = null;
+let mockMode = null; // 현재 모드 추적용
 
 /**
  * DynamoDB 클라이언트 초기화 (실제 또는 모킹)
- * 
+ *
  * @param {boolean} useMock - 모킹 모드 사용 여부
  */
-export function initDynamoDBClient(useMock = false) {
+export async function initDynamoDBClient(useMock = false) { // async로 변경
   console.log(`🔧 Initializing DynamoDB client in ${useMock ? 'MOCK' : 'REAL'} mode`);
-  
-  mockMode = useMock;
-  
+  mockMode = useMock; // 모드 저장
+
   if (useMock) {
     try {
-      dynamoDBClient = createMockDynamoDBClient();
-      docClient = createMockDynamoDBDocumentClient();
+      // 동적 import 사용
+      const mockModule = await import('../../mock-dynamodb.mjs');
+      dynamoDBClient = mockModule.createMockDynamoDBClient();
+      docClient = mockModule.createMockDynamoDBDocumentClient();
       console.log('✅ Mock DynamoDB clients initialized successfully');
     } catch (error) {
-      console.error('❌ Failed to initialize mock DynamoDB clients:', error);
+      console.error('❌ Failed to initialize mock DynamoDB clients (dynamic import failed):', error);
+      // 이 오류는 일반적으로 mock-dynamodb.mjs 파일 자체에 문제가 있거나 경로가 잘못된 경우에만 발생해야 합니다.
+      // Lambda 환경에서 useMock이 false이면 이 블록은 실행되지 않습니다.
       throw error;
     }
   } else {
-    dynamoDBClient = new DynamoDBClient({
-      region: 'ap-northeast-2',
-    });
+    // 실제 DynamoDB 클라이언트 초기화
+    const region = process.env.AWS_REGION || 'ap-northeast-2'; // 환경 변수 또는 기본값 사용
+    dynamoDBClient = new DynamoDBClient({ region });
     docClient = DynamoDBDocumentClient.from(dynamoDBClient);
-    console.log('✅ Real DynamoDB clients initialized successfully');
+    console.log(`✅ Real DynamoDB clients initialized successfully for region ${region}`);
   }
-  
+
   return { dynamoDBClient, docClient };
 }
 
 /**
  * 클라이언트 상태 확인 및 필요시 초기화
  */
-function ensureClients() {
+async function ensureClients() { // async로 변경
   // 클라이언트가 초기화되지 않은 경우 기본값으로 초기화
   if (!dynamoDBClient || !docClient) {
     // 환경 변수 확인 (나중에 설정된 경우를 대비)
     const envMockSetting = process.env.MOCK_DYNAMODB === 'true';
-    console.log(`⚠️ DynamoDB clients not initialized, auto-initializing in ${envMockSetting ? 'MOCK' : 'REAL'} mode`);
-    initDynamoDBClient(envMockSetting);
+    console.log(`⚠️ DynamoDB clients not initialized, auto-initializing in ${envMockSetting ? 'MOCK' : 'REAL'} mode based on MOCK_DYNAMODB env var.`);
+    await initDynamoDBClient(envMockSetting); // await 추가
   }
 }
 
@@ -64,11 +64,11 @@ function ensureClients() {
  * @param {Object} item - The problem item to create.
  * @returns {Promise<void>}
  */
-export async function createProblem(item) {
-  ensureClients();
-  
+export async function createProblem(item) { // async로 변경
+  await ensureClients(); // await 추가
+
   console.log(`📝 Creating problem record: ${item.problemId} (Mock: ${mockMode ? 'YES' : 'NO'})`);
-  
+
   try {
     const putCommand = new PutCommand({
       TableName: PROBLEMS_TABLE_NAME,
@@ -84,7 +84,7 @@ export async function createProblem(item) {
       console.warn(
         `Problem ID ${item.problemId} already exists. Restarting generation.`
       );
-      await updateProblemStatus(item.problemId, {
+      await updateProblemStatus(item.problemId, { // await 추가
         generationStatus: "restarted",
       });
     } else {
@@ -102,9 +102,9 @@ export async function createProblem(item) {
  * @param {Object} updates - The updates to apply to the problem record.
  * @returns {Promise<void>}
  */
-export async function updateProblemStatus(problemId, updates) {
-  ensureClients();
-  
+export async function updateProblemStatus(problemId, updates) { // async로 변경
+  await ensureClients(); // await 추가
+
   if (!problemId || Object.keys(updates).length === 0) {
     console.warn("⚠️ Skipping DynamoDB update: Missing problemId or updates.");
     return;
@@ -116,13 +116,10 @@ export async function updateProblemStatus(problemId, updates) {
   const expressionAttributeNames = {};
   const expressionAttributeValues = {};
 
-  // Dynamically build the update expression parts
   for (const [key, value] of Object.entries(updates)) {
-    // Skip undefined values
     if (value === undefined) {
       continue;
     }
-    
     const namePlaceholder = `#${key}`;
     const valuePlaceholder = `:${key}Val`;
     updateExpressionParts.push(`${namePlaceholder} = ${valuePlaceholder}`);
@@ -130,7 +127,6 @@ export async function updateProblemStatus(problemId, updates) {
     expressionAttributeValues[valuePlaceholder] = value;
   }
 
-  // If there are no updates after filtering undefined values, skip the operation
   if (updateExpressionParts.length === 0) {
     console.warn("⚠️ Skipping DynamoDB update: No valid updates after filtering undefined values.");
     return;
@@ -146,7 +142,7 @@ export async function updateProblemStatus(problemId, updates) {
     UpdateExpression: updateExpression,
     ExpressionAttributeNames: expressionAttributeNames,
     ExpressionAttributeValues: expressionAttributeValues,
-    ReturnValues: "NONE", // Or "UPDATED_NEW" if needed
+    ReturnValues: "NONE",
   });
 
   try {
@@ -158,9 +154,7 @@ export async function updateProblemStatus(problemId, updates) {
     }
   } catch (error) {
     console.error(`❌ Error updating DynamoDB for ${problemId}:`, error);
-    // Add more detail to help with debugging
     console.error(`❌ Update details: Expression='${updateExpression}', Values=${JSON.stringify(expressionAttributeValues)}`);
-    // Not making it fatal, just log the error
   }
 }
 
@@ -169,11 +163,11 @@ export async function updateProblemStatus(problemId, updates) {
  * @param {string} problemId - The problem ID to retrieve.
  * @returns {Promise<Object>} The problem record.
  */
-export async function getProblem(problemId) {
-  ensureClients();
-  
+export async function getProblem(problemId) { // async로 변경
+  await ensureClients(); // await 추가
+
   console.log(`🔍 Getting problem record: ${problemId} (Mock: ${mockMode ? 'YES' : 'NO'})`);
-  
+
   try {
     const command = new GetCommand({
       TableName: PROBLEMS_TABLE_NAME,
@@ -187,4 +181,4 @@ export async function getProblem(problemId) {
     console.error(`❌ Error getting problem ${problemId}:`, error);
     throw new Error(`Failed to retrieve problem: ${error.message}`);
   }
-} 
+}
