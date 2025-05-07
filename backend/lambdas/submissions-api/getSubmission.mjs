@@ -17,6 +17,7 @@ const corsHeaders = {
 const GSI_PROBLEM_ID_TIME = "ProblemIdSubmissionTimeIndex";
 const GSI_USER_ID_TIME = "UserIdSubmissionTimeIndex";
 const GSI_ALL_SUBMISSIONS_TIME = "AllSubmissionsByTimeIndex"; // is_submission을 PK로 사용
+const GSI_AUTHOR_TIME = "AuthorSubmissionTimeIndex"; // author를 PK로 사용
 
 const DEFAULT_PAGE_SIZE = 20;
 
@@ -47,6 +48,7 @@ export const handler = async (event) => {
     const queryParams = event.queryStringParameters || {};
     const userId = queryParams.userId;
     const problemId = queryParams.problemId;
+    const author = queryParams.author; // author 파라미터 추가
     const pageSize = parseInt(queryParams.pageSize, 10) || DEFAULT_PAGE_SIZE;
     const sortOrder =
       queryParams.sortOrder?.toUpperCase() === "ASC" ? "ASC" : "DESC"; // 기본 DESC
@@ -58,7 +60,7 @@ export const handler = async (event) => {
       ScanIndexForward: sortOrder === "ASC", // ASC면 true, DESC면 false
       // 필요한 필드만 가져오도록 ProjectionExpression 설정 (성능 및 비용 최적화)
       ProjectionExpression:
-        "submissionId, problemId, userId, #s, submissionTime, executionTime, language, errorMessage",
+        "submissionId, problemId, userId, author, #s, submissionTime, executionTime, language, errorMessage", // author 추가
       ExpressionAttributeNames: {
         "#s": "status", // 'status'는 예약어일 수 있으므로 ExpressionAttributeNames 사용
       },
@@ -92,6 +94,14 @@ export const handler = async (event) => {
         ":userIdVal": userId,
         ":problemIdVal": problemId,
       };
+    } else if (author && problemId) { // author와 problemId가 있는 경우
+      params.IndexName = GSI_AUTHOR_TIME;
+      params.KeyConditionExpression = "author = :authorVal";
+      params.FilterExpression = "problemId = :problemIdVal";
+      params.ExpressionAttributeValues = {
+        ":authorVal": author,
+        ":problemIdVal": problemId,
+      };
     } else if (userId) {
       params.IndexName = GSI_USER_ID_TIME;
       params.KeyConditionExpression = "userId = :userIdVal";
@@ -100,6 +110,10 @@ export const handler = async (event) => {
       params.IndexName = GSI_PROBLEM_ID_TIME;
       params.KeyConditionExpression = "problemId = :problemIdVal";
       params.ExpressionAttributeValues = { ":problemIdVal": problemId };
+    } else if (author) { // author만 있는 경우
+      params.IndexName = GSI_AUTHOR_TIME;
+      params.KeyConditionExpression = "author = :authorVal";
+      params.ExpressionAttributeValues = { ":authorVal": author };
     } else {
       // 특정 필터가 없는 경우: 모든 제출물을 최신순으로 (AllSubmissionsByTimeIndex 사용)
       params.IndexName = GSI_ALL_SUBMISSIONS_TIME;

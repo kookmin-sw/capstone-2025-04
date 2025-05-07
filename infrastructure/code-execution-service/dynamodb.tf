@@ -21,6 +21,10 @@ resource "aws_dynamodb_table" "submissions_table" {
     type = "S"
   } # For GSI - userId가 저장된다고 가정
   attribute {
+    name = "author" # Add author attribute
+    type = "S"
+  } # For GSI - author (cognito:username)이 저장된다고 가정
+  attribute {
     name = "submissionTime"
     type = "N"
   } # For GSI
@@ -55,6 +59,14 @@ resource "aws_dynamodb_table" "submissions_table" {
   global_secondary_index {
     name               = "AllSubmissionsByTimeIndex" # GSI_ALL_SUBMISSIONS_TIME
     hash_key           = "is_submission" # 예: "Y"
+    range_key          = "submissionTime"
+    projection_type    = "INCLUDE"
+    non_key_attributes = ["submissionId", "problemId", "userId", "author", "status", "executionTime", "language"] # author 추가
+  }
+
+  global_secondary_index {
+    name               = "AuthorSubmissionTimeIndex" # GSI_AUTHOR_TIME
+    hash_key           = "author"
     range_key          = "submissionTime"
     projection_type    = "INCLUDE"
     non_key_attributes = ["submissionId", "problemId", "userId", "status", "executionTime", "language"] # 예시

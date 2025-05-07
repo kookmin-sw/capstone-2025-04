@@ -114,6 +114,7 @@ def lambda_handler(event, context):
                 'body': json.dumps({'message': '인증 정보가 없습니다.'})
             }
         user_id = claims.get('sub')  # Extract userId from payload
+        author = claims.get('nickname') # Extract author from claims
 
         execution_mode = payload.get('executionMode', "GRADE_SUBMISSION") # "GRADE_SUBMISSION" or "RUN_CUSTOM_TESTS"
         problem_id = payload.get('problemId') # Needed for GRADE_SUBMISSION, optional for RUN_CUSTOM_TESTS (for time_limit)
@@ -321,6 +322,7 @@ def lambda_handler(event, context):
             'submissionId': submission_id, 
             'problemId': problem_id, 
             'userId': user_id,  # Add userId to submission item
+            'author': author, # Add author to submission item
             'language': language,
             'status': overall_status, 
             'executionTime': float_to_decimal(max_execution_time_ms / 1000.0),
