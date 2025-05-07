@@ -10,6 +10,9 @@ Generate the solution code in {language} for the following problem intent and te
 Problem Goal:
 {analyzed_intent}
 
+Tie-Breaking Rule (if applicable):
+{tie_breaking_rule}
+
 Input Schema:
 {input_schema_description}
 
@@ -18,6 +21,7 @@ Test Specifications:
 
 Requirements:
 - The code must be correct and aim to pass all the specified test cases.
+- **If the problem definition (within problem goal or tie-breaking rule) specifies a rule for cases with multiple valid outputs, your solution MUST implement this rule precisely.**
 {feedback_section}
 
 - **CRITICAL:** The main logic must be encapsulated within a function named exactly *solution* that accepts a single argument representing the problem input.

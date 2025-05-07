@@ -30,6 +30,7 @@ Difficulty Level: {difficulty}
 
 Review Checklist:
 1. **Consistency:** Does the \`validatedSolutionCode\` correctly implement the \`goal\` described in the \`intent_json\`? Does it seem appropriate for the \`difficulty\` level? Are edge cases (including those involving duplicates, if specified in Input Schema) handled properly?
+   - **Tie-breaking Logic:** If the \`intent_json\` (via \`output_format_description\` or a specific \`tie_breaking_rule\` field) specifies a rule for ambiguous cases, does the \`validatedSolutionCode\` correctly implement it? Are the \`expected_output\` values in \`finalTestCases\` consistent with this rule?
 
 2. **Test Coverage:** Do the \`finalTestCases\` (inputs and rationales) adequately cover the scenarios implied by the intent and {difficulty} level? 
    - Are there obvious gaps in test coverage?
@@ -37,25 +38,23 @@ Review Checklist:
    - Are edge cases well-represented (e.g., empty inputs, minimal inputs, boundary conditions)?
    - Do test rationales accurately describe why those cases are important?
    - **If the Input Schema allows for duplicates or repeated structures, are there test cases specifically addressing these scenarios?**
+   - **Constraint Adherence in Tests:** Do ALL \`input\` values in \`finalTestCases\` strictly adhere to the \`input_constraints\` specified in \`constraints_json\` AND the original \`input_schema_description\` from \`intent_json\`? Note any violations.
 
 3. **Solution Quality vs. Constraints:** 
-   - Time Complexity: Does the \`validatedSolutionCode\` have a time complexity appropriate for the problem type and difficulty level?
-   - Space Complexity: Does the solution use memory efficiently?
-   - Does the solution handle potential large inputs reasonably for typical competitive programming limits (e.g., 1-2s, 256-512MB)?
+   - Time Complexity: Does the \`validatedSolutionCode\` appear to have a time complexity appropriate for the problem constraints? For example, if inputs could be large, a naive O(n²) solution might be inappropriate.
+   - Space Complexity: Similarly, does the memory usage seem appropriate for the constraints?
+   - Any other potential performance issues?
+   - Judge Type Appropriateness: Is the specified \`judge_type\` (from \`constraints_json\`) appropriate for this problem? For example, if the output could be a floating-point value, is "float_eps" specified?
 
-4. **Output Format Consistency & Judge Type Alignment:** 
-   - Is the output format consistent across all test cases?
-   - Are special values (like infinity) represented consistently?
-   - Do the expected outputs match the likely expected format described by the problem intent?
-   - Does the solution follow the input schema structure accurately, **especially regarding duplicate elements or repeated structures if applicable?**
-   - **CRITICAL: Review the 'judge_type' (and 'epsilon' if present) from the \`constraints_json\`. Is the problem's nature, the solution's output format, and the test cases' expected outputs fully consistent with this specified \`judge_type\`?** 
-     - For 'equal': Output must be unique and deterministic.
-     - For 'unordered_equal': Output elements are correct, order doesn't matter.
-     - For 'float_eps': Output is a float, and differences are handled by epsilon.
+4. **Clarity/Coherence:** Assuming a description will be generated from the intent, test cases, and constraints, is there enough clear information for generating a well-defined problem statement?
+   - Are there any ambiguities or inconsistencies between the \`intent_json\`, the \`solution_code\`, and the \`finalTestCases\`?
+   - If using "equal" judge_type, is there a clear tie-breaking rule for cases where multiple valid outputs could exist?
+   - If using "float_eps" judge_type, is the epsilon value reasonable for the problem domain?
 
-5. **Self-Critique:** Propose one extreme input example that might not be covered by the existing test cases and explain why it would be valuable to include.
+Provide a brief but comprehensive assessment based on the checklist above.
 
 {format_instructions}
 
-Valid JSON Output:`
+Valid JSON Output:
+`
 ); 

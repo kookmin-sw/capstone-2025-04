@@ -38,6 +38,7 @@ export function createStructuredDescriptionChain(llm) {
  * @param {string} params.language - The target programming language.
  * @param {string} [params.input_schema_description=""] - Description of input structure
  * @param {string} [params.epsilon_value_from_constraints="not applicable"] - Epsilon value from constraints if applicable.
+ * @param {string} [params.tie_breaking_rule_from_intent=""] - Tie-breaking rule from intent analysis, if defined.
  * @returns {Promise<string>} The generated problem description.
  */
 export async function runDescriptionGeneration(llm, { 
@@ -47,7 +48,8 @@ export async function runDescriptionGeneration(llm, {
   difficulty, 
   language,
   input_schema_description = "",
-  epsilon_value_from_constraints = "not applicable" // 기본값 설정
+  epsilon_value_from_constraints = "not applicable", // 기본값 설정
+  tie_breaking_rule_from_intent = "" // Add tie-breaking rule parameter
 }) {
   const chain = createDescriptionChain(llm);
   
@@ -75,7 +77,8 @@ export async function runDescriptionGeneration(llm, {
     difficulty,
     language,
     input_schema_description: inputSchema,
-    epsilon_value_from_constraints // 프롬프트에 epsilon 값 전달
+    epsilon_value_from_constraints, // 프롬프트에 epsilon 값 전달
+    tie_breaking_rule_from_intent // Pass tie-breaking rule to prompt
   };
   
   const output = await chain.invoke(input);
@@ -94,6 +97,7 @@ export async function runDescriptionGeneration(llm, {
  * @param {string} params.language - The target programming language.
  * @param {string} [params.input_schema_description=""] - Description of input structure
  * @param {string} [params.epsilon_value_from_constraints="not applicable"] - Epsilon value from constraints if applicable.
+ * @param {string} [params.tie_breaking_rule_from_intent=""] - Tie-breaking rule from intent analysis, if defined.
  * @returns {Promise<string>} The generated problem description.
  */
 export async function runStructuredDescriptionGeneration(llm, { 
@@ -103,7 +107,8 @@ export async function runStructuredDescriptionGeneration(llm, {
   difficulty, 
   language,
   input_schema_description = "",
-  epsilon_value_from_constraints = "not applicable" // 기본값 설정
+  epsilon_value_from_constraints = "not applicable", // 기본값 설정
+  tie_breaking_rule_from_intent = "" // Add tie-breaking rule parameter
 }) {
   const chain = createStructuredDescriptionChain(llm);
   
@@ -131,7 +136,8 @@ export async function runStructuredDescriptionGeneration(llm, {
     difficulty,
     language,
     input_schema_description: inputSchema,
-    epsilon_value_from_constraints // 프롬프트에 epsilon 값 전달
+    epsilon_value_from_constraints, // 프롬프트에 epsilon 값 전달
+    tie_breaking_rule_from_intent // Pass tie-breaking rule to prompt
   };
   
   // No need for manual cleaning with structured output

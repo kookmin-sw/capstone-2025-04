@@ -13,6 +13,7 @@ Constraints Details (JSON):
 {constraints}
 Test Specification Examples (use for Examples section, format appropriately):
 {test_specs_examples}
+Tie-Breaking Rule (if applicable): {tie_breaking_rule_from_intent}
 
 
 Instructions:
@@ -26,8 +27,9 @@ Instructions:
   - If examples use string keys like "0", "1", etc., explicitly mention that keys are strings
   - If examples use string values like "Infinity" for special cases, explicitly mention this format
   - DO NOT add any formatting rules not directly supported by the examples
-  - **Consider the "judge_type" (from Constraints Details) when describing the output. For example:**
-    - If "judge_type" is "equal": "The output must be exactly X."
+  - **If a tie-breaking rule was defined (provided as {tie_breaking_rule_from_intent}), you MUST explicitly state this rule in the Output Format section.** For example: "If multiple longest palindromic substrings of the same length exist, output the one that starts at the earliest index in the original string."
+  - **Consider the "judge_type" (from Constraints Details) AND THE TIE-BREAKING RULE when describing the output. For example:**
+    - If "judge_type" is "equal" AND a tie-breaking rule exists: "The output must be exactly X, determined by the rule: [tie-breaking rule]."
     - If "judge_type" is "unordered_equal": "The output is a collection of items. The order of items does not matter."
     - If "judge_type" is "float_eps": "The output is a floating-point number. Your answer will be considered correct if its absolute or relative error does not exceed {epsilon_value_from_constraints}." (Make sure to phrase this naturally based on the epsilon value.)
 - Create a **Constraints** section using the information from the "Constraints Details (JSON)". Format it clearly (e.g., using bullet points). **Explicitly list the judge_type and epsilon (if applicable) in this section.**

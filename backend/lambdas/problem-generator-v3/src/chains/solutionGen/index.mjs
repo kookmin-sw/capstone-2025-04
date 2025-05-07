@@ -37,6 +37,7 @@ export function createStructuredSolutionGenerationChain(llm) {
  * @param {string} params.language - The target programming language.
  * @param {string} [params.feedback_section=""] - Optional feedback from previous validation failures.
  * @param {string} [params.input_schema_description=""] - Description of input structure
+ * @param {string} [params.tie_breaking_rule=""] - Tie-breaking rule for cases with multiple valid outputs.
  * @returns {Promise<string>} The generated solution code.
  */
 export async function runSolutionGeneration(llm, { 
@@ -44,7 +45,8 @@ export async function runSolutionGeneration(llm, {
   test_specs, 
   language, 
   feedback_section = "",
-  input_schema_description = "" 
+  input_schema_description = "",
+  tie_breaking_rule = ""
 }) {
   const chain = createSolutionGenerationChain(llm);
   
@@ -89,6 +91,7 @@ export async function runSolutionGeneration(llm, {
     test_specs: test_specs_str,
     language,
     input_schema_description: inputSchema,
+    tie_breaking_rule,
     feedback_section: feedback_section ? `\n\n**Previous Attempt Feedback:**\n${feedback_section}\nPlease address this feedback in the new solution.` : "",
     language_specific_requirements: getLanguageSpecificRequirements(language)
   };
@@ -107,6 +110,7 @@ export async function runSolutionGeneration(llm, {
  * @param {string} params.language - The target programming language.
  * @param {string} [params.feedback_section=""] - Optional feedback from previous validation failures.
  * @param {string} [params.input_schema_description=""] - Description of input structure
+ * @param {string} [params.tie_breaking_rule=""] - Tie-breaking rule for cases with multiple valid outputs.
  * @returns {Promise<string>} The generated solution code.
  */
 export async function runStructuredSolutionGeneration(llm, { 
@@ -114,7 +118,8 @@ export async function runStructuredSolutionGeneration(llm, {
   test_specs, 
   language, 
   feedback_section = "",
-  input_schema_description = "" 
+  input_schema_description = "",
+  tie_breaking_rule = ""
 }) {
   const chain = createStructuredSolutionGenerationChain(llm);
   
@@ -140,6 +145,7 @@ export async function runStructuredSolutionGeneration(llm, {
     test_specs,
     language,
     input_schema_description: inputSchema,
+    tie_breaking_rule,
     feedback_section: feedback_section ? `\n\n**Previous Attempt Feedback:**\n${feedback_section}\nPlease address this feedback in the new solution.` : "",
     language_specific_requirements: getLanguageSpecificRequirements(language)
   };

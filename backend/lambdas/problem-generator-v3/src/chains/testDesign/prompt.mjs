@@ -34,6 +34,7 @@ Guidelines:
      WRONG: "edges": [[i, i+1] for i in range(5)]
 7. CRITICAL: All input values MUST follow the input schema defined above. Ensure your test cases match the expected structure exactly.
 8. When creating large test cases with many elements, ALWAYS write out each element explicitly in valid JSON syntax (no shortcuts, no ellipses, no code).
+9. **CRITICAL: All generated input values MUST STRICTLY adhere to any constraints defined in the \`input_schema_description\` and any \`key_constraints\` found in the \`INTENT_JSON\`. DO NOT generate inputs that violate these constraints (e.g., string length, number ranges). If the intent mentions a maximum string length of 1000, do not create a test case with a 1500-character string.**
 
 Target difficulty level: {difficulty}
 
@@ -67,4 +68,4 @@ Few-shot examples (for a graph problem):
 {format_instructions}
 
 ONLY return a valid JSON array. Never use programming language constructs like list comprehensions, loops, or variables.`
-); 
+);

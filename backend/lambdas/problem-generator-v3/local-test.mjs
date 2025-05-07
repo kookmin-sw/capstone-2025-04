@@ -31,7 +31,7 @@ import { initDynamoDBClient } from './src/services/dynamoClient.mjs';
 
 // 기본 환경 변수 설정
 const DEFAULT_ENV = {
-  PROBLEMS_TABLE_NAME: 'alpaco-Problems-production',
+  PROBLEMS_TABLE_NAME: 'alpaco-Problems-v3-production',
   GEMINI_MODEL_NAME: 'gemini-2.5-pro-exp-03-25',
   DEFAULT_LANGUAGE: 'python3.12',
   DEFAULT_TARGET_LANGUAGE: 'Korean',

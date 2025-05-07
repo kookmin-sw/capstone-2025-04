@@ -20,6 +20,10 @@ export const IntentOutputSchema = z
     output_format_description: z
       .string()
       .describe("Clear description of the expected output format, emphasizing simple judgability (e.g., 'A single integer', 'An array of strings where order matters', 'A float accurate to 1e-5')."),
+    tie_breaking_rule: z
+      .string()
+      .optional()
+      .describe("A specific, deterministic rule to choose a single output if multiple valid outputs could exist. E.g., 'output the lexicographically smallest', 'output the one with the smallest starting index'. Crucial if judge_type is 'equal' and ambiguity exists."),
     input_schema_details: z
       .object({
         allows_duplicates_in_collections: z

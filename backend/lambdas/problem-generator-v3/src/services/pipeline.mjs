@@ -256,37 +256,44 @@ export async function pipeline(event, responseStream) {
       throw new Error("Test design failed after all retry attempts");
     }
     
-    // --- Step 3-4: Solution Generation & Execution Validation Loop ---
-    let solutionCode = null;
-    let validatedSolutionCode = null;
-    let executionResults = null;
-    let executionFeedback = null;
-    let finalTestCases = null;
-    let finalTestCasesJson = null;
-    let description = null; // Declare the description variable
+    // --- Step 3: Solution Generation (With Retry) ---
+    let solutionCode;
+    let solutionGenerationSuccess = false;
     
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       const isRetry = attempt > 0;
       const attemptMsg = isRetry ? ` (Attempt ${attempt + 1}/${MAX_RETRIES + 1})` : "";
       
-      // --- Step 3: Solution Generation ---
-      sendStatus(stream, 3, `Generating solution code...${attemptMsg}`);
+      sendStatus(stream, 3, `Generating solution code based on intent and test designs...${attemptMsg}`);
       
       try {
+        // Prepare any feedback from a previous failed attempt
+        const feedback = attempt > 0 && solutionCode ? `Previous solution had issues. Try again with a different approach.` : "";
+        
+        // Get tie-breaking rule from intent if it exists
+        const tieBreakingRule = intent.tie_breaking_rule || "";
+        
         solutionCode = await runSolutionGeneration(llm, {
-          analyzed_intent: `${intent.goal} (Output format: ${intent.output_format_description})`,
+          analyzed_intent: intent.goal,
           test_specs: testSpecsJson,
           language: DEFAULT_LANGUAGE,
-          feedback_section: executionFeedback,
-          input_schema_description: intent.input_schema_description
+          feedback_section: feedback,
+          input_schema_description: intent.input_schema_description,
+          tie_breaking_rule: tieBreakingRule // Pass tie-breaking rule
         });
         
+        if (!solutionCode || solutionCode.trim() === '') {
+          throw new Error("Generated solution code is empty or invalid");
+        }
+        
         await updateProblemStatus(problemId, {
-          generationStatus: `step3_attempt_${attempt}`,
+          generationStatus: `step3_complete_attempt_${attempt}`,
           solutionCode,
         });
         
         sendStatus(stream, 3, `✅ Solution code generated.${attemptMsg}`);
+        solutionGenerationSuccess = true;
+        break; // Exit retry loop on success
       } catch (solutionError) {
         console.error(`Solution generation failed (Attempt ${attempt + 1}/${MAX_RETRIES + 1}):`, solutionError);
         
@@ -307,6 +314,23 @@ export async function pipeline(event, responseStream) {
         // Continue to next attempt
         continue;
       }
+    }
+    
+    if (!solutionGenerationSuccess) {
+      throw new Error("Solution generation failed after all retry attempts");
+    }
+    
+    // --- Step 4: Solution Execution & Validation Loop ---
+    let executionResults = null;
+    let executionFeedback = null;
+    let validatedSolutionCode = null;
+    let finalTestCases = null;
+    let finalTestCasesJson = null;
+    let description = null; // Declare the description variable
+    
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      const isRetry = attempt > 0;
+      const attemptMsg = isRetry ? ` (Attempt ${attempt + 1}/${MAX_RETRIES + 1})` : "";
       
       // --- Step 4: Solution Execution & Validation ---
       sendStatus(stream, 4, `Executing solution against test inputs...${attemptMsg}`);
@@ -666,6 +690,9 @@ export async function pipeline(event, responseStream) {
                          ? String(constraints.epsilon) 
                          : "not applicable";
       
+      // Get tie-breaking rule from intent if it exists
+      const tieBreakingRule = intent.tie_breaking_rule || "";
+      
       sendStatus(stream, 8, `Generating problem description...${attemptMsg}`);
       
       try {
@@ -676,7 +703,8 @@ export async function pipeline(event, responseStream) {
           difficulty,
           language: DEFAULT_LANGUAGE,
           input_schema_description: intent.input_schema_description, // Add input schema description
-          epsilon_value_from_constraints: epsilonValue // Pass epsilon value
+          epsilon_value_from_constraints: epsilonValue, // Pass epsilon value
+          tie_breaking_rule_from_intent: tieBreakingRule // Pass tie-breaking rule
         });
         
         if (!description || description.trim() === '') {
