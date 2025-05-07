@@ -38,9 +38,9 @@ variable "lambda_runtime" {
 }
 
 variable "lambda_handler" {
-  description = "Lambda function handler (e.g., src/handler.handler)"
+  description = "Lambda function handler (e.g., index.handler)"
   type        = string
-  default     = "src/handler.handler" # Updated for v3 structure
+  default     = "index.handler" # Updated for v3 structure
 }
 
 variable "lambda_code_path" {
