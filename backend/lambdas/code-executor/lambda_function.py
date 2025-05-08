@@ -146,7 +146,7 @@ def convert_non_json_values(obj):
 # --- Main Execution Logic ---
 actual_input_data = None
 solution_module = None
-return_value_payload = {{'value': None}} # Default payload
+return_value_payload = {{'result': None}} # Default payload
 
 try:
     # Import the solution module first
@@ -194,7 +194,7 @@ try:
     processed_result = convert_non_json_values(raw_result)
 
     # 2. Prepare the payload for the marker line
-    return_value_payload['value'] = processed_result
+    return_value_payload['result'] = processed_result
 
     # 3. Serialize the payload to JSON. Catch serialization errors here.
     try:
@@ -268,7 +268,7 @@ sys.exit(0) # Explicitly exit with success code
                 decoded_json = base64.b64decode(encoded_json_part).decode('utf-8')
                 # Parse JSON
                 parsed_payload = json.loads(decoded_json)
-                return_value = parsed_payload.get('value')
+                return_value = parsed_payload.get('result')
                 # Remove the marker line and everything after it from stdout_content
                 stdout_content = raw_stdout[:marker_pos].strip()
                 print(f"Extracted return value. Original stdout length: {len(raw_stdout)}, Final stdout length: {len(stdout_content)}")

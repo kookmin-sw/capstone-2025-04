@@ -332,7 +332,7 @@ export async function pipeline(event, responseStream) {
       const isRetry = attempt > 0;
       const attemptMsg = isRetry ? ` (Attempt ${attempt + 1}/${MAX_RETRIES + 1})` : "";
       
-      // --- Step 4: Solution Execution & Validation ---
+      // --- Step 4.a: Solution Execution ---
       sendStatus(stream, 4, `Executing solution against test inputs...${attemptMsg}`);
       
       try {
@@ -389,12 +389,73 @@ export async function pipeline(event, responseStream) {
             executionFeedback,
           });
           
-          sendStatus(stream, 4, `⚠️ Solution execution failed: ${executionResults.errors.length} error(s). ${isRetry ? "Retrying..." : ""} Feedback: ${executionFeedback.substring(0, 150)}...`);
+          sendStatus(stream, 4, `⚠️ Solution execution failed: ${executionResults.errors.length} error(s). Feedback: ${executionFeedback.substring(0, 150)}...`);
           
           if (attempt === MAX_RETRIES) {
             // Exhausted all retries
             sendError(stream, `Solution execution failed after ${MAX_RETRIES + 1} attempts. Last error: ${executionFeedback}`);
             throw new Error(`Solution execution failed after ${MAX_RETRIES + 1} attempts. Last error: ${executionFeedback}`);
+          }
+          
+          // --- Step 4.b: Regenerate Solution with Execution Feedback ---
+          sendStatus(stream, 4, `Regenerating solution using execution feedback... (Attempt ${attempt + 1}/${MAX_RETRIES})`);
+          
+          try {
+            // Get tie-breaking rule from intent if it exists
+            const tieBreakingRule = intent.tie_breaking_rule || "";
+            
+            // Detailed feedback for solution regeneration
+            const detailedFeedback = `
+Execution failed with the following errors:
+${executionFeedback}
+
+Last solution that failed:
+\`\`\`
+${solutionCode}
+\`\`\`
+
+Please fix the issues and ensure the solution handles all edge cases in the test specifications.`;
+            
+            // Generate new solution with execution feedback
+            solutionCode = await runSolutionGeneration(llm, {
+              analyzed_intent: intent.goal,
+              test_specs: testSpecsJson,
+              language: DEFAULT_LANGUAGE,
+              feedback_section: detailedFeedback,
+              input_schema_description: intent.input_schema_description,
+              tie_breaking_rule: tieBreakingRule
+            });
+            
+            if (!solutionCode || solutionCode.trim() === '') {
+              throw new Error("Regenerated solution code is empty or invalid");
+            }
+            
+            await updateProblemStatus(problemId, {
+              generationStatus: `step4_regenerate_attempt_${attempt}`,
+              solutionCode,
+            });
+            
+            sendStatus(stream, 4, `✅ Solution regenerated with execution feedback. Executing again...`);
+            
+            // Continue to next iteration to execute the regenerated solution
+          } catch (solutionError) {
+            console.error(`Solution regeneration failed (Attempt ${attempt + 1}/${MAX_RETRIES}):`, solutionError);
+            
+            await updateProblemStatus(problemId, {
+              generationStatus: `step4_regenerate_failed_attempt_${attempt}`,
+              errorMessage: solutionError.message.substring(0, 1000),
+            });
+            
+            if (attempt === MAX_RETRIES - 1) {
+              // Failed on the last attempt
+              const errorMessage = `Solution regeneration failed on final attempt: ${solutionError.message}`;
+              sendError(stream, errorMessage);
+              throw new Error(errorMessage);
+            }
+            
+            sendStatus(stream, 4, `⚠️ Solution regeneration failed: ${solutionError.message.substring(0, 100)}... Will retry execution loop...`);
+            
+            // Continue to next attempt of outer loop with the original solution
           }
         }
       } catch (error) {
@@ -414,8 +475,69 @@ export async function pipeline(event, responseStream) {
           throw error;
         }
         
-        // Use generic feedback for retry
-        executionFeedback = "Execution error. Please check your solution code structure and ensure it follows the expected format.";
+        // Use generic feedback for retry with regeneration
+        executionFeedback = `Execution error. Please check your solution code structure and ensure it follows the expected format. Error message: ${error.message}`;
+        
+        // --- Step 4.b: Regenerate Solution with Execution Error ---
+        sendStatus(stream, 4, `Regenerating solution due to execution error... (Attempt ${attempt + 1}/${MAX_RETRIES})`);
+        
+        try {
+          // Get tie-breaking rule from intent if it exists
+          const tieBreakingRule = intent.tie_breaking_rule || "";
+          
+          // Detailed feedback for solution regeneration
+          const detailedFeedback = `
+Execution encountered an error:
+${executionFeedback}
+
+Last solution that failed:
+\`\`\`
+${solutionCode}
+\`\`\`
+
+Please fix the issues and ensure the solution handles all edge cases in the test specifications.`;
+          
+          // Generate new solution with execution feedback
+          solutionCode = await runSolutionGeneration(llm, {
+            analyzed_intent: intent.goal,
+            test_specs: testSpecsJson,
+            language: DEFAULT_LANGUAGE,
+            feedback_section: detailedFeedback,
+            input_schema_description: intent.input_schema_description,
+            tie_breaking_rule: tieBreakingRule
+          });
+          
+          if (!solutionCode || solutionCode.trim() === '') {
+            throw new Error("Regenerated solution code is empty or invalid");
+          }
+          
+          await updateProblemStatus(problemId, {
+            generationStatus: `step4_regenerate_error_attempt_${attempt}`,
+            solutionCode,
+          });
+          
+          sendStatus(stream, 4, `✅ Solution regenerated after execution error. Executing again...`);
+          
+          // Continue to next iteration to execute the regenerated solution
+        } catch (solutionError) {
+          console.error(`Solution regeneration failed (Attempt ${attempt + 1}/${MAX_RETRIES}):`, solutionError);
+          
+          await updateProblemStatus(problemId, {
+            generationStatus: `step4_regenerate_error_failed_attempt_${attempt}`,
+            errorMessage: solutionError.message.substring(0, 1000),
+          });
+          
+          if (attempt === MAX_RETRIES - 1) {
+            // Failed on the last attempt
+            const errorMessage = `Solution regeneration failed on final attempt: ${solutionError.message}`;
+            sendError(stream, errorMessage);
+            throw new Error(errorMessage);
+          }
+          
+          sendStatus(stream, 4, `⚠️ Solution regeneration failed: ${solutionError.message.substring(0, 100)}... Will retry execution loop...`);
+          
+          // Continue to next attempt of outer loop with the original solution
+        }
       }
     }
     

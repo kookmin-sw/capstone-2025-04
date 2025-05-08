@@ -33,7 +33,8 @@ export class ExecutionResult {
     error = null, // This 'error' field is for errors in THIS (JS) orchestration,
                   // or unhandled errors from the invoked Lambda itself.
                   // User code errors will be in stderr.
-    isSuccessful = false // Added this field explicitly based on Python lambda output
+    isSuccessful = false, // Added this field explicitly based on Python lambda output
+    returnValue = undefined
   }) {
     this.stdout = stdout;
     this.stderr = stderr;
@@ -45,6 +46,7 @@ export class ExecutionResult {
     // However, we can also calculate it as a getter for consistency if not provided.
     // For now, we'll assume the Python lambda's 'isSuccessful' is the source of truth.
     this.isSuccessful = isSuccessful;
+    this.returnValue = returnValue;
   }
 
   /**
@@ -74,6 +76,7 @@ export class ExecutionResult {
       timedOut: this.timedOut,
       error: this.error ? (this.error.message || String(this.error)) : null,
       isSuccessful: this.wasSuccessful, // Use the getter
+      returnValue: this.returnValue
     };
   }
 
@@ -228,7 +231,8 @@ export async function executePythonViaLambda(code, inputData, options = {}) {
       executionTimeMs: actualExecutionResult.executionTimeMs || jsSideExecutionTimeMs, // Prefer lambda's time
       timedOut: actualExecutionResult.timedOut,
       error: actualExecutionResult.error ? new Error(actualExecutionResult.error) : null,
-      isSuccessful: actualExecutionResult.isSuccessful
+      isSuccessful: actualExecutionResult.isSuccessful,
+      returnValue: actualExecutionResult.returnValue
     });
 
   } catch (error) {
@@ -246,48 +250,28 @@ export async function executePythonViaLambda(code, inputData, options = {}) {
  * @param {ExecutionResult} executionResult - Execution result to parse
  * @returns {any} Parsed result or null if parsing fails or stdout is not JSON from user code
  */
+/**
+ * Retrieves the processed return value from the user's code.
+ * @param {ExecutionResult} executionResult - The result object from code execution.
+ * @returns {any} The return value of the user's code if execution was successful (as determined
+ *                by the executor lambda's `isSuccessful` flag), otherwise null.
+ *                The value is already processed by the Python lambda (e.g., special floats
+ *                like NaN, Infinity are converted to strings).
+ */
 export function parseExecutionResult(executionResult) {
-  // Use the getter for success check
-  if (!executionResult.wasSuccessful || !executionResult.stdout) {
-    // If not successful, or no stdout, there's no user code result to parse from stdout.
-    // Errors would be in stderr or the error field.
+  // Check the 'isSuccessful' flag provided by the Python lambda.
+  // This flag indicates if the lambda considers the code execution process itself successful
+  // (e.g., non-zero exit code, no timeout, no orchestration error).
+  if (!executionResult.isSuccessful) {
     return null;
   }
 
-  try {
-    // The Python executor lambda's stdout for successful user code execution
-    // should be a JSON string like: {"result": <actual_user_code_output>}
-    const parsedStdout = JSON.parse(executionResult.stdout.trim());
-
-    if (parsedStdout && typeof parsedStdout === 'object' && 'result' in parsedStdout) {
-      return parsedStdout.result;
-    } else if (parsedStdout && typeof parsedStdout === 'object' && 'error' in parsedStdout) {
-      // This case should ideally be caught by the Python Lambda and put into stderr.
-      // But if it slips through to stdout:
-      console.warn("User code printed an error structure to stdout:", parsedStdout.error);
-      // executionResult.stderr = executionResult.stderr ? `${executionResult.stderr}\n${JSON.stringify(parsedStdout)}` : JSON.stringify(parsedStdout);
-      // executionResult.isSuccessful = false; // Correct the success status
-      return null; // No valid 'result'
-    } else {
-        // This means stdout was valid JSON, but not the expected {"result": ...} structure.
-        // This could happen if the user's code prints arbitrary JSON not wrapped in "result".
-        // For strictness, we expect the {"result": ...} wrapper.
-        console.warn(
-            `Parsed stdout JSON does not have the expected 'result' key: "${executionResult.stdout.trim()}"`
-        );
-        return null;
-    }
-  } catch (error) {
-    // This means stdout was not valid JSON at all.
-    // Could be due to user code printing non-JSON text to stdout.
-    console.warn(
-      `Failed to parse execution result from stdout as JSON: "${executionResult.stdout.trim()}"`,
-      error,
-    );
-    // executionResult.stderr = executionResult.stderr ? `${executionResult.stderr}\nStdout: ${executionResult.stdout}` : `Stdout: ${executionResult.stdout}`;
-    // executionResult.isSuccessful = false; // Correct the success status
-    return null; // Return null if JSON parsing fails
-  }
+  // The 'userreturnValue' field now directly holds the value
+  // extracted and processed by the Python lambda.
+  // This value can be `null` if the Python function returned `None` or
+  // if the lambda encountered an issue parsing the return value marker internally
+  // (in which case the Python lambda sets its 'returnValue' to None/null).
+  return executionResult.returnValue;
 }
 
 /**
