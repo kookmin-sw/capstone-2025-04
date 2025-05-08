@@ -6,14 +6,17 @@ import os
 import time
 import math # For isnan, isinf
 import traceback
+import base64 # To encode return value safely
 
 # Default timeout if not provided by the caller
 DEFAULT_TIMEOUT_MS = 5000
 # Directory for temporary files within Lambda
 TEMP_DIR = '/tmp' # AWS Lambda provides /tmp as writable space
 
+# Special marker for return value
+RETURN_VALUE_MARKER = "###_RETURN_VALUE_###"
+
 # Helper to convert non-standard float values to JSON-serializable strings
-# This matches the logic in your original JavaScript's codeExecutor.mjs
 def convert_non_json_values(obj):
     if isinstance(obj, float):
         if math.isinf(obj):
@@ -21,11 +24,15 @@ def convert_non_json_values(obj):
         elif math.isnan(obj):
             return "NaN"
     elif isinstance(obj, dict):
+        # Ensure keys are strings
         return {str(k): convert_non_json_values(v) for k, v in obj.items()}
     elif isinstance(obj, list):
         return [convert_non_json_values(elem) for elem in obj]
+    # Add handling for other non-serializable types if necessary
+    # For simplicity, we'll rely on JSON default errors for now if other types are returned
     return obj
 
+# --- Lambda Handler ---
 def lambda_handler(event, context):
     try:
         # Log the received event for debugging
@@ -34,11 +41,17 @@ def lambda_handler(event, context):
         # Prefer body from API Gateway, fallback to direct event for testing
         if 'body' in event:
             body_str = event['body']
-            if isinstance(body_str, str):
-                payload = json.loads(body_str)
-            else: # Already an object (e.g. direct test invocation)
-                payload = body_str
-        else: # Direct invocation without 'body' (e.g. console test)
+            # Check if body_str is already an object (e.g., from test event)
+            if isinstance(body_str, dict):
+                 payload = body_str
+            else: # Assume it's a JSON string
+                try:
+                    payload = json.loads(body_str)
+                except json.JSONDecodeError as e:
+                    print(f"JSONDecodeError in body: {str(e)}")
+                    print(f"Raw body: {body_str[:500]}") # Log offending string
+                    raise ValueError(f"Invalid JSON in request body: {str(e)}")
+        else: # Direct invocation without 'body' (e.g., console test)
             payload = event
 
         code_to_execute = payload.get('code_to_execute')
@@ -46,35 +59,31 @@ def lambda_handler(event, context):
         timeout_ms = int(payload.get('timeout_ms', DEFAULT_TIMEOUT_MS))
 
         if not code_to_execute:
-            return {
-                'statusCode': 400,
-                'body': json.dumps({
-                    'error': 'Missing code_to_execute',
-                    'stdout': '', 'stderr': 'Missing code_to_execute',
-                    'exitCode': -1, 'executionTimeMs': 0,
-                    'timedOut': False, 'isSuccessful': False
-                })
-            }
-        # input_data can legitimately be None, 0, [], {}, etc. so only check code_to_execute
+            raise ValueError("Missing 'code_to_execute' in payload")
+        # input_data can legitimately be None, 0, [], {}, etc.
 
-    except json.JSONDecodeError as e:
-        print(f"JSONDecodeError: {str(e)}")
+    except (json.JSONDecodeError, ValueError, TypeError, KeyError) as e:
+        print(f"Parameter parsing error: {str(e)}")
         return {
             'statusCode': 400,
+            'headers': {'Content-Type': 'application/json'}, # Add headers
             'body': json.dumps({
-                'error': f'Invalid JSON payload: {str(e)}',
-                'stdout': '', 'stderr': f'Invalid JSON payload: {str(e)}',
+                'error': f'Parameter error: {str(e)}',
+                'stdout': '', 'stderr': f'Parameter error: {str(e)}',
+                'returnValue': None,
                 'exitCode': -1, 'executionTimeMs': 0,
                 'timedOut': False, 'isSuccessful': False
             })
         }
     except Exception as e:
-        print(f"Parameter parsing error: {str(e)}")
+        print(f"Unexpected parameter error: {str(e)}\n{traceback.format_exc()}")
         return {
-            'statusCode': 400,
+            'statusCode': 500,
+            'headers': {'Content-Type': 'application/json'}, # Add headers
             'body': json.dumps({
-                'error': f'Parameter error: {str(e)}',
-                'stdout': '', 'stderr': f'Parameter error: {str(e)}',
+                'error': f'Internal server error during parameter parsing: {str(e)}',
+                'stdout': '', 'stderr': f'Internal server error: {str(e)}',
+                'returnValue': None,
                 'exitCode': -1, 'executionTimeMs': 0,
                 'timedOut': False, 'isSuccessful': False
             })
@@ -83,15 +92,16 @@ def lambda_handler(event, context):
     solution_file_path = None
     runner_file_path = None
 
-    # Result structure to match JS ExecutionResult
+    # Result structure to match the new protocol
     exec_result = {
         'stdout': '',
         'stderr': '',
+        'returnValue': None, # Field for the actual return value
         'exitCode': None,
         'executionTimeMs': 0,
         'timedOut': False,
-        'error': None, # For errors *within* this lambda, not the user code
-        'isSuccessful': False
+        'error': None, # For errors *within* this lambda's orchestration
+        'isSuccessful': False # Indicates successful *execution*, not logical correctness
     }
 
     try:
@@ -101,29 +111,22 @@ def lambda_handler(event, context):
             solution_file_path = sf.name
         solution_module_name = os.path.splitext(os.path.basename(solution_file_path))[0]
 
-        # 2. Create the runner script
-        #    This script will import the solution and run it.
-        #    It carefully handles output and error reporting.
+        # 2. Create the runner script (MODIFIED)
         runner_code = f"""
 import sys
 import json
 import traceback
 import math # For isnan, isinf
+import base64 # For encoding return value
+
+# Special marker (must match definition in lambda_function.py)
+RETURN_VALUE_MARKER = "{RETURN_VALUE_MARKER}"
 
 # Add the directory of the solution file to Python's path
 sys.path.insert(0, r"{os.path.dirname(solution_file_path)}")
 
-# Import the solution module
-try:
-    solution_module = __import__(r"{solution_module_name}")
-except Exception as import_err:
-    print(json.dumps({{
-        "error": f"ImportError: {{type(import_err).__name__}}: {{str(import_err)}}",
-        "traceback": traceback.format_exc()
-    }}), file=sys.stderr)
-    sys.exit(1)
-
 # Helper to convert non-standard float values
+# IMPORTANT: This should now handle more types if needed, or raise clear errors
 def convert_non_json_values(obj):
     if isinstance(obj, float):
         if math.isinf(obj):
@@ -134,20 +137,41 @@ def convert_non_json_values(obj):
         return {{str(k): convert_non_json_values(v) for k, v in obj.items()}}
     elif isinstance(obj, list):
         return [convert_non_json_values(elem) for elem in obj]
+    # Add other known serializable types here if necessary
+    # Example: Convert sets to lists
+    # elif isinstance(obj, set):
+    #     return [convert_non_json_values(elem) for elem in sorted(list(obj))]
     return obj
 
-# Input data is passed as a JSON string via stdin
-input_data_json_str = sys.stdin.read()
-try:
-    actual_input_data = json.loads(input_data_json_str)
-except json.JSONDecodeError:
-    print(json.dumps({{
-        "error": "RunnerError: Could not decode input_data JSON from stdin.",
-        "traceback": traceback.format_exc()
-    }}), file=sys.stderr)
-    sys.exit(1)
+# --- Main Execution Logic ---
+actual_input_data = None
+solution_module = None
+return_value_payload = {{'value': None}} # Default payload
 
 try:
+    # Import the solution module first
+    try:
+        solution_module = __import__(r"{solution_module_name}")
+    except Exception as import_err:
+        # Report import errors clearly to stderr
+        print(json.dumps({{
+            "error": f"ImportError: {{type(import_err).__name__}}: {{str(import_err)}}",
+            "traceback": traceback.format_exc()
+        }}), file=sys.stderr)
+        sys.exit(1) # Exit with error code
+
+    # Decode input data from stdin
+    input_data_json_str = sys.stdin.read()
+    try:
+        actual_input_data = json.loads(input_data_json_str)
+    except json.JSONDecodeError:
+        print(json.dumps({{
+            "error": "RunnerError: Could not decode input_data JSON from stdin.",
+            "traceback": traceback.format_exc()
+        }}), file=sys.stderr)
+        sys.exit(1) # Exit with error code
+
+    # Find the solution function
     solution_fn = None
     func_names_to_try = ['solution', 'solve', 'answer', 'main']
     for func_name in func_names_to_try:
@@ -157,21 +181,42 @@ try:
 
     if solution_fn is None:
         print(json.dumps({{
-            "error": f"SolutionFunctionNotFoundError: Could not find a callable function named one of {{func_names_to_try}} in the solution code.",
+            "error": f"SolutionFunctionNotFoundError: Could not find a callable function named one of {{func_names_to_try}}.",
+            "available_items": [item for item in dir(solution_module) if not item.startswith('_')]
         }}), file=sys.stderr)
-        sys.exit(1)
+        sys.exit(1) # Exit with error code
 
-    # Execute the solution function
+    # --- Execute the solution function ---
     raw_result = solution_fn(actual_input_data)
 
-    # Convert special float values before printing
+    # --- Prepare the return value ---
+    # 1. Convert special floats (NaN, Infinity) and potentially other types
     processed_result = convert_non_json_values(raw_result)
 
-    # Output the result as JSON to stdout
-    # This is what the parent process (this lambda) will parse
-    print(json.dumps({{"result": processed_result}}))
+    # 2. Prepare the payload for the marker line
+    return_value_payload['value'] = processed_result
+
+    # 3. Serialize the payload to JSON. Catch serialization errors here.
+    try:
+        return_value_json = json.dumps(return_value_payload)
+    except TypeError as json_err:
+        # If json.dumps fails even after convert_non_json_values, report it
+        print(json.dumps({{
+            "error": f"SerializationError: Could not serialize the return value to JSON. Value type: {{type(processed_result).__name__}}. Error: {{str(json_err)}}",
+            "traceback": traceback.format_exc()
+        }}), file=sys.stderr)
+        sys.exit(1) # Exit with error code
+
+    # --- SUCCESS ---
+    # Print the special marker line with the BASE64 ENCODED JSON return value
+    # Encoding prevents issues if the JSON itself contains newlines
+    encoded_return_value_json = base64.b64encode(return_value_json.encode('utf-8')).decode('utf-8')
+    print(f"{{RETURN_VALUE_MARKER}}{{encoded_return_value_json}}")
+    # Note: Any regular print() calls from the user code happened before this line
 
 except Exception as e:
+    # --- FAILURE during execution ---
+    # Report runtime errors clearly to stderr
     error_type = type(e).__name__
     error_msg = str(e)
     tb_str = traceback.format_exc()
@@ -180,6 +225,9 @@ except Exception as e:
         "traceback": tb_str
     }}), file=sys.stderr)
     sys.exit(1) # Indicate failure
+
+# If we reach here without sys.exit(1), it means execution was successful
+sys.exit(0) # Explicitly exit with success code
 """
         with tempfile.NamedTemporaryFile(mode='w', delete=False, dir=TEMP_DIR, suffix='_runner.py', encoding='utf-8') as rf:
             rf.write(runner_code)
@@ -188,71 +236,92 @@ except Exception as e:
         # 3. Execute the runner script using subprocess
         start_time = time.perf_counter()
         timeout_seconds = timeout_ms / 1000.0
-
-        # Prepare input for the runner script (JSON string to stdin)
         input_for_runner = json.dumps(input_data)
 
         process = subprocess.run(
             [sys.executable, runner_file_path], # sys.executable ensures same python version
             input=input_for_runner,
             capture_output=True,
-            text=True,
+            text=True, # Get stdout/stderr as strings
             timeout=timeout_seconds,
-            encoding='utf-8',
-            # Set cwd to /tmp to allow user code to write temp files if absolutely necessary
-            # though this is generally discouraged for security.
+            encoding='utf-8', # Specify encoding
+            errors='replace', # Handle potential encoding errors in output
             cwd=TEMP_DIR
         )
         end_time = time.perf_counter()
 
         exec_result['executionTimeMs'] = int((end_time - start_time) * 1000)
-        exec_result['stdout'] = process.stdout.strip()
-        exec_result['stderr'] = process.stderr.strip()
         exec_result['exitCode'] = process.returncode
-        exec_result['isSuccessful'] = (process.returncode == 0 and not process.stderr) # A bit more strict: success implies no stderr
+        exec_result['stderr'] = process.stderr.strip() # Capture stderr
 
-        # If the runner itself produced an error JSON on stdout (e.g. function not found by runner),
-        # move it to stderr for consistency with how JS ExecutionResult handles it.
-        # This is a specific case for runner-level errors printed to stdout.
-        if exec_result['stdout']:
+        # --- Process stdout to separate return value from actual stdout ---
+        raw_stdout = process.stdout
+        return_value = None
+        stdout_content = raw_stdout # Default to full stdout
+
+        marker_pos = raw_stdout.rfind(RETURN_VALUE_MARKER) # Find last occurrence
+        if marker_pos != -1:
+            # Extract encoded JSON part
+            encoded_json_part = raw_stdout[marker_pos + len(RETURN_VALUE_MARKER):].strip()
             try:
-                parsed_stdout_json = json.loads(exec_result['stdout'])
-                if isinstance(parsed_stdout_json, dict) and "error" in parsed_stdout_json:
-                    # This looks like an error message from the runner script that went to stdout.
-                    # This can happen if the solution function is not found, for example.
-                    # Let's move it to stderr.
-                    if not exec_result['stderr']: # If stderr is empty, use this.
-                        exec_result['stderr'] = exec_result['stdout']
-                    else: # Append if stderr already has content.
-                        exec_result['stderr'] += f"\nSTDOUT_ERROR_REDIRECT: {exec_result['stdout']}"
-                    exec_result['stdout'] = '' # Clear stdout as it was an error message.
-                    exec_result['isSuccessful'] = False
-                    if exec_result['exitCode'] == 0: # If exit code was 0, but we found error in stdout
-                        exec_result['exitCode'] = 1 # Force non-zero exit code
-            except json.JSONDecodeError:
-                pass # stdout was not JSON, or not an error structure we recognize. Leave as is.
+                # Decode Base64
+                decoded_json = base64.b64decode(encoded_json_part).decode('utf-8')
+                # Parse JSON
+                parsed_payload = json.loads(decoded_json)
+                return_value = parsed_payload.get('value')
+                # Remove the marker line and everything after it from stdout_content
+                stdout_content = raw_stdout[:marker_pos].strip()
+                print(f"Extracted return value. Original stdout length: {len(raw_stdout)}, Final stdout length: {len(stdout_content)}")
+            except (base64.binascii.Error, json.JSONDecodeError, UnicodeDecodeError) as parse_err:
+                print(f"Error parsing return value marker: {str(parse_err)}")
+                # Keep original stdout, maybe add warning to stderr?
+                exec_result['stderr'] += f"\n[Executor Warning] Failed to parse return value marker: {str(parse_err)}"
+                return_value = None # Indicate parsing failure
+        else:
+            # Marker not found, could be due to error before return or user printing the marker
+            print("Return value marker not found in stdout.")
+            stdout_content = raw_stdout.strip() # Use stripped full stdout
+            # If exit code was 0 but no marker, something might be wrong
+            if process.returncode == 0 and raw_stdout: # only add warning if there was output
+                 exec_result['stderr'] += "\n[Executor Warning] Execution finished with exit code 0, but return value marker was not found in stdout."
 
+        exec_result['stdout'] = stdout_content
+        exec_result['returnValue'] = return_value
+
+        # Determine overall execution success
+        # Success means: no timeout, exit code 0, no ORCHESTRATION errors.
+        # Stderr from the *user code* doesn't automatically mean failed execution,
+        # but a non-zero exit code usually does.
+        exec_result['isSuccessful'] = (
+            process.returncode == 0 and
+            not exec_result['timedOut'] and
+            exec_result['error'] is None # Check for orchestration errors
+            # We might add checks for specific runner errors in stderr later if needed
+        )
 
     except subprocess.TimeoutExpired:
         end_time = time.perf_counter()
-        exec_result['executionTimeMs'] = int((end_time - start_time) * 1000) # Could be slightly over timeout_ms
+        exec_result['executionTimeMs'] = timeout_ms # Report the requested timeout
         exec_result['timedOut'] = True
         exec_result['stderr'] = "Execution timed out."
-        exec_result['exitCode'] = -1 # Or some other conventional timeout code
+        exec_result['exitCode'] = -1 # Standard timeout signal often not available directly
         exec_result['isSuccessful'] = False
     except FileNotFoundError as e:
-        exec_result['error'] = f"Lambda Internal Error: FileNotFoundError - {str(e)}. This might be a misconfiguration or python interpreter issue."
+        # Error finding python executable or script - internal config issue
+        exec_result['error'] = f"Lambda Internal Error: FileNotFoundError - {str(e)}. Python interpreter likely missing or misconfigured."
         exec_result['stderr'] = exec_result['error']
         exec_result['isSuccessful'] = False
         exec_result['exitCode'] = -1
     except Exception as e:
-        # This catches errors in *this* lambda's orchestration logic
+        # Catch other errors in *this* lambda's orchestration logic
         tb_str = traceback.format_exc()
         print(f"Orchestration Error: {str(e)}\n{tb_str}")
         exec_result['error'] = f"Lambda Internal Error: {type(e).__name__} - {str(e)}"
-        exec_result['stderr'] = exec_result['error'] + f"\nTraceback:\n{tb_str}"
+        # Append orchestration error to stderr as well for visibility
+        exec_result['stderr'] = (exec_result['stderr'] + f"\n[Executor Internal Error] {type(e).__name__}: {str(e)}\n{tb_str}").strip()
         exec_result['isSuccessful'] = False
-        exec_result['exitCode'] = -1 # Generic error code
+        if exec_result['exitCode'] is None: exec_result['exitCode'] = -1 # Ensure non-None exit code
+
     finally:
         # 4. Clean up temporary files
         for path in [solution_file_path, runner_file_path]:
@@ -262,34 +331,29 @@ except Exception as e:
                 except Exception as e_unlink:
                     print(f"Warning: Failed to delete temp file {path}: {str(e_unlink)}")
 
-    # Final check on isSuccessful based on exitCode and stderr content
-    # If stdout contains {"result": ...} and exitCode is 0, it's usually successful
-    # If stderr has content, it's usually not successful, even if exitCode is 0
-    if exec_result['exitCode'] == 0 and not exec_result['stderr']:
-        try:
-            # Attempt to parse stdout to ensure it contains the expected {"result": ...}
-            if exec_result['stdout']:
-                json.loads(exec_result['stdout'])['result'] # Accessing 'result' to ensure structure
-                exec_result['isSuccessful'] = True
-            else: # No stdout, but no error and exit 0? Consider it not successful if output is expected.
-                  # However, some problems might legitimately produce no output.
-                  # The original JS logic implies stdout means success if exitCode is 0.
-                  # Let's assume if there's no error, no stderr, and exit 0, it means success
-                  # unless problem explicitly expects empty output. The parsing of output will handle that.
-                exec_result['isSuccessful'] = True # If problem expects no output this is fine.
-        except (json.JSONDecodeError, KeyError):
-            # stdout was not the expected JSON format, treat as not successful
-            exec_result['isSuccessful'] = False
-            if not exec_result['stderr']: # Add a message if stderr is empty
-                 exec_result['stderr'] = "Output format error: stdout was not valid JSON with a 'result' key."
-    elif exec_result['exitCode'] != 0 or exec_result['stderr']:
-        exec_result['isSuccessful'] = False
+    # Log the final result structure before returning
+    # Be careful logging returnValue if it could be very large
+    log_result = exec_result.copy()
+    if log_result['returnValue'] is not None:
+        log_result['returnValue'] = str(log_result['returnValue'])[:100] + ('...' if len(str(log_result['returnValue'])) > 100 else '')
+    print(f"Execution result: {json.dumps(log_result)}")
 
+    # IMPORTANT: Ensure the body is JSON serializable. Apply conversion again if needed,
+    # although the runner should have handled the returnValue.
+    # Let's rely on the runner's conversion for returnValue.
+    try:
+        response_body = json.dumps(exec_result)
+    except TypeError as final_json_err:
+         print(f"Final JSON serialization error: {str(final_json_err)}")
+         # Fallback: try to serialize with error message
+         exec_result['error'] = f"Final serialization failed: {str(final_json_err)}"
+         exec_result['returnValue'] = None # Clear potentially problematic value
+         exec_result['isSuccessful'] = False
+         response_body = json.dumps(exec_result)
 
-    # Log the result before returning
-    print(f"Execution result: {json.dumps(exec_result)}")
 
     return {
         'statusCode': 200, # HTTP 200, actual success/failure is in the body
-        'body': json.dumps(exec_result)
+        'headers': {'Content-Type': 'application/json'}, # Add headers
+        'body': response_body
     }

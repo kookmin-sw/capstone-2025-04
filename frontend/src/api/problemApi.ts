@@ -213,6 +213,7 @@ export interface RunCodeSingleResult {
     timedOut: boolean;
     error: string | null;
     isSuccessful: boolean;
+    returnValue: unknown;
     runCodeLambdaError?: boolean; // Custom flag from grader
     errorMessage?: string; // For runCodeLambdaError
     trace?: string[]; // For runCodeLambdaError

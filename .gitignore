@@ -112,3 +112,5 @@ code_grader.zip
 # local problem gen results
 problem-gen-result-*.json
 infrastructure/code-execution-service/code_grader.zip
+infrastructure/code-execution-service/code_executor.zip
+
