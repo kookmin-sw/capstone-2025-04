@@ -1,4 +1,4 @@
-import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+ import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import {
   DynamoDBDocumentClient,
   GetCommand,
@@ -47,50 +47,55 @@ export const handler = async (event) => {
         return respond(404, { message: "Problem not found" });
       }
       return respond(200, result.Item);
-    } else if (creatorId) {
-      // 특정 생성자의 문제들 조회 (pagination 지원)
-      const pageIndex = parseInt(event.queryStringParameters?.pageIndex ?? "0", 10);
-      const pageSize = 20;
-
-      const params = {
-        TableName: tableName,
-        IndexName: "creatorIndex",
-        KeyConditionExpression: "creatorId = :cid",
-        FilterExpression: "generationStatus = :completed",
-        ExpressionAttributeValues: {
-          ":cid": creatorId,
-          ":completed": "completed",
-        },
-        ProjectionExpression: "problemId, title, title_translated, difficulty, algorithmType, createdAt, creatorId, author, generationStatus",
-        ScanIndexForward: false,
-      };
-      const command = new QueryCommand(params);
-      const result = await dynamoDB.send(command);
-      const items = result.Items || [];
-      const start = pageIndex * pageSize;
-      const pagedItems = items.slice(start, start + pageSize);
-      return respond(200, pagedItems);
     } else {
-      // 전체 문제 중 생성 완료된 문제만 조회 (GSI 사용 + pagination)
-      const pageIndex = parseInt(event.queryStringParameters?.pageIndex ?? "0", 10);
+      // 커서 기반 페이지네이션
       const pageSize = 20;
+      const lastKeyParam = event.queryStringParameters?.lastKey;
+      const lastEvaluatedKey = lastKeyParam
+        ? JSON.parse(decodeURIComponent(lastKeyParam))
+        : undefined;
 
-      const params = {
-        TableName: tableName,
-        IndexName: "generationStatusIndex",
-        KeyConditionExpression: "generationStatus = :status",
-        ExpressionAttributeValues: {
-          ":status": "completed",
-        },
-        ProjectionExpression: "problemId, title, title_translated, difficulty, algorithmType, createdAt, creatorId, author, generationStatus",
-        ScanIndexForward: false,
-      };
+      let params;
+
+      if (creatorId) {
+        params = {
+          TableName: tableName,
+          IndexName: "creatorIndex",
+          KeyConditionExpression: "creatorId = :cid",
+          FilterExpression: "generationStatus = :completed",
+          ExpressionAttributeValues: {
+            ":cid": creatorId,
+            ":completed": "completed",
+          },
+          ProjectionExpression: "problemId, title, title_translated, difficulty, algorithmType, createdAt, creatorId, author, generationStatus",
+          ScanIndexForward: false,
+          Limit: pageSize,
+          ExclusiveStartKey: lastEvaluatedKey,
+        };
+      } else {
+        params = {
+          TableName: tableName,
+          IndexName: "generationStatusIndex",
+          KeyConditionExpression: "generationStatus = :status",
+          ExpressionAttributeValues: {
+            ":status": "completed",
+          },
+          ProjectionExpression: "problemId, title, title_translated, difficulty, algorithmType, createdAt, creatorId, author, generationStatus",
+          ScanIndexForward: false,
+          Limit: pageSize,
+          ExclusiveStartKey: lastEvaluatedKey,
+        };
+      }
+
       const command = new QueryCommand(params);
       const result = await dynamoDB.send(command);
-      const items = result.Items || [];
-      const start = pageIndex * pageSize;
-      const pagedItems = items.slice(start, start + pageSize);
-      return respond(200, pagedItems);
+
+      return respond(200, {
+        items: result.Items,
+        lastKey: result.LastEvaluatedKey
+          ? encodeURIComponent(JSON.stringify(result.LastEvaluatedKey))
+          : null,
+      });
     }
   } catch (error) {
     console.error("Error processing request:", error);
