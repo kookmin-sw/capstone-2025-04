@@ -171,8 +171,6 @@ export const getProblemById = async (
     console.log(`[Problem API] Requested static problem: ${problemId}`);
     const staticProblem = getStaticProblem(problemId);
     if (staticProblem) {
-      // Ensure the static problem data is compatible with ProblemDetail
-      // The staticProblem data is already shaped as ProblemDetail (via ProblemDetailAPI alias)
       return Promise.resolve(staticProblem as ProblemDetail);
     } else {
       console.error(`Static problem data not found for ID: ${problemId}`);
@@ -214,9 +212,9 @@ export interface RunCodeSingleResult {
     error: string | null;
     isSuccessful: boolean;
     returnValue: unknown;
-    runCodeLambdaError?: boolean; // Custom flag from grader
-    errorMessage?: string; // For runCodeLambdaError
-    trace?: string[]; // For runCodeLambdaError
+    runCodeLambdaError?: boolean; 
+    errorMessage?: string; 
+    trace?: string[]; 
   };
 }
 export interface RunCodeResponse {
@@ -234,11 +232,60 @@ export const runCustomTests = async (payload: RunCodePayload, idToken: string): 
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      // Add Authorization header if your code-grader Lambda is protected by JWT Authorizer
       "Authorization": `Bearer ${idToken}`,
     },
     body: JSON.stringify(payload),
   });
 
   return handleApiResponse(response) as Promise<RunCodeResponse>;
+};
+
+// --- New types and function for solution submission ---
+export interface SubmitSolutionPayload {
+  problemId: string;
+  userCode: string;
+  language: string;
+}
+
+export interface TestCaseResultDetail {
+  caseNumber: number;
+  status: "ACCEPTED" | "WRONG_ANSWER" | "TIME_LIMIT_EXCEEDED" | "RUNTIME_ERROR" | "INTERNAL_ERROR";
+  executionTime: number; // in seconds, as returned by backend
+  stdout?: string | null;
+  stderr?: string | null;
+}
+
+export interface SubmissionResponse {
+  submissionId: string;
+  status: "ACCEPTED" | "WRONG_ANSWER" | "TIME_LIMIT_EXCEEDED" | "RUNTIME_ERROR" | "INTERNAL_ERROR";
+  executionTime: number; // Overall execution time (e.g., max time for a case) in seconds
+  results: TestCaseResultDetail[];
+  errorMessage?: string | null;
+  executionMode: "GRADE_SUBMISSION_RESULTS"; 
+  // Optional fields from backend
+  score?: number; // 0-100
+  passedCaseCount?: number;
+  totalCaseCount?: number;
+}
+
+export const submitSolution = async (payload: SubmitSolutionPayload, idToken: string): Promise<SubmissionResponse> => {
+  if (!CODE_GRADER_API_URL) {
+    throw new Error("Code Grader API URL is not configured.");
+  }
+
+  const submissionPayload = {
+    ...payload,
+    executionMode: "GRADE_SUBMISSION", // Crucial for backend to know the mode
+  };
+
+  const response = await fetch(`${CODE_GRADER_API_URL}/grade`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${idToken}`,
+    },
+    body: JSON.stringify(submissionPayload),
+  });
+
+  return handleApiResponse(response) as Promise<SubmissionResponse>;
 };

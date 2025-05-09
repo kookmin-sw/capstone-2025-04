@@ -336,7 +336,6 @@ def lambda_handler(event, context):
                         overall_status = "INTERNAL_ERROR"
                         if error_message_for_submission is None:
                             error_message_for_submission = f"Error executing test case {case_number}: {case_stderr}"
-                        break # Stop grading on internal errors
 
                     # Process normal execution result
                     case_exec_time_ms = run_code_result.get('executionTimeMs', 0)
@@ -386,7 +385,6 @@ def lambda_handler(event, context):
                          error_message_for_submission = f"Failed at test case {case_number}: {case_status}"
                          if case_stderr:
                              error_message_for_submission += f". Details: {case_stderr[:100]}"
-                    break # Stop grading after first failure
 
         except Exception as e:
             print(f"Major grading error: {str(e)}\n{traceback.format_exc()}")

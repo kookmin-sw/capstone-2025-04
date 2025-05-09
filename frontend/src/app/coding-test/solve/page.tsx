@@ -27,7 +27,15 @@ import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneLight } from "react-syntax-highlighter/dist/esm/styles/prism";
 
-import { getProblemById, ProblemDetail, runCustomTests, RunCodeSingleResult } from "@/api/problemApi";
+import { 
+  getProblemById, 
+  ProblemDetail, 
+  runCustomTests, 
+  RunCodeSingleResult,
+  submitSolution, // <-- Import submitSolution
+  SubmissionResponse, // <-- Import SubmissionResponse type
+  TestCaseResultDetail // <-- Import TestCaseResultDetail for clarity
+} from "@/api/problemApi";
 import { toast } from "sonner";
 import Chatbot from "@/components/Chatbot";
 import {
@@ -39,100 +47,107 @@ import {
   ChatBubbleLeftRightIcon,
   PlayIcon,
   DocumentTextIcon,
+  CheckCircleIcon, // For success modal
+  // XCircleIcon, // For error display (already imported if needed)
 } from "@heroicons/react/24/outline";
 
 const PROBLEM_DEFAULT_SIZE = 30;
 const EDITOR_DEFAULT_SIZE = 45;
 const CHATBOT_DEFAULT_SIZE = 25;
-const RESULTS_DEFAULT_SIZE_PERCENT_OF_VERTICAL = 35;
+const RESULTS_DEFAULT_SIZE_PERCENT_OF_VERTICAL = 35; // Default for results panel
 
 interface TestCaseDisplay {
   input: string | number[] | Record<string, unknown>;
-  expected_output?: string | number | boolean | number[] | Record<string, unknown>; // Can be undefined if not specified
+  expected_output?: string | number | boolean | number[] | Record<string, unknown>; 
+  rationale?: string;
 }
 
 // Helper function for recursively comparing outputs (actual vs expected)
 function areOutputsEqual(actual: unknown, expected: unknown): boolean {
-  // Strict equality for primitives (numbers, strings, booleans) and null
-  if (actual === expected) {
-    return true;
-  }
-
-  // Handle undefined for expected output: if expected is undefined, consider it a match if actual is also undefined or null.
-  // This might need adjustment based on how 'undefined' expected outputs should be treated.
-  // For problem solving, usually 'null' is explicitly used for "no output" or specific null value.
-  if (expected === undefined) {
-    return actual === undefined || actual === null;
-  }
-  // If expected is not undefined, but actual is, they don't match.
-  if (actual === undefined) {
-    return false;
-  }
-
-  // If one is null and the other isn't (and not caught by actual === expected)
-  if (actual === null || expected === null) {
-    return false;
-  }
-  
-  // If types are different after the above checks, they're not equal (e.g., 5 vs "5")
-  if (typeof actual !== typeof expected) {
-    return false;
-  }
-
-  // For arrays
+  if (actual === expected) return true;
+  if (expected === undefined) return actual === undefined || actual === null;
+  if (actual === undefined) return false;
+  if (actual === null || expected === null) return false;
+  if (typeof actual !== typeof expected) return false;
   if (Array.isArray(actual) && Array.isArray(expected)) {
     if (actual.length !== expected.length) return false;
-    // Recursively compare elements.
     for (let i = 0; i < actual.length; i++) {
       if (!areOutputsEqual(actual[i], expected[i])) return false;
     }
     return true;
   }
-
-  // For objects (non-array)
   if (typeof actual === 'object' && typeof expected === 'object') {
     const actualKeys = Object.keys(actual).sort();
     const expectedKeys = Object.keys(expected).sort();
-
     if (actualKeys.length !== expectedKeys.length || !actualKeys.every((key, index) => key === expectedKeys[index])) {
-      return false; // Different keys or different number of keys
+      return false; 
     }
-
-    // Recursively compare property values.
     for (const key of actualKeys) {
-      if (!areOutputsEqual(actual[key as keyof typeof actual], expected[key as keyof typeof expected])) return false;
+      if (!areOutputsEqual((actual as Record<string, unknown>)[key], (expected as Record<string, unknown>)[key])) return false;
     }
     return true;
   }
-  
-  // All other cases (e.g. two different strings of the same type not caught by ===)
   return false;
 }
 
 // Helper function for parsing potentially complex return values for display
 function formatOutputForDisplay(output: unknown): string {
-  if (output === undefined || output === null) {
-    return "None / Undefined"; // Or perhaps just ""
-  }
-  if (typeof output === 'string') {
-    return output; // Return strings directly
-  }
-  // For non-strings, pretty-print JSON
+  if (output === undefined || output === null) return "None / Undefined";
+  if (typeof output === 'string') return output; 
   try {
     return JSON.stringify(output, null, 2);
   } catch (e) {
-    // Fallback if stringify fails (e.g., circular references, though unlikely here)
     console.error("Failed to format output for display:", e);
     return String(output);
   }
 }
+
+// Success Modal Component
+interface SuccessModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onConfirm: () => void; 
+  submissionId: string | null;
+  problemId: string | null;
+}
+
+const SuccessModal: React.FC<SuccessModalProps> = ({ isOpen, onClose, onConfirm, submissionId, problemId }) => {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm">
+      <div className="bg-white rounded-lg shadow-xl p-6 sm:p-8 max-w-md mx-auto text-center">
+        <CheckCircleIcon className="h-16 w-16 text-green-500 mx-auto mb-4" />
+        <h3 className="text-xl font-semibold text-gray-900 mb-3">정답입니다!</h3>
+        <p className="text-sm text-gray-600 mb-6">
+          축하합니다! 모든 테스트 케이스를 통과하셨습니다.
+        </p>
+        <div className="flex flex-col sm:flex-row justify-center space-y-2 sm:space-y-0 sm:space-x-3">
+          <button
+            onClick={onClose}
+            className="w-full sm:w-auto px-4 py-2.5 rounded-md text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-1"
+          >
+            계속 풀기
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={!submissionId || !problemId}
+            className="w-full sm:w-auto px-4 py-2.5 rounded-md text-sm font-medium text-white bg-primary hover:bg-primary-hover focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1 disabled:opacity-50"
+          >
+            결과 확인 및 공유
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 
 const CodingTestContent: React.FC = () => {
   const router = useRouter();
   const searchParams = useSearchParams();
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { user } = useAuthenticator((context) => [context.user]); // user is kept for potential future use
+  const { user } = useAuthenticator((context) => [context.user]); 
   const id = searchParams.get("id");
 
   const [problemDetails, setProblemDetails] = useState<ProblemDetail | null>(null);
@@ -151,8 +166,16 @@ const CodingTestContent: React.FC = () => {
   const resultsPanelRef = useRef<ImperativePanelHandle>(null);
   const chatbotPanelRef = useRef<ImperativePanelHandle>(null);
 
+  // State for "Run Code" (Custom Tests)
   const [runCodeResults, setRunCodeResults] = useState<RunCodeSingleResult[] | null>(null);
   const [isRunningCode, setIsRunningCode] = useState(false);
+  
+  // NEW State for "Submit" (Full Grading)
+  const [submissionResults, setSubmissionResults] = useState<SubmissionResponse | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [currentSubmissionId, setCurrentSubmissionId] = useState<string | null>(null);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+
   const [activeResultsTab, setActiveResultsTab] = useState<ResultsTab>("examples");
 
   const editorLocalStorageKey = useMemo(() => {
@@ -184,8 +207,9 @@ const CodingTestContent: React.FC = () => {
   const handleLanguageChange = (e: ChangeEvent<HTMLSelectElement>) => {
     const newLang = e.target.value as "python" | "javascript" | "java" | "cpp";
     setLanguage(newLang);
-    hasLoadedInitialCode.current = false;
+    hasLoadedInitialCode.current = false; 
     setRunCodeResults(null);
+    setSubmissionResults(null); 
   };
 
   const handleCodeChange = (value: string) => {
@@ -196,35 +220,105 @@ const CodingTestContent: React.FC = () => {
 
   const handleResetCode = () => {
     const codeToSet = getInitialCodeForLanguage(language);
-    console.log(`Resetting code to startCode/template for ${language}`);
     setCode(codeToSet);
     setEditorResetKey((prev) => prev + 1);
     if (editorLocalStorageKey) {
       try {
         localStorage.setItem(editorLocalStorageKey, codeToSet);
-        console.log(`Saved reset code to key: ${editorLocalStorageKey}`);
       } catch (error) {
         console.error("Failed to save reset code to localStorage:", error);
       }
     }
   };
 
-  const handleSubmit = () => {
-    console.log("Submitting code (mock):", code, language);
-    toast.info("제출 기능은 현재 준비 중입니다.");
-    router.push(`/coding-test/result?id=${id}`);
+  const handleSubmit = async () => {
+    if (!problemDetails || isSubmitting || isRunningCode) return;
+
+    setIsSubmitting(true);
+    setSubmissionResults(null); 
+    setCurrentSubmissionId(null);
+    setActiveResultsTab("submission"); 
+
+    if (isResultsCollapsed && resultsPanelRef.current) {
+        resultsPanelRef.current.expand();
+        resultsPanelRef.current.resize(RESULTS_DEFAULT_SIZE_PERCENT_OF_VERTICAL);
+        setIsResultsCollapsed(false);
+    }
+    
+    try {
+      const session = await fetchAuthSession();
+      const idToken = session.tokens?.idToken?.toString();
+      if (!idToken) {
+        toast.error("제출을 위해 로그인이 필요합니다.");
+        setIsSubmitting(false);
+        return;
+      }
+
+      const payload = {
+        problemId: problemDetails.problemId,
+        userCode: code,
+        language: language,
+      };
+
+      console.log("Submitting solution with payload:", payload);
+      const response = await submitSolution(payload, idToken);
+      console.log("Submission response from API:", response);
+      
+      setSubmissionResults(response);
+      setCurrentSubmissionId(response.submissionId);
+      
+      const totalCases = response.results.length;
+      const passedCases = response.results.filter(tc => tc.status === "ACCEPTED").length;
+      // Use backend-calculated score if available, otherwise calculate
+      const score = response.score !== undefined ? response.score : 
+                    (totalCases > 0 ? Math.round((passedCases / totalCases) * 100) : 0);
+
+      if (score === 100 && totalCases > 0) { // Ensure there were cases to pass
+        toast.success(`정답입니다! 모든 테스트 케이스 통과 (${passedCases}/${totalCases})`);
+        setShowSuccessModal(true); 
+      } else if (totalCases > 0) {
+        toast.info(`채점 완료: ${passedCases}/${totalCases} 통과 (${score}점)`);
+      } else if (response.status === "ACCEPTED" && totalCases === 0) { // Edge case: accepted with 0 test cases
+        toast.success("제출 성공 (테스트 케이스 없음)");
+        setShowSuccessModal(true); // Still show modal for this scenario
+      } else {
+         toast.warning(`채점 완료: ${response.status}. 상세 오류: ${response.errorMessage || '없음'}`);
+      }
+
+    } catch (err) {
+      console.error("Failed to submit solution:", err);
+      const errorMsg = err instanceof Error ? err.message : "제출 중 오류 발생";
+      toast.error(errorMsg);
+      setSubmissionResults({
+        submissionId: "error-submission",
+        status: "INTERNAL_ERROR",
+        executionTime: 0,
+        results: [],
+        errorMessage: errorMsg,
+        executionMode: "GRADE_SUBMISSION_RESULTS"
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleRunCode = async () => {
-    if (!problemDetails || isRunningCode) return;
+    if (!problemDetails || isRunningCode || isSubmitting) return;
 
     setIsRunningCode(true);
-    setRunCodeResults(null);
-    setActiveResultsTab("submission"); // Switch to submission tab to show results
+    setRunCodeResults(null); 
+    setActiveResultsTab("run_code_results"); 
+
+     if (isResultsCollapsed && resultsPanelRef.current) {
+        resultsPanelRef.current.expand();
+        resultsPanelRef.current.resize(RESULTS_DEFAULT_SIZE_PERCENT_OF_VERTICAL);
+        setIsResultsCollapsed(false);
+    }
 
     try {
       const exampleTestCases = JSON.parse(problemDetails.finalTestCases || "[]") as TestCaseDisplay[];
-      const inputsToRun = exampleTestCases.slice(0, 2).map(tc => tc.input); // Run first 2 examples
+      // Limit to 3 example test cases for "Run Code"
+      const inputsToRun = exampleTestCases.slice(0, Math.min(3, exampleTestCases.length)).map(tc => tc.input); 
 
       if (inputsToRun.length === 0) {
         toast.info("실행할 예제 테스트 케이스가 없습니다.");
@@ -248,9 +342,7 @@ const CodingTestContent: React.FC = () => {
         problemId: problemDetails.problemId,
       };
 
-      console.log("Running code with payload:", payload);
       const response = await runCustomTests(payload, idToken);
-      console.log("Run code response:", response);
       setRunCodeResults(response.results);
       toast.success(`코드 실행 완료! ${response.results.length}개의 예제 테스트 케이스 실행됨.`);
 
@@ -258,20 +350,13 @@ const CodingTestContent: React.FC = () => {
       console.error("Failed to run code:", err);
       const errorMsg = err instanceof Error ? err.message : "코드 실행 중 오류 발생";
       toast.error(errorMsg);
-      setRunCodeResults([{ // Show error in results panel
+      setRunCodeResults([{ 
         caseIdentifier: "Error",
-        input: {}, // Placeholder input
+        input: {}, 
         runCodeOutput: {
-            stdout: "",
-            stderr: errorMsg,
-            exitCode: 1, // Indicate error
-            executionTimeMs: 0,
-            timedOut: false,
-            error: errorMsg, // This 'error' field is usually for runCode lambda's internal errors, but can be used
-            isSuccessful: false, // This flag from runCode lambda means code execution succeeded/failed, not logical correctness
-            runCodeLambdaError: true, // Custom flag to indicate this is a setup/API error, not user code runtime error
-            errorMessage: errorMsg,
-            returnValue: null,
+            stdout: "", stderr: errorMsg, exitCode: 1, executionTimeMs: 0,
+            timedOut: false, error: errorMsg, isSuccessful: false, 
+            runCodeLambdaError: true, errorMessage: errorMsg, returnValue: null,
         }
       }]);
     } finally {
@@ -310,18 +395,17 @@ const CodingTestContent: React.FC = () => {
       const fetchProblem = async () => {
         setIsLoadingProblem(true);
         setErrorProblem(null);
-        setRunCodeResults(null); // Clear previous run results when loading a new problem
+        setRunCodeResults(null); 
+        setSubmissionResults(null); 
         try {
           const data: ProblemDetail = await getProblemById(id as string);
           setProblemDetails(data);
-          hasLoadedInitialCode.current = false; // Reset flag to load code for the new problem
-          // Set language based on problem's primary language if available
+          hasLoadedInitialCode.current = false; 
           if (data.language) {
             if (data.language.startsWith("python")) setLanguage("python");
             else if (data.language.startsWith("javascript")) setLanguage("javascript");
             else if (data.language.startsWith("java")) setLanguage("java");
             else if (data.language.startsWith("cpp")) setLanguage("cpp");
-            // else keep current language or default to python
           }
         } catch (err) {
           console.error("Failed to fetch problem:", err);
@@ -343,41 +427,33 @@ const CodingTestContent: React.FC = () => {
   useEffect(() => {
     if (problemDetails && !hasLoadedInitialCode.current) {
         let initialCodeToSet = getInitialCodeForLanguage(language);
-
         if (editorLocalStorageKey) {
             try {
                 const savedCode = localStorage.getItem(editorLocalStorageKey);
                 if (savedCode !== null) {
                     initialCodeToSet = savedCode;
-                    console.log(`Loaded saved code from localStorage for ${language}.`);
-                } else {
-                    console.log(`No saved code for ${language}, using startCode/template.`);
                 }
             } catch (error) {
                 console.error("Failed to load code from localStorage:", error);
             }
         }
         setCode(initialCodeToSet);
-        hasLoadedInitialCode.current = true; // Mark that initial code (saved or template) has been set
+        hasLoadedInitialCode.current = true; 
     }
   }, [problemDetails, language, editorLocalStorageKey, getInitialCodeForLanguage]);
 
-  // Save code to local storage on change
   useEffect(() => {
-    // Ensure initial code is loaded AND code is not undefined to prevent overwriting with empty/default
     if (editorLocalStorageKey && hasLoadedInitialCode.current && code !== undefined) {
-      console.log(`Saving code to key: ${editorLocalStorageKey}`);
       try {
         localStorage.setItem(editorLocalStorageKey, code);
       } catch (error) {
         console.error("Failed to save code to localStorage:", error);
-        // Optionally notify user, but avoid flooding with toasts for a background save
       }
     }
   }, [code, editorLocalStorageKey]);
 
 
-  if (isLoadingProblem) {
+  if (isLoadingProblem) { 
     return (
       <div className="flex justify-center items-center flex-grow">
         <div className="text-center">
@@ -387,15 +463,14 @@ const CodingTestContent: React.FC = () => {
       </div>
     );
   }
-
-  if (errorProblem) {
-    return (
+  if (errorProblem) { 
+     return (
       <div className="max-w-5xl mx-auto p-8">
         <div className="text-center py-10 px-4 bg-red-50 border border-red-200 rounded-md">
           <p className="text-red-600 font-medium">오류 발생</p>
           <p className="text-red-500 text-sm mt-1">{errorProblem}</p>
           <Link
-            href="/coding-test/selection" // Or /coding-test if that's the main list
+            href="/coding-test/selection"
             className="mt-4 inline-block px-4 py-2 border border-gray-300 rounded-md text-gray-700 bg-white hover:bg-gray-50 transition"
           >
             문제 선택으로 돌아가기
@@ -404,8 +479,7 @@ const CodingTestContent: React.FC = () => {
       </div>
     );
   }
-
-  if (!problemDetails) {
+  if (!problemDetails) { 
     return (
       <div className="max-w-5xl mx-auto p-8 text-center text-gray-500">
         문제를 찾을 수 없습니다 (ID: {id}).
@@ -413,14 +487,21 @@ const CodingTestContent: React.FC = () => {
     );
   }
 
-  // Main layout structure
+  const handleModalConfirm = () => {
+    setShowSuccessModal(false);
+    if (problemDetails?.problemId && currentSubmissionId) {
+        router.push(`/coding-test/result?id=${problemDetails.problemId}&submissionId=${currentSubmissionId}`);
+    } else {
+        toast.error("결과 페이지로 이동하는데 필요한 정보가 없습니다.");
+    }
+  };
+
   return (
     <div className="relative flex h-[calc(100vh-var(--header-height,64px)-var(--footer-height,64px))] flex-grow flex-col">
-      {/* Top bar with Back to List button */}
       <div className="flex flex-shrink-0 border-b border-gray-200 bg-white px-4 pt-3 pb-2">
         <div className="flex items-center justify-end w-full space-x-4">
           <Link
-            href="/coding-test" // Link to the main coding test page (problem list)
+            href="/coding-test" 
             className="inline-flex items-center px-3 py-1 border border-gray-300 rounded-md bg-white text-gray-700 hover:bg-gray-50 transition text-sm"
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-1 h-4 w-4" > <path d="M19 12H5M12 19l-7-7 7-7" /> </svg>
@@ -429,7 +510,6 @@ const CodingTestContent: React.FC = () => {
         </div>
       </div>
 
-      {/* Panel Group for resizable layout */}
       <div className="absolute inset-0 pointer-events-none z-10">
         {isProblemCollapsed && (
           <button
@@ -441,7 +521,6 @@ const CodingTestContent: React.FC = () => {
             <ChevronDoubleRightIcon className="h-4 w-4" />
           </button>
         )}
-
         {isChatbotCollapsed && (
           <button
             onClick={toggleChatbotPanel}
@@ -471,9 +550,10 @@ const CodingTestContent: React.FC = () => {
                 handleCodeChange={handleCodeChange}
                 handleRunCode={handleRunCode}
                 isRunningCode={isRunningCode}
-                handleSubmit={handleSubmit}
+                handleSubmit={handleSubmit} 
+                isSubmitting={isSubmitting} 
                 onResetClick={handleResetCode}
-                editorKey={editorResetKey} // Use key to force re-render on reset if needed
+                editorKey={editorResetKey} 
                 codeValue={code}
                 toggleProblemPanelPreserveSize={toggleProblemPanelPreserveSize}
                 toggleResultsPanelPreserveSize={toggleResultsPanelPreserveSize}
@@ -490,6 +570,8 @@ const CodingTestContent: React.FC = () => {
                   problemDetails={problemDetails} 
                   runCodeResults={runCodeResults}
                   isRunningCode={isRunningCode}
+                  submissionResults={submissionResults} 
+                  isSubmitting={isSubmitting} 
                   activeTab={activeResultsTab}
                   setActiveTab={setActiveResultsTab}
                 />
@@ -507,6 +589,14 @@ const CodingTestContent: React.FC = () => {
           )}
         </Panel>
       </PanelGroup>
+
+      <SuccessModal
+        isOpen={showSuccessModal}
+        onClose={() => setShowSuccessModal(false)}
+        onConfirm={handleModalConfirm}
+        submissionId={currentSubmissionId}
+        problemId={problemDetails?.problemId}
+      />
     </div>
   );
 };
@@ -535,10 +625,10 @@ const ProblemPanel: React.FC<{ problemDetails: ProblemDetail }> = ({ problemDeta
           remarkPlugins={[remarkGfm]}
           components={{
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            code({ inline, className, children, ...props }: any) { // Use any for props type from react-markdown
+            code({ inline, className, children, ...props }: any) { 
               const match = /language-(\w+)/.exec(className || "");
               if (!inline && match) {
-                return ( <SyntaxHighlighter {...props} style={oneLight} language={match[1]} PreTag="div" > {String(children).replace(/\\n$/, "")} </SyntaxHighlighter> );
+                return ( <SyntaxHighlighter {...props} style={oneLight} language={match[1]} PreTag="div" > {String(children).replace(/\n$/, "")} </SyntaxHighlighter> );
               }
               return ( <code className="bg-gray-100 rounded px-1 py-0.5 text-sm" {...props}> {children} </code> );
             },
@@ -567,6 +657,7 @@ interface EditorPanelProps {
   handleRunCode: () => void;
   isRunningCode: boolean;
   handleSubmit: () => void;
+  isSubmitting: boolean; 
   onResetClick: () => void;
   editorKey: number;
   codeValue: string;
@@ -585,6 +676,7 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
   handleRunCode,
   isRunningCode,
   handleSubmit,
+  isSubmitting, 
   onResetClick,
   editorKey,
   codeValue,
@@ -597,7 +689,6 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
 }) => {
   return (
     <div className="flex flex-col h-full text-gray-900">
-      {/* Editor Controls Bar */}
       <div className="p-2 border-b border-gray-200 flex items-center space-x-4 flex-shrink-0">
         <div>
           <label htmlFor="language-select" className="sr-only"> 언어 선택: </label>
@@ -614,10 +705,11 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
           <button onClick={toggleResultsPanelPreserveSize} title={isResultsCollapsed ? "Show Results" : "Hide Results"} className={`rounded p-1.5 hover:bg-gray-100 focus:outline-none ${ !isResultsCollapsed ? "bg-gray-100 text-primary" : "text-gray-500" }`} aria-pressed={!isResultsCollapsed ? "true" : "false"} > <CommandLineIcon className="h-5 w-5" /> </button>
           <button onClick={toggleChatbotPanelPreserveSize} title={isChatbotCollapsed ? "Show Chatbot" : "Hide Chatbot"} className={`rounded p-1.5 hover:bg-gray-100 focus:outline-none ${ !isChatbotCollapsed ? "bg-gray-100 text-primary" : "text-gray-500" }`} aria-pressed={!isChatbotCollapsed ? "true" : "false"} > <ChatBubbleLeftRightIcon className="h-5 w-5" /> </button>
         </div>
-        <div className="flex-grow"></div> {/* Spacer */}
+        <div className="flex-grow"></div> 
+
         <button
           onClick={handleRunCode}
-          disabled={isRunningCode}
+          disabled={isRunningCode || isSubmitting} 
           className="px-3 py-1 text-sm border border-green-500 text-green-600 rounded hover:bg-green-50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
         >
           <PlayIcon className="h-4 w-4 mr-1" />
@@ -625,31 +717,32 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
         </button>
         <button
           onClick={handleSubmit}
-          disabled={isRunningCode} // Disable submit while running code as well
+          disabled={isRunningCode || isSubmitting} 
           className="px-4 py-1 bg-primary text-white text-sm font-medium rounded-md hover:bg-primary-hover transition disabled:opacity-50"
         >
-          제출
+          {isSubmitting ? "채점 중..." : "제출"} 
         </button>
       </div>
-      {/* Code Editor Area */}
       <div className="flex-grow h-full overflow-hidden p-2">
         <CodeEditor
-          key={editorKey} // Force re-mount on language change or explicit reset
+          key={editorKey} 
           language={language}
           onChange={handleCodeChange}
-          value={codeValue} // Pass current code value
+          value={codeValue} 
         />
       </div>
     </div>
   );
 };
 
-type ResultsTab = "examples" | "custom" | "submission";
+type ResultsTab = "examples" | "run_code_results" | "submission"; 
 
 interface ResultsPanelProps {
   problemDetails: ProblemDetail;
   runCodeResults: RunCodeSingleResult[] | null;
   isRunningCode: boolean;
+  submissionResults: SubmissionResponse | null; 
+  isSubmitting: boolean; 
   activeTab: ResultsTab;
   setActiveTab: (tab: ResultsTab) => void;
 }
@@ -658,23 +751,56 @@ const ResultsPanel: React.FC<ResultsPanelProps> = ({
   problemDetails, 
   runCodeResults, 
   isRunningCode,
+  submissionResults, 
+  isSubmitting, 
   activeTab,
   setActiveTab
  }) => {
   const exampleTestCasesToDisplay = useMemo(() => {
     try {
       const allTestCases = JSON.parse(problemDetails.finalTestCases || "[]") as TestCaseDisplay[];
-      // Slice(0,2) ensures we only work with the examples that were actually run by handleRunCode
-      return allTestCases.slice(0, 2); 
+      return allTestCases; 
     } catch (error) {
       console.error("Failed to parse finalTestCases for examples:", error);
       return [];
     }
   }, [problemDetails.finalTestCases]);
 
+  const getStatusClasses = (status: TestCaseResultDetail['status'] | 'EXECUTOR_ERROR' | 'GRADER_ERROR'): { text: string; bg: string; border: string } => {
+    switch (status) {
+      case "ACCEPTED":
+        return { text: "text-green-700", bg: "bg-green-100", border: "border-green-300" };
+      case "WRONG_ANSWER":
+        return { text: "text-red-700", bg: "bg-red-100", border: "border-red-300" };
+      case "TIME_LIMIT_EXCEEDED":
+        return { text: "text-yellow-700", bg: "bg-yellow-100", border: "border-yellow-300" };
+      case "RUNTIME_ERROR":
+        return { text: "text-purple-700", bg: "bg-purple-100", border: "border-purple-300" };
+      case "EXECUTOR_ERROR": 
+        return { text: "text-orange-700", bg: "bg-orange-100", border: "border-orange-300" };
+      case "INTERNAL_ERROR":
+      case "GRADER_ERROR": 
+      default:
+        return { text: "text-gray-700", bg: "bg-gray-200", border: "border-gray-300" };
+    }
+  };
+  
+  const getStatusKorean = (status: TestCaseResultDetail['status'] | 'EXECUTOR_ERROR' | 'GRADER_ERROR'): string => {
+    const map = {
+      "ACCEPTED": "성공",
+      "WRONG_ANSWER": "오답",
+      "TIME_LIMIT_EXCEEDED": "시간 초과",
+      "RUNTIME_ERROR": "런타임 오류",
+      "INTERNAL_ERROR": "내부 오류",
+      "EXECUTOR_ERROR": "실행기 오류",
+      "GRADER_ERROR": "채점기 오류",
+    };
+    return map[status] || "알 수 없음";
+  }
+
   const renderTabContent = () => {
     switch (activeTab) {
-      case "examples":
+      case "examples": 
         return (
           <div className="mt-4 space-y-4">
             {exampleTestCasesToDisplay.length > 0 ? (
@@ -686,16 +812,22 @@ const ResultsPanel: React.FC<ResultsPanelProps> = ({
                   <div className="space-y-2">
                     <div className="text-xs">
                       <strong className="font-medium text-gray-600 block mb-0.5">Input:</strong>
-                      <pre className="bg-white p-2 rounded border border-gray-200 text-gray-700 font-mono whitespace-pre-wrap">
-                        {typeof example.input === 'string' ? example.input : JSON.stringify(example.input, null, 2)}
+                      <pre className="bg-white p-2 rounded border border-gray-200 text-gray-700 font-mono whitespace-pre-wrap text-[11px]">
+                        {formatOutputForDisplay(example.input)}
                       </pre>
                     </div>
                     <div className="text-xs">
                       <strong className="font-medium text-gray-600 block mb-0.5">Expected Output:</strong>
-                      <pre className="bg-white p-2 rounded border border-gray-200 text-gray-800 font-mono whitespace-pre-wrap">
-                        {example.expected_output === undefined ? "N/A" : (typeof example.expected_output === 'string' ? example.expected_output : JSON.stringify(example.expected_output, null, 2))}
+                      <pre className="bg-white p-2 rounded border border-gray-200 text-gray-800 font-mono whitespace-pre-wrap text-[11px]">
+                        {formatOutputForDisplay(example.expected_output)}
                       </pre>
                     </div>
+                    {example.rationale && (
+                       <div className="text-xs">
+                        <strong className="font-medium text-gray-600 block mb-0.5">Rationale:</strong>
+                        <p className="text-gray-700 text-[11px]">{example.rationale}</p>
+                      </div>
+                    )}
                   </div>
                 </div>
               ))
@@ -704,16 +836,8 @@ const ResultsPanel: React.FC<ResultsPanelProps> = ({
             )}
           </div>
         );
-      case "custom": // Custom input tab remains as a placeholder for now
-        return (
-          <div className="mt-4">
-            <h4 className="text-md font-semibold mb-2 text-gray-800"> Custom Input </h4>
-            <textarea className="w-full p-2 border border-gray-300 rounded-md text-sm font-mono bg-white text-gray-900" rows={5} placeholder="Enter your custom input here (Not implemented yet)..." ></textarea>
-            <h4 className="text-md font-semibold mt-4 mb-2 text-gray-800"> Output </h4>
-            <pre className="bg-gray-100 p-3 rounded-md text-gray-800 font-mono text-xs min-h-[50px]"> Run code to see output... </pre>
-          </div>
-        );
-      case "submission": // This tab now shows results of running against examples
+      
+      case "run_code_results": 
         if (isRunningCode) {
           return (
             <div className="mt-4 flex flex-col items-center justify-center h-full">
@@ -726,113 +850,165 @@ const ResultsPanel: React.FC<ResultsPanelProps> = ({
           return (
             <div className="mt-4 text-center text-gray-500 p-6">
               <DocumentTextIcon className="h-12 w-12 mx-auto text-gray-400 mb-2" />
-              &quot;코드 실행&quot; 버튼을 눌러 예제 테스트 케이스에 대한 결과를 확인하세요.
-              <br />실제 제출 시 모든 테스트 케이스에 대한 채점이 진행됩니다.
+              &quot;코드 실행&quot; 버튼을 눌러 예제 테스트 케이스에 대한 실행 결과를 확인하세요.
             </div>
           );
         }
-        // Display results from running custom tests (which are the example tests)
-        // *** MODIFIED RESULT DISPLAY ***
         return (
-          <div className="mt-4 space-y-4">
-            <h4 className="text-md font-semibold text-gray-800 mb-3">실행 결과 (예제 테스트 케이스):</h4>
+          <div className="mt-4 space-y-3">
+            <h4 className="text-md font-semibold text-gray-800 mb-3">실행 결과 (예제):</h4>
             {runCodeResults.map((result, index) => {
-              const exampleTestCase = exampleTestCasesToDisplay[index];
-              const outputDetails = result.runCodeOutput; // This now has the full structure
+              const exampleTestCase = exampleTestCasesToDisplay[index]; 
+              const outputDetails = result.runCodeOutput;
+              
+              let statusType: 'ACCEPTED' | 'WRONG_ANSWER' | 'RUNTIME_ERROR' | 'TIME_LIMIT_EXCEEDED' | 'EXECUTOR_ERROR' | 'GRADER_ERROR' = 'RUNTIME_ERROR'; 
+              let logicalCorrectnessChecked = false;
 
-              // Determine status based on the NEW executor output structure
-              let statusText = "실패";
-              let statusColorClass = "bg-red-100 text-red-700";
-              let logicalCorrectnessChecked = false; // Track if we checked the answer logic
-
-              if (outputDetails.runCodeLambdaError) { // Check for executor invocation/setup errors first
-                  statusText = "실행기 오류";
-                  statusColorClass = "bg-orange-100 text-orange-700";
+              if (outputDetails.runCodeLambdaError) {
+                  statusType = 'EXECUTOR_ERROR';
               } else if (outputDetails.timedOut) {
-                  statusText = "시간 초과";
-                  statusColorClass = "bg-yellow-100 text-yellow-700";
-              } else if (!outputDetails.isSuccessful) { // Check if code execution itself failed (non-zero exit, etc.)
-                  statusText = "런타임 오류";
-                  statusColorClass = "bg-red-100 text-red-700";
-              } else {
-                  // Execution SUCCEEDED, now check the actual answer logic
+                  statusType = 'TIME_LIMIT_EXCEEDED';
+              } else if (!outputDetails.isSuccessful) { 
+                  statusType = 'RUNTIME_ERROR';
+              } else { 
                   logicalCorrectnessChecked = true;
-                  // Compare the returnValue with the expected output
                   if (exampleTestCase && areOutputsEqual(outputDetails.returnValue, exampleTestCase.expected_output)) {
-                      statusText = "성공";
-                      statusColorClass = "bg-green-100 text-green-700";
+                      statusType = 'ACCEPTED';
                   } else {
-                      statusText = "오답";
-                      statusColorClass = "bg-red-100 text-red-700";
-                      console.warn(`Case ${index+1} WA: Actual=${JSON.stringify(outputDetails.returnValue)}, Expected=${JSON.stringify(exampleTestCase?.expected_output)}`);
+                      statusType = 'WRONG_ANSWER';
                   }
               }
-
+              const statusStyle = getStatusClasses(statusType);
 
               return (
-                <div key={index} className={`border rounded p-3 ${statusColorClass.replace('text-', 'border-').replace('bg-', 'bg-opacity-20 border-opacity-50 ')}`}>
-                  <div className="flex justify-between items-center mb-2">
+                <div key={index} className={`border rounded p-3 ${statusStyle.bg} ${statusStyle.border}`}>
+                  <div className="flex justify-between items-center mb-1.5">
                       <h5 className="text-sm font-semibold text-gray-800">
                         {result.caseIdentifier || `예제 ${index + 1}`}
                       </h5>
-                      <span className={`px-2.5 py-0.5 text-xs font-medium rounded-full ${statusColorClass}`}>
-                        {statusText}
+                      <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${statusStyle.text} ${statusStyle.bg}`}>
+                        {getStatusKorean(statusType)}
                       </span>
                   </div>
                   <p className="text-xs text-gray-500 mb-2">실행 시간: {outputDetails.executionTimeMs}ms</p>
 
                   <details className="text-xs cursor-pointer group">
-                      <summary className="text-gray-600 hover:text-primary group-open:mb-1">세부 정보 보기</summary>
-                      <div className="mt-1 space-y-2 bg-white p-2 rounded border border-gray-200">
-                        {/* Input */}
+                      <summary className="text-gray-600 hover:text-primary group-open:mb-1 text-[11px]">세부 정보</summary>
+                      <div className="mt-1 space-y-1.5 bg-white p-2 rounded border border-gray-200">
                         <div>
-                            <strong className="font-medium text-gray-500 block">Input:</strong>
-                            <pre className="bg-gray-50 p-1.5 rounded text-gray-700 font-mono text-[11px] whitespace-pre-wrap">
+                            <strong className="font-medium text-gray-500 block text-[10px]">Input:</strong>
+                            <pre className="bg-gray-50 p-1 rounded text-gray-700 font-mono text-[10px] whitespace-pre-wrap">
                                 {formatOutputForDisplay(result.input)}
                             </pre>
                         </div>
-                        {/* Expected Output (Only if logic was checked) */}
                         {exampleTestCase && logicalCorrectnessChecked && (
                         <div>
-                            <strong className="font-medium text-gray-500 block">Expected Output:</strong>
-                            <pre className="bg-gray-50 p-1.5 rounded text-gray-700 font-mono text-[11px] whitespace-pre-wrap">
+                            <strong className="font-medium text-gray-500 block text-[10px]">Expected Output:</strong>
+                            <pre className="bg-gray-50 p-1 rounded text-gray-700 font-mono text-[10px] whitespace-pre-wrap">
                                 {formatOutputForDisplay(exampleTestCase.expected_output)}
                             </pre>
                         </div>
                         )}
-                        {/* Actual Return Value (Only if execution succeeded) */}
                         {outputDetails.isSuccessful && (
                         <div>
-                            <strong className="font-medium text-gray-500 block">Return Value:</strong>
-                             <pre className={`p-1.5 rounded font-mono text-[11px] whitespace-pre-wrap ${statusText === "성공" ? "bg-green-50 text-green-700" : (statusText === "오답" ? "bg-red-50 text-red-700" : "bg-gray-50 text-gray-700")}`}>
+                            <strong className="font-medium text-gray-500 block text-[10px]">Return Value:</strong>
+                             <pre className={`p-1 rounded font-mono text-[10px] whitespace-pre-wrap ${statusType === "ACCEPTED" ? "bg-green-50 text-green-700" : (statusType === "WRONG_ANSWER" ? "bg-red-50 text-red-700" : "bg-gray-50 text-gray-700")}`}>
                                 {formatOutputForDisplay(outputDetails.returnValue)}
                             </pre>
                         </div>
                         )}
-                        {/* Stdout (If any) */}
                         {outputDetails.stdout && (
                             <div>
-                                <strong className="font-medium text-gray-500 block">Stdout (Debug Output):</strong>
-                                <pre className="bg-gray-50 p-1.5 rounded text-gray-700 font-mono text-[11px] whitespace-pre-wrap">
+                                <strong className="font-medium text-gray-500 block text-[10px]">Stdout:</strong>
+                                <pre className="bg-gray-50 p-1 rounded text-gray-700 font-mono text-[10px] whitespace-pre-wrap">
                                 {outputDetails.stdout}
                                 </pre>
                             </div>
                         )}
-                        {/* Stderr (If any) */}
                         {outputDetails.stderr && (
                             <div>
-                                <strong className="font-medium text-red-500 block">Stderr:</strong>
-                                <pre className="bg-red-50 p-1.5 rounded text-red-700 font-mono text-[11px] whitespace-pre-wrap">
+                                <strong className="font-medium text-red-500 block text-[10px]">Stderr:</strong>
+                                <pre className="bg-red-50 p-1 rounded text-red-700 font-mono text-[10px] whitespace-pre-wrap">
                                 {outputDetails.stderr}
                                 </pre>
                             </div>
                         )}
-                        {/* Display Lambda/Grader specific errors */}
                         {outputDetails.runCodeLambdaError && outputDetails.errorMessage && (
                             <p className="text-xs text-orange-700 mt-1">실행기 오류 상세: {outputDetails.errorMessage}</p>
                         )}
                       </div>
                   </details>
+                </div>
+              );
+            })}
+          </div>
+        );
+
+      case "submission": 
+        if (isSubmitting) {
+          return (
+            <div className="mt-4 flex flex-col items-center justify-center h-full">
+              <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary"></div>
+              <p className="mt-3 text-gray-600">채점 중입니다...</p>
+            </div>
+          );
+        }
+        if (!submissionResults) {
+          return (
+            <div className="mt-4 text-center text-gray-500 p-6">
+              <DocumentTextIcon className="h-12 w-12 mx-auto text-gray-400 mb-2" />
+              &quot;제출&quot; 버튼을 눌러 전체 테스트 케이스에 대한 채점 결과를 확인하세요.
+            </div>
+          );
+        }
+        
+        const totalCases = submissionResults.results.length;
+        const passedCases = submissionResults.results.filter(tc => tc.status === "ACCEPTED").length;
+        // Use backend score if available, otherwise calculate
+        const score = submissionResults.score !== undefined ? submissionResults.score :
+                      (totalCases > 0 ? Math.round((passedCases / totalCases) * 100) : 0);
+
+        return (
+          <div className="mt-4 space-y-3">
+            <div className="flex justify-between items-center mb-4 p-3 bg-gray-100 rounded-md border">
+                <h4 className="text-md font-semibold text-gray-800">
+                    채점 결과 (ID: {submissionResults.submissionId.substring(0,8)}...)
+                </h4>
+                <div className="text-right">
+                    <p className={`text-lg font-bold ${score === 100 ? 'text-green-600' : (score > 0 ? 'text-yellow-600' : 'text-red-600')}`}>
+                        {score}/100점
+                    </p>
+                    <p className="text-xs text-gray-500">{passedCases} / {totalCases} 테스트 케이스 통과</p>
+                </div>
+            </div>
+
+            {submissionResults.errorMessage && (
+                 <div className={`p-3 rounded-md ${getStatusClasses("INTERNAL_ERROR").bg} ${getStatusClasses("INTERNAL_ERROR").border} ${getStatusClasses("INTERNAL_ERROR").text} text-sm`}>
+                    <strong>오류:</strong> {submissionResults.errorMessage}
+                </div>
+            )}
+
+            {submissionResults.results.map((tcResult) => {
+              const statusStyle = getStatusClasses(tcResult.status);
+              return (
+                <div key={tcResult.caseNumber} className={`border rounded p-3 ${statusStyle.bg} ${statusStyle.border}`}>
+                  <div className="flex justify-between items-center mb-1">
+                    <h5 className="text-sm font-semibold text-gray-800">
+                      테스트 케이스 #{tcResult.caseNumber}
+                    </h5>
+                    <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${statusStyle.text} ${statusStyle.bg}`}>
+                      {getStatusKorean(tcResult.status)}
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-500">실행 시간: {(tcResult.executionTime * 1000).toFixed(0)}ms</p>
+                  {tcResult.status !== "ACCEPTED" && tcResult.stderr && (
+                    <details className="text-xs cursor-pointer group mt-1">
+                        <summary className="text-gray-600 hover:text-primary group-open:mb-1 text-[11px]">오류 상세 보기</summary>
+                        <pre className="mt-1 bg-white p-1.5 rounded border border-gray-200 text-red-600 font-mono text-[10px] whitespace-pre-wrap">
+                            {tcResult.stderr}
+                        </pre>
+                    </details>
+                  )}
                 </div>
               );
             })}
@@ -844,7 +1020,7 @@ const ResultsPanel: React.FC<ResultsPanelProps> = ({
   };
 
   const getTabClasses = (tabName: ResultsTab) => { 
-    const base = "px-4 py-2 text-sm font-medium border-b-2 transition-colors duration-150 focus:outline-none";
+    const base = "px-3 py-2 text-xs sm:text-sm font-medium border-b-2 transition-colors duration-150 focus:outline-none whitespace-nowrap";
     const active = "border-primary text-primary"; 
     const inactive = "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"; 
     return `${base} ${activeTab === tabName ? active : inactive}`;
@@ -852,28 +1028,26 @@ const ResultsPanel: React.FC<ResultsPanelProps> = ({
 
   return (
     <div className="flex flex-col h-full bg-white border-t border-gray-200 text-gray-900">
-      {/* Tabs Navigation */}
       <div className="border-b border-gray-200 flex-shrink-0">
-        <nav className="-mb-px flex space-x-6 px-4" aria-label="Tabs">
+        <nav className="-mb-px flex space-x-2 sm:space-x-4 px-2 sm:px-4 overflow-x-auto" aria-label="Tabs">
           <button onClick={() => setActiveTab("examples")} className={getTabClasses("examples")} aria-current={activeTab === "examples" ? "page" : undefined} >
-            예제 테스트 케이스
+            예제
           </button>
-          <button onClick={() => setActiveTab("custom")} className={getTabClasses("custom")} aria-current={activeTab === "custom" ? "page" : undefined} >
-            Custom Input
+          <button onClick={() => setActiveTab("run_code_results")} className={getTabClasses("run_code_results")} aria-current={activeTab === "run_code_results" ? "page" : undefined} >
+            실행 결과
           </button>
           <button onClick={() => setActiveTab("submission")} className={getTabClasses("submission")} aria-current={activeTab === "submission" ? "page" : undefined} >
-            실행 결과
+            채점 결과
           </button>
         </nav>
       </div>
-      {/* Tab Content */}
-      <div className="p-4 flex-grow overflow-y-auto">{renderTabContent()}</div>
+      <div className="p-3 sm:p-4 flex-grow overflow-y-auto">{renderTabContent()}</div>
     </div>
   );
 };
 
 
-const CodingTestSolvePage: React.FC = () => {
+const CodingTestSolvePage: React.FC = () => { 
   return (
     <>
       <Head>
@@ -882,9 +1056,9 @@ const CodingTestSolvePage: React.FC = () => {
       </Head>
       <div className="flex flex-col h-screen">
         <Header />
-        <main className="flex-grow overflow-hidden"> {/* Ensure main content area can scroll if needed, but panels handle their own */}
+        <main className="flex-grow overflow-hidden"> 
           <Suspense
-            fallback={ // Fallback UI for Suspense
+            fallback={ 
               <div className="flex justify-center items-center flex-grow h-full">
                 <div className="text-center">
                   <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
