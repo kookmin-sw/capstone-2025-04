@@ -60,8 +60,8 @@ export const handler = async (event) => {
       })
     );
     
-    // Sort comments by createdAt in descending order (newest first)
-    comments.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    // Sort comments by createdAt in ascending order (oldest first)
+    comments.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
 
     // --- SUCCESS RESPONSE ---
     const responseBody = {
