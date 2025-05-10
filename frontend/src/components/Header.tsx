@@ -5,7 +5,7 @@ import React, { useState, useEffect } from "react"; // Import useState, useEffec
 import { useAuthenticator } from "@aws-amplify/ui-react"; // Import the hook
 import { fetchAuthSession } from "aws-amplify/auth"; // Import fetchAuthSession
 import { fetchUserAttributes } from "aws-amplify/auth"; // Import fetchUserAttributes back
-import { useRouter } from 'next/navigation'; // 리디렉션을 위한 useRouter 추가
+import { useRouter } from "next/navigation"; // 리디렉션을 위한 useRouter 추가
 
 import AlpacoLogo from "./AlpacoLogo";
 import AlpacoWordLogo from "./AlpacoWordLogo";
@@ -26,7 +26,7 @@ const Header: React.FC = () => {
 
   const [nickname, setNickname] = useState<string | null>(() => {
     // 브라우저 환경에서만 로컬 스토리지 접근
-    if (typeof window !== 'undefined') {
+    if (typeof window !== "undefined") {
       const savedNickname = localStorage.getItem(NICKNAME_STORAGE_KEY);
       return savedNickname;
     }
@@ -38,14 +38,14 @@ const Header: React.FC = () => {
 
   // 닉네임이 변경될 때마다 로컬 스토리지에 저장
   useEffect(() => {
-    if (!isInitialLoad && nickname && typeof window !== 'undefined') {
+    if (!isInitialLoad && nickname && typeof window !== "undefined") {
       localStorage.setItem(NICKNAME_STORAGE_KEY, nickname);
     }
   }, [nickname, isInitialLoad]);
 
   // 로그아웃 시 로컬 스토리지에서 닉네임 제거
   useEffect(() => {
-    if (!isAuthenticated && typeof window !== 'undefined') {
+    if (!isAuthenticated && typeof window !== "undefined") {
       localStorage.removeItem(NICKNAME_STORAGE_KEY);
     }
   }, [isAuthenticated]);
@@ -58,7 +58,7 @@ const Header: React.FC = () => {
           try {
             const userAttributes = await fetchUserAttributes();
             console.log("User Attributes:", userAttributes); // Debug: See what's in the attributes
-            
+
             // Set nickname if available
             if (userAttributes.nickname) {
               setNickname(userAttributes.nickname);
@@ -73,15 +73,15 @@ const Header: React.FC = () => {
           } catch (attrError) {
             console.warn("Could not fetch user attributes:", attrError);
             // Continue with the flow, we'll just use what we have from the token
-            
+
             // Fallback to token if we couldn't get attributes
             const session = await fetchAuthSession();
             const idTokenPayload = session.tokens?.idToken?.payload;
             console.log("ID Token Payload:", idTokenPayload); // Debug: See what's in the token
-            
+
             // 닉네임 체크 완료 표시
             setIsNicknameChecked(true);
-            
+
             // 토큰에서 nickname 확인
             if (idTokenPayload && typeof idTokenPayload.nickname === "string") {
               setNickname(idTokenPayload.nickname);
@@ -94,14 +94,14 @@ const Header: React.FC = () => {
         } catch (error) {
           console.error(
             "Error fetching auth session or parsing ID token:",
-            error
+            error,
           );
           setNickname(null);
           // 에러가 발생해도 체크는 완료된 것으로 표시
           setIsNicknameChecked(true);
           setShouldRedirect(false); // 에러 상황에서는 리디렉션하지 않음
         }
-        
+
         // 초기 로드 완료
         setIsInitialLoad(false);
       } else {
@@ -120,9 +120,12 @@ const Header: React.FC = () => {
     if (isAuthenticated && isNicknameChecked && shouldRedirect) {
       const currentPath = window.location.pathname;
       // 이미 설정 페이지에 있거나 콜백 페이지인 경우에는 리디렉션하지 않음
-      if (currentPath !== '/user/settings' && !currentPath.includes('/auth/callback')) {
+      if (
+        currentPath !== "/user/settings" &&
+        !currentPath.includes("/auth/callback")
+      ) {
         console.log("리디렉션: 닉네임이 없어서 설정 페이지로 이동합니다.");
-        router.push('/user/settings');
+        router.push("/user/settings");
       }
     }
   }, [isAuthenticated, isNicknameChecked, shouldRedirect, router]);
@@ -169,6 +172,12 @@ const Header: React.FC = () => {
               내 저장소
             </Link>
           )}
+          <Link
+            href="/submissions"
+            className="font-medium text-gray-600 relative hover:text-primary transition-colors duration-200 hover:after:content-[''] hover:after:absolute hover:after:bottom-[-0.5rem] hover:after:left-0 hover:after:w-full hover:after:h-0.5 hover:after:bg-primary hover:after:rounded-sm"
+          >
+            제출 현황
+          </Link>
 
           {/* Auth Buttons / User Info */}
           {isAuthenticated ? (
@@ -177,23 +186,23 @@ const Header: React.FC = () => {
                 <span className="text-sm text-gray-700 hidden md:inline">
                   {getUserIdentifier()}님 {/* Display user identifier */}
                 </span>
-                <Link 
-                  href="/user/settings" 
+                <Link
+                  href="/user/settings"
                   className="text-gray-600 hover:text-primary transition-colors duration-200"
                   title="설정"
                 >
-                  <svg 
-                    xmlns="http://www.w3.org/2000/svg" 
-                    fill="none" 
-                    viewBox="0 0 24 24" 
-                    strokeWidth={1.5} 
-                    stroke="currentColor" 
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    strokeWidth={1.5}
+                    stroke="currentColor"
                     className="w-5 h-5"
                   >
-                    <path 
-                      strokeLinecap="round" 
-                      strokeLinejoin="round" 
-                      d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" 
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z"
                     />
                   </svg>
                 </Link>

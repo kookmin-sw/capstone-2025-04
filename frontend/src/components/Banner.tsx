@@ -28,7 +28,7 @@ const Banner: React.FC = () => {
             animate={{ opacity: 1, y: 0 }}
             className="text-lg text-gray-600 break-keep"
           >
-            클라우드 기반 LLM을 활용한 개인 맞춤형 문제와 함께
+            클라우드 기반 AI을 활용한 개인 맞춤형 문제와 함께
           </motion.p>
           <motion.p
             initial={{ opacity: 0, y: 20 }}

@@ -10,19 +10,18 @@ const tableName = process.env.SUBMISSIONS_TABLE_NAME; // Lambda 환경 변수에
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*", // 실제 운영 환경에서는 특정 Origin으로 제한
   "Access-Control-Allow-Methods": "GET, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization", // 필요에 따라 Authorization 추가
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
 
 // GSI 이름 상수화
 const GSI_PROBLEM_ID_TIME = "ProblemIdSubmissionTimeIndex";
 const GSI_USER_ID_TIME = "UserIdSubmissionTimeIndex";
-const GSI_ALL_SUBMISSIONS_TIME = "AllSubmissionsByTimeIndex"; // is_submission을 PK로 사용
-const GSI_AUTHOR_TIME = "AuthorSubmissionTimeIndex"; // author를 PK로 사용
+const GSI_ALL_SUBMISSIONS_TIME = "AllSubmissionsByTimeIndex";
+const GSI_AUTHOR_TIME = "AuthorSubmissionTimeIndex";
 
 const DEFAULT_PAGE_SIZE = 20;
 
 export const handler = async (event) => {
-  // CORS preflight 요청 처리
   if (event.httpMethod === "OPTIONS") {
     return {
       statusCode: 200,
@@ -48,22 +47,35 @@ export const handler = async (event) => {
     const queryParams = event.queryStringParameters || {};
     const userId = queryParams.userId;
     const problemId = queryParams.problemId;
-    const author = queryParams.author; // author 파라미터 추가
+    const author = queryParams.author;
     const pageSize = parseInt(queryParams.pageSize, 10) || DEFAULT_PAGE_SIZE;
     const sortOrder =
-      queryParams.sortOrder?.toUpperCase() === "ASC" ? "ASC" : "DESC"; // 기본 DESC
+      queryParams.sortOrder?.toUpperCase() === "ASC" ? "ASC" : "DESC";
     let lastEvaluatedKey = queryParams.lastEvaluatedKey;
+
+    const projectionExpressionParts = [
+      "submissionId",
+      "problemId",
+      "userId",
+      "author",
+      "#s", // for status
+      "submissionTime",
+      "executionTime",
+      "#l", // for language
+      "errorMessage",
+    ];
+
+    const expressionAttributeNames = {
+      "#s": "status",
+      "#l": "language", // 'language'를 #l로 매핑
+    };
 
     const params = {
       TableName: tableName,
       Limit: pageSize,
-      ScanIndexForward: sortOrder === "ASC", // ASC면 true, DESC면 false
-      // 필요한 필드만 가져오도록 ProjectionExpression 설정 (성능 및 비용 최적화)
-      ProjectionExpression:
-        "submissionId, problemId, userId, author, #s, submissionTime, executionTime, language, errorMessage", // author 추가
-      ExpressionAttributeNames: {
-        "#s": "status", // 'status'는 예약어일 수 있으므로 ExpressionAttributeNames 사용
-      },
+      ScanIndexForward: sortOrder === "ASC",
+      ProjectionExpression: projectionExpressionParts.join(", "), // 수정됨
+      ExpressionAttributeNames: expressionAttributeNames, // 수정됨
     };
 
     if (lastEvaluatedKey) {
@@ -81,20 +93,16 @@ export const handler = async (event) => {
       }
     }
 
-    // GSI 및 KeyConditionExpression 구성
+    // GSI 및 KeyConditionExpression 구성 (이 부분은 변경 없음)
     if (userId && problemId) {
-      // userId와 problemId가 모두 있는 경우: UserIdSubmissionTimeIndex를 사용하고 problemId로 필터링
-      // 또는 ProblemIdSubmissionTimeIndex를 사용하고 userId로 필터링.
-      // 더 선택적인 (cardinality가 높은) 키를 GSI의 PK로 사용하는 것이 좋음.
-      // 여기서는 UserIdSubmissionTimeIndex를 예시로 사용.
       params.IndexName = GSI_USER_ID_TIME;
       params.KeyConditionExpression = "userId = :userIdVal";
-      params.FilterExpression = "problemId = :problemIdVal"; // GSI의 PK 외 필터는 FilterExpression 사용
+      params.FilterExpression = "problemId = :problemIdVal";
       params.ExpressionAttributeValues = {
         ":userIdVal": userId,
         ":problemIdVal": problemId,
       };
-    } else if (author && problemId) { // author와 problemId가 있는 경우
+    } else if (author && problemId) {
       params.IndexName = GSI_AUTHOR_TIME;
       params.KeyConditionExpression = "author = :authorVal";
       params.FilterExpression = "problemId = :problemIdVal";
@@ -110,16 +118,14 @@ export const handler = async (event) => {
       params.IndexName = GSI_PROBLEM_ID_TIME;
       params.KeyConditionExpression = "problemId = :problemIdVal";
       params.ExpressionAttributeValues = { ":problemIdVal": problemId };
-    } else if (author) { // author만 있는 경우
+    } else if (author) {
       params.IndexName = GSI_AUTHOR_TIME;
       params.KeyConditionExpression = "author = :authorVal";
       params.ExpressionAttributeValues = { ":authorVal": author };
     } else {
-      // 특정 필터가 없는 경우: 모든 제출물을 최신순으로 (AllSubmissionsByTimeIndex 사용)
       params.IndexName = GSI_ALL_SUBMISSIONS_TIME;
-      // 이 GSI는 'is_submission' 같은 고정된 파티션 키 값을 가짐
       params.KeyConditionExpression = "is_submission = :isSubVal";
-      params.ExpressionAttributeValues = { ":isSubVal": "Y" }; // code-grader에서 저장 시 "Y"로 저장 가정
+      params.ExpressionAttributeValues = { ":isSubVal": "Y" };
     }
 
     console.log(
@@ -135,7 +141,7 @@ export const handler = async (event) => {
         ? encodeURIComponent(JSON.stringify(result.LastEvaluatedKey))
         : null,
       count: result.Count || 0,
-      scannedCount: result.ScannedCount || 0, // FilterExpression 사용 시 Count와 다를 수 있음
+      scannedCount: result.ScannedCount || 0,
     };
 
     return {
@@ -151,7 +157,7 @@ export const handler = async (event) => {
       body: JSON.stringify({
         message: "Failed to retrieve submissions",
         error: error.message,
-        errorStack: error.stack, // 개발 중에만 유용
+        errorStack: error.stack,
       }),
     };
   }
