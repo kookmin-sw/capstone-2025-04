@@ -96,9 +96,6 @@ const SubmissionsContent: React.FC = () => {
   const [hasMore, setHasMore] = useState(true);
 
   // Filters and Sort State
-  const [filterProblemId, setFilterProblemId] = useState(
-    searchParamsHook.get("problemId") || "",
-  );
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [filterUserId, setFilterUserId] = useState(
     searchParamsHook.get("userId") || "",
@@ -107,6 +104,11 @@ const SubmissionsContent: React.FC = () => {
   const [filterAuthor, setFilterAuthor] = useState(
     searchParamsHook.get("author") || "",
   );
+  
+  const [filterProblemTitle, setFilterProblemTitle] = useState(
+    searchParamsHook.get("problemTitle") || "",
+  );
+  
   const [sortOrder, setSortOrder] = useState<"ASC" | "DESC">("DESC");
 
   const PAGE_SIZE = 20;
@@ -120,9 +122,14 @@ const SubmissionsContent: React.FC = () => {
         pageSize: PAGE_SIZE,
         sortOrder,
       };
-      if (filterProblemId) params.problemId = filterProblemId;
       if (filterUserId) params.userId = filterUserId;
       if (filterAuthor) params.author = filterAuthor;
+      
+      // Only use problemTitleTranslated for searching
+      if (filterProblemTitle) {
+        params.problemTitleTranslated = filterProblemTitle;
+      }
+      
       if (loadMore && lastEvaluatedKey) {
         params.lastEvaluatedKey = lastEvaluatedKey;
       }
@@ -150,8 +157,8 @@ const SubmissionsContent: React.FC = () => {
         setIsLoading(false);
       }
     },
-    [filterProblemId, filterUserId, filterAuthor, sortOrder, lastEvaluatedKey],
-  ); // Add lastEvaluatedKey
+    [filterUserId, filterAuthor, filterProblemTitle, sortOrder, lastEvaluatedKey],
+  ); // Remove filterProblemId from dependencies
 
   useEffect(() => {
     fetchSubmissions(false); // Initial fetch
@@ -161,13 +168,6 @@ const SubmissionsContent: React.FC = () => {
     if (hasMore && !isLoading) {
       fetchSubmissions(true);
     }
-  };
-
-  const handleApplyFilters = () => {
-    setSubmissions([]); // Clear current submissions
-    setLastEvaluatedKey(null); // Reset pagination
-    setHasMore(true); // Assume there's more data for new filter
-    // The useEffect for fetchSubmissions will trigger a new fetch
   };
 
   return (
@@ -186,21 +186,21 @@ const SubmissionsContent: React.FC = () => {
 
       {/* Filters - Basic Example */}
       <div className="mb-6 p-4 bg-white shadow-sm rounded-lg border">
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 items-end">
-          <div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 items-end">
+          <div className="md:col-span-1">
             <label
-              htmlFor="problemIdFilter"
+              htmlFor="problemTitleFilter"
               className="block text-sm font-medium text-gray-700 mb-1"
             >
-              문제 ID
+              문제 제목 (한글)
             </label>
             <input
               type="text"
-              id="problemIdFilter"
-              value={filterProblemId}
-              onChange={(e) => setFilterProblemId(e.target.value)}
+              id="problemTitleFilter"
+              value={filterProblemTitle}
+              onChange={(e) => setFilterProblemTitle(e.target.value)}
               className="w-full p-2 border border-gray-300 rounded-md text-sm focus:ring-primary focus:border-primary"
-              placeholder="예: 123e4567-e89b-12d3-a456-426614174000"
+              placeholder="예: 두 수의 합"
             />
           </div>
           <div>
@@ -236,12 +236,6 @@ const SubmissionsContent: React.FC = () => {
               <option value="ASC">오래된순</option>
             </select>
           </div>
-          <button
-            onClick={handleApplyFilters}
-            className="w-full sm:w-auto px-4 py-2 bg-primary text-white rounded-md hover:bg-primary-hover transition text-sm"
-          >
-            적용
-          </button>
         </div>
       </div>
 
@@ -303,11 +297,11 @@ const SubmissionsContent: React.FC = () => {
                     <td className="px-4 py-3 whitespace-nowrap">
                       <Link
                         href={`/coding-test/solve?id=${sub.problemId}`}
-                        className="text-sm text-gray-700 hover:text-primary hover:underline truncate block max-w-[120px] sm:max-w-[180px]"
+                        className="text-sm text-gray-700 hover:text-primary hover:underline max-w-[120px] sm:max-w-[180px]"
                         title={sub.problemId}
                       >
-                        {/* 문제 제목을 표시하려면 problemApi에서 제목을 가져와야 함. 여기서는 ID 표시 */}
-                        {sub.problemId.substring(0, 12)}...
+                        {/* 문제 제목 표시 */}
+                        {sub.problemTitleTranslated || sub.problemTitle || `문제 ${sub.problemId.substring(0, 8)}...`}
                       </Link>
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">

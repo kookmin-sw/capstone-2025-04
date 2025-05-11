@@ -1,5 +1,6 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { DynamoDBDocumentClient, QueryCommand } from "@aws-sdk/lib-dynamodb";
+import pkg from "@aws-sdk/lib-dynamodb";
+const { DynamoDBDocumentClient, QueryCommand, GetItemCommand } = pkg;
 
 // Initialize DynamoDB Client
 const client = new DynamoDBClient({});
@@ -45,9 +46,52 @@ export const handler = async (event) => {
 
   try {
     const queryParams = event.queryStringParameters || {};
+    const submissionId = queryParams.submissionId;
+    
+    // If submissionId is provided, fetch that specific submission
+    if (submissionId) {
+      console.log(`Fetching specific submission with ID: ${submissionId}`);
+      
+      const params = {
+        TableName: tableName,
+        Key: {
+          submissionId: submissionId
+        }
+      };
+      
+      const command = new GetItemCommand(params);
+      const result = await dynamoDB.send(command);
+      
+      if (!result.Item) {
+        return {
+          statusCode: 404,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          body: JSON.stringify({ 
+            message: `Submission with ID ${submissionId} not found` 
+          }),
+        };
+      }
+      
+      // Wrap the single item in the same response format for consistency
+      const responseBody = {
+        items: [result.Item],
+        lastEvaluatedKey: null,
+        count: 1,
+        scannedCount: 1,
+      };
+      
+      return {
+        statusCode: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        body: JSON.stringify(responseBody),
+      };
+    }
+    
+    // If no submissionId, proceed with the existing query logic
     const userId = queryParams.userId;
     const problemId = queryParams.problemId;
     const author = queryParams.author;
+    const problemTitleTranslated = queryParams.problemTitleTranslated;
     const pageSize = parseInt(queryParams.pageSize, 10) || DEFAULT_PAGE_SIZE;
     const sortOrder =
       queryParams.sortOrder?.toUpperCase() === "ASC" ? "ASC" : "DESC";
@@ -56,6 +100,8 @@ export const handler = async (event) => {
     const projectionExpressionParts = [
       "submissionId",
       "problemId",
+      "problemTitle",
+      "problemTitleTranslated",
       "userId",
       "author",
       "#s", // for status
@@ -126,6 +172,22 @@ export const handler = async (event) => {
       params.IndexName = GSI_ALL_SUBMISSIONS_TIME;
       params.KeyConditionExpression = "is_submission = :isSubVal";
       params.ExpressionAttributeValues = { ":isSubVal": "Y" };
+    }
+
+    // Add problemTitleTranslated filter if specified
+    if (problemTitleTranslated) {
+      // If we already have a FilterExpression, we need to append with AND
+      if (params.FilterExpression) {
+        params.FilterExpression += " AND contains(problemTitleTranslated, :titleVal)";
+      } else {
+        params.FilterExpression = "contains(problemTitleTranslated, :titleVal)";
+      }
+      
+      // Add the value to ExpressionAttributeValues
+      params.ExpressionAttributeValues = {
+        ...params.ExpressionAttributeValues,
+        ":titleVal": problemTitleTranslated
+      };
     }
 
     console.log(

@@ -32,6 +32,14 @@ resource "aws_dynamodb_table" "submissions_table" {
     name = "is_submission"
     type = "S"
   }
+  attribute {
+    name = "problemTitle"
+    type = "S"
+  }
+  attribute {
+    name = "problemTitleTranslated"
+    type = "S"
+  }
 
   global_secondary_index {
     name            = "ProblemIdSubmissionTimeIndex"
@@ -59,6 +67,20 @@ resource "aws_dynamodb_table" "submissions_table" {
     hash_key        = "author"
     range_key       = "submissionTime"
     projection_type = "ALL" # 변경
+  }
+  
+  global_secondary_index {
+    name            = "ProblemTitleSubmissionTimeIndex"
+    hash_key        = "problemTitle"
+    range_key       = "submissionTime"
+    projection_type = "ALL"
+  }
+  
+  global_secondary_index {
+    name            = "ProblemTitleTranslatedSubmissionTimeIndex"
+    hash_key        = "problemTitleTranslated"
+    range_key       = "submissionTime" 
+    projection_type = "ALL"
   }
 
   tags = var.common_tags

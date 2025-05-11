@@ -109,10 +109,22 @@ interface SuccessModalProps {
   onConfirm: () => void; 
   submissionId: string | null;
   problemId: string | null;
+  problemTitle?: string | null;
+  problemTitleTranslated?: string | null;
 }
 
-const SuccessModal: React.FC<SuccessModalProps> = ({ isOpen, onClose, onConfirm, submissionId, problemId }) => {
+const SuccessModal: React.FC<SuccessModalProps> = ({ 
+  isOpen, 
+  onClose, 
+  onConfirm, 
+  submissionId, 
+  problemId,
+  problemTitle,
+  problemTitleTranslated
+}) => {
   if (!isOpen) return null;
+
+  const displayTitle = problemTitleTranslated || problemTitle || '';
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm">
@@ -120,7 +132,7 @@ const SuccessModal: React.FC<SuccessModalProps> = ({ isOpen, onClose, onConfirm,
         <CheckCircleIcon className="h-16 w-16 text-green-500 mx-auto mb-4" />
         <h3 className="text-xl font-semibold text-gray-900 mb-3">정답입니다!</h3>
         <p className="text-sm text-gray-600 mb-6">
-          축하합니다! 모든 테스트 케이스를 통과하셨습니다.
+          축하합니다! {displayTitle && `"${displayTitle}" 문제의 `}모든 테스트 케이스를 통과하셨습니다.
         </p>
         <div className="flex flex-col sm:flex-row justify-center space-y-2 sm:space-y-0 sm:space-x-3">
           <button
@@ -596,6 +608,8 @@ const CodingTestContent: React.FC = () => {
         onConfirm={handleModalConfirm}
         submissionId={currentSubmissionId}
         problemId={problemDetails?.problemId}
+        problemTitle={submissionResults?.problemTitle || problemDetails?.title}
+        problemTitleTranslated={submissionResults?.problemTitleTranslated || problemDetails?.title_translated}
       />
     </div>
   );

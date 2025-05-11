@@ -282,6 +282,8 @@ def lambda_handler(event, context):
         max_execution_time_ms = 0
         final_results_list = []
         error_message_for_submission = None
+        problem_title = None
+        problem_title_translated = None
 
         try:
             # Fetch Problem Data
@@ -289,6 +291,10 @@ def lambda_handler(event, context):
             problem_item_response = problems_table.get_item(Key={'problemId': problem_id})
             if 'Item' not in problem_item_response: raise Exception(f"Problem '{problem_id}' not found.")
             problem_data = problem_item_response['Item']
+
+            # Extract problem title and title_translated
+            problem_title = problem_data.get('title', '')
+            problem_title_translated = problem_data.get('title_translated', '')
 
             # Get Test Cases, Judge Type, Time Limit, Epsilon
             final_test_cases_str = problem_data.get('finalTestCases')
@@ -403,6 +409,8 @@ def lambda_handler(event, context):
         submission_item = {
             'submissionId': submission_id,
             'problemId': problem_id,
+            'problemTitle': problem_title,
+            'problemTitleTranslated': problem_title_translated,
             'userId': user_id,
             'author': author,
             'language': language,
@@ -434,7 +442,10 @@ def lambda_handler(event, context):
             'executionTime': float(submission_item_cleaned['executionTime']), # Convert Decimal back to float for JSON
             'results': final_results_list, # Send original list with floats/ints for time
             'errorMessage': error_message_for_submission,
-            'executionMode': "GRADE_SUBMISSION_RESULTS"
+            'executionMode': "GRADE_SUBMISSION_RESULTS",
+            # Include problem title information in the response
+            'problemTitle': problem_title,
+            'problemTitleTranslated': problem_title_translated
         }
 
         return {

@@ -2,6 +2,8 @@
 export interface SubmissionSummary {
   submissionId: string;
   problemId: string;
+  problemTitle?: string;
+  problemTitleTranslated?: string;
   userId: string;
   author: string;
   status:
@@ -20,6 +22,8 @@ export interface GetSubmissionsParams {
   userId?: string;
   problemId?: string;
   author?: string;
+  problemTitle?: string;
+  problemTitleTranslated?: string;
   pageSize?: number;
   lastEvaluatedKey?: string;
   sortOrder?: "ASC" | "DESC";
@@ -113,6 +117,8 @@ export const getSubmissions = async (
   if (params.userId) queryParams.append("userId", params.userId);
   if (params.problemId) queryParams.append("problemId", params.problemId);
   if (params.author) queryParams.append("author", params.author);
+  if (params.problemTitle) queryParams.append("problemTitle", params.problemTitle);
+  if (params.problemTitleTranslated) queryParams.append("problemTitleTranslated", params.problemTitleTranslated);
   if (params.pageSize) queryParams.append("pageSize", String(params.pageSize));
   if (params.lastEvaluatedKey)
     queryParams.append("lastEvaluatedKey", params.lastEvaluatedKey);
@@ -130,4 +136,42 @@ export const getSubmissions = async (
     },
   });
   return handleApiResponse(response) as Promise<GetSubmissionsResponse>;
+};
+
+/**
+ * Fetches a specific submission by ID.
+ */
+export const getSubmissionById = async (
+  submissionId: string
+): Promise<SubmissionSummary> => {
+  if (!SUBMISSIONS_API_BASE_URL) {
+    console.error(
+      "Submissions API URL is not configured. Please set NEXT_PUBLIC_SUBMISSIONS_API_BASE_URL.",
+    );
+    throw new Error("Submissions API URL is not configured.");
+  }
+
+  const queryParams = new URLSearchParams();
+  queryParams.append("submissionId", submissionId);
+
+  const url = `${SUBMISSIONS_API_BASE_URL}/submissions?${queryParams.toString()}`;
+  console.log(`Fetching submission details for ID: ${submissionId}`);
+
+  const response = await fetch(url, {
+    method: "GET",
+    headers: {
+      "Content-Type": "application/json",
+      // 필요시 Authorization 헤더 추가 (예: Cognito 인증 사용 시)
+      // 'Authorization': `Bearer ${idToken}`
+    },
+  });
+  
+  const submissionsResponse = await handleApiResponse(response) as GetSubmissionsResponse;
+  
+  // Since we're requesting by ID, we should get exactly one item
+  if (submissionsResponse.items && submissionsResponse.items.length > 0) {
+    return submissionsResponse.items[0];
+  }
+  
+  throw new ApiError(`Submission with ID ${submissionId} not found`, 404);
 };

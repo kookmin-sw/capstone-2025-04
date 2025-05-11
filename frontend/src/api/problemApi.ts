@@ -262,6 +262,9 @@ export interface SubmissionResponse {
   results: TestCaseResultDetail[];
   errorMessage?: string | null;
   executionMode: "GRADE_SUBMISSION_RESULTS"; 
+  // Problem title fields from backend
+  problemTitle?: string;
+  problemTitleTranslated?: string;
   // Optional fields from backend
   score?: number; // 0-100
   passedCaseCount?: number;

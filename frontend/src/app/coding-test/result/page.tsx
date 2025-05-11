@@ -1,50 +1,132 @@
 "use client";
-import React, { Suspense } from "react";
+import React, { Suspense, useState, useEffect } from "react";
 import Head from "next/head";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { toast } from "sonner";
+import { SubmissionSummary, getSubmissionById } from "@/api/submissionApi";
+import { getProblemById, ProblemDetail } from "@/api/problemApi";
 
 // Extract the content that uses useSearchParams into its own component
 const CodingTestResultContent: React.FC = () => {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const id = searchParams.get("id");
+  const problemId = searchParams.get("id");
+  const submissionId = searchParams.get("submissionId");
+  
+  const [isLoadingProblem, setIsLoadingProblem] = useState(true);
+  const [isLoadingSubmission, setIsLoadingSubmission] = useState(true);
+  const [problem, setProblem] = useState<ProblemDetail | null>(null);
+  const [submission, setSubmission] = useState<SubmissionSummary | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  // TODO: Replace with API call to fetch submission result when endpoint is available
-  // const submissionId = searchParams.get("submissionId");
-  // import { getSubmissionResult, SubmissionResult } from '@/api/codingTestApi';
-  // const [testResult, setTestResult] = useState<SubmissionResult | null>(null);
-  // useEffect(() => { fetch result... }, [submissionId]);
+  // Fetch problem data
+  useEffect(() => {
+    if (!problemId) {
+      setError("문제 ID가 없습니다.");
+      setIsLoadingProblem(false);
+      return;
+    }
+    
+    const fetchProblem = async () => {
+      try {
+        const data = await getProblemById(problemId);
+        setProblem(data);
+      } catch (err) {
+        console.error("Failed to fetch problem:", err);
+        const errorMsg = err instanceof Error ? err.message : "문제 정보를 불러오는데 실패했습니다.";
+        setError(errorMsg);
+        toast.error(errorMsg);
+      } finally {
+        setIsLoadingProblem(false);
+      }
+    };
+    
+    fetchProblem();
+  }, [problemId]);
 
-  // 가상의 테스트 결과 데이터 (API 구현 전까지 사용)
+  // Fetch submission result
+  useEffect(() => {
+    if (!submissionId) {
+      setError("제출 ID가 없습니다.");
+      setIsLoadingSubmission(false);
+      return;
+    }
+    
+    const fetchSubmission = async () => {
+      try {
+        const data = await getSubmissionById(submissionId);
+        setSubmission(data);
+      } catch (err) {
+        console.error("Failed to fetch submission:", err);
+        const errorMsg = err instanceof Error ? err.message : "제출 정보를 불러오는데 실패했습니다.";
+        setError(errorMsg);
+        toast.error(errorMsg);
+      } finally {
+        setIsLoadingSubmission(false);
+      }
+    };
+    
+    fetchSubmission();
+  }, [submissionId]);
+
+  const handleShareToCommunity = () => {
+    router.push("/community/create?fromTest=true&id=" + problemId);
+  };
+
+  // Loading state
+  if (isLoadingProblem || isLoadingSubmission) {
+    return (
+      <div className="max-w-5xl mx-auto p-8 text-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+        <p className="text-gray-500">결과를 불러오는 중...</p>
+      </div>
+    );
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <div className="max-w-5xl mx-auto p-8">
+        <div className="text-center py-10 px-4 bg-red-50 border border-red-200 rounded-md">
+          <p className="text-red-600 font-medium">오류 발생</p>
+          <p className="text-red-500 text-sm mt-1">{error}</p>
+          <Link
+            href="/coding-test"
+            className="mt-4 inline-block px-4 py-2 border border-gray-300 rounded-md text-gray-700 bg-white hover:bg-gray-50 transition"
+          >
+            코딩 테스트로 돌아가기
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  // Placeholder test result data
   const testResult = {
-    success: true,
-    score: 90,
-    executionTime: "0.05s",
-    memoryUsage: "5.2MB",
+    success: submission?.status === "ACCEPTED",
+    score: submission?.status === "ACCEPTED" ? 100 : 0,
+    executionTime: submission?.executionTime ? `${submission.executionTime.toFixed(3)}s` : "N/A",
+    memoryUsage: "5.2MB", // Not available in current data
     testCases: [
       {
         id: 1,
         input: "5\n1 3 5 2 4",
         expected: "5",
         actual: "5",
-        result: "성공",
+        result: submission?.status === "ACCEPTED" ? "성공" : "실패",
       },
-      { id: 2, input: "3\n7 2 9", expected: "9", actual: "9", result: "성공" },
+      { id: 2, input: "3\n7 2 9", expected: "9", actual: "9", result: submission?.status === "ACCEPTED" ? "성공" : "실패" },
       {
         id: 3,
         input: "4\n10 20 30 40",
         expected: "40",
         actual: "40",
-        result: "성공",
+        result: submission?.status === "ACCEPTED" ? "성공" : "실패",
       },
     ],
-  };
-
-  const handleShareToCommunity = () => {
-    router.push("/community/create?fromTest=true&id=" + id);
   };
 
   return (
@@ -54,7 +136,7 @@ const CodingTestResultContent: React.FC = () => {
         <Link
           href={{
             pathname: "/coding-test/solve",
-            query: { id: id },
+            query: { id: problemId },
           }}
           className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md bg-white hover:bg-gray-50 transition"
         >
@@ -79,7 +161,8 @@ const CodingTestResultContent: React.FC = () => {
       <div className="bg-white rounded-lg shadow-sm overflow-hidden p-6">
         <div className="flex justify-between items-center mb-6 border-b border-gray-200 pb-4">
           <h2 className="text-2xl font-semibold text-gray-900">
-            배열에서 가장 큰 수 찾기
+            {/* Use problem title from submission or problem data */}
+            {submission?.problemTitleTranslated || submission?.problemTitle || problem?.title_translated || problem?.title || "문제 제목 없음"}
           </h2>
           <div className="text-center">
             <div className="text-3xl font-bold text-primary">
