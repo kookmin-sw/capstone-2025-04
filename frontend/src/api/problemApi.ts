@@ -15,63 +15,71 @@ export interface ProblemSummary {
   title: string;
   title_translated?: string;
   difficulty: string;
-  algorithmType?: string; // Usually part of intent, might not be directly in summary
+  algorithmType?: string;
   createdAt: string;
   creatorId?: string;
   author?: string;
-  language?: string; // Add language to summary if available
+  language?: string;
+  generationStatus?: string; // Added as it's in projection expression
 }
 
 /**
  * GET /problems/{problemId} API 응답 타입 (문제 상세)
- * problem-generator-v3가 DynamoDB에 저장하는 필드 및 getProblemById.mjs 반환값 기반
  */
 export interface ProblemDetail {
   problemId: string;
   userPrompt?: string;
   difficulty: string;
-  language: string; // e.g., "python3.12" - The primary language of the generated problem
+  language: string;
   targetLanguage?: string;
   createdAt: string;
   completedAt?: string;
   generationStatus: string;
   errorMessage?: string;
-  
+
   title: string;
   title_translated?: string;
-  description: string; // Markdown format, potentially including constraints and examples
+  description: string;
   description_translated?: string;
-  
-  intent?: string; // JSON string of the intent object
-  // testSpecifications is now finalTestCases
-  finalTestCases: string; // JSON string of test cases with input, expected_output, rationale
-  
-  validatedSolutionCode?: string; // The validated solution code
-  startCode?: string;             // Starter code for the user
-  
-  constraints: string; // JSON string of derived constraints (time_limit, memory_limit, input_constraints, judge_type, epsilon)
-  judgeType?: string;   // Directly from parsed constraints or top-level
-  epsilon?: number;     // Directly from parsed constraints or top-level
-  
-  testGeneratorCode?: string; // May or may not be present in v3 output
-  analyzedIntent?: string;    // May or may not be present in v3 output, prefer `intent`
-  validationDetails?: string; // JSON string of LLM-based validation
-  
-  // User-related fields
+
+  intent?: string;
+  finalTestCases: string;
+
+  validatedSolutionCode?: string;
+  startCode?: string;
+
+  constraints: string;
+  judgeType?: string;
+  epsilon?: number;
+
+  testGeneratorCode?: string;
+  analyzedIntent?: string;
+  validationDetails?: string;
+
   creatorId?: string;
   author?: string;
-  
-  // Schema version if needed
-  schemaVersion?: string;
 
-  // Other fields from DynamoDB if necessary
-  // e.g. executionResults, testCaseStats from pipeline might be stored
-  executionResults?: string; 
+  schemaVersion?: string;
+  executionResults?: string;
   testCaseStats?: string;
 }
 
-// --- API Error Handling (Reusing from communityApi) ---
+// New Params and Response types for getProblems
+export interface GetProblemsParams {
+  creatorId?: string;
+  pageSize?: number;
+  lastEvaluatedKey?: string;
+  sortOrder?: "ASC" | "DESC"; // For sorting by createdAt
+}
 
+export interface GetProblemsResponse {
+  items: ProblemSummary[];
+  lastEvaluatedKey: string | null;
+  count: number;
+  scannedCount?: number;
+}
+
+// --- API Error Handling ---
 class ApiError extends Error {
   status: number;
   data?: unknown;
@@ -105,7 +113,7 @@ const handleApiResponse = async (response: Response): Promise<unknown> => {
     }
     console.error(
       `API Error ${response.status}:`,
-      errorData || response.statusText
+      errorData || response.statusText,
     );
     throw new ApiError(errorMessage, response.status, errorData);
   }
@@ -132,7 +140,7 @@ const handleApiResponse = async (response: Response): Promise<unknown> => {
           throw new ApiError(
             "Failed to parse API response text",
             response.status,
-            textBody
+            textBody,
           );
         }
       }
@@ -146,23 +154,30 @@ const handleApiResponse = async (response: Response): Promise<unknown> => {
 
 // --- API Functions ---
 
-export const getProblems = async (creatorId?: string): Promise<ProblemSummary[]> => {
-  const url = creatorId
-    ? `${API_BASE_URL}/problems?creatorId=${encodeURIComponent(creatorId)}`
-    : `${API_BASE_URL}/problems`;
-    
+export const getProblems = async (
+  params: GetProblemsParams = {},
+): Promise<GetProblemsResponse> => {
+  const queryParams = new URLSearchParams();
+  if (params.creatorId) queryParams.append("creatorId", params.creatorId);
+  if (params.pageSize) queryParams.append("pageSize", String(params.pageSize));
+  if (params.lastEvaluatedKey)
+    queryParams.append("lastEvaluatedKey", params.lastEvaluatedKey);
+  if (params.sortOrder) queryParams.append("sortOrder", params.sortOrder);
+
+  const url = `${API_BASE_URL}/problems?${queryParams.toString()}`;
+  console.log("Fetching problems from URL:", url);
+
   const response = await fetch(url, {
     method: "GET",
     headers: {
       "Content-Type": "application/json",
     },
   });
-  const result: unknown = await handleApiResponse(response);
-  return Array.isArray(result) ? result : [];
+  return handleApiResponse(response) as Promise<GetProblemsResponse>;
 };
 
 export const getProblemById = async (
-  problemId: string
+  problemId: string,
 ): Promise<ProblemDetail> => {
   if (!problemId) {
     throw new Error("problemId is required to fetch problem details.");
@@ -176,15 +191,13 @@ export const getProblemById = async (
       console.error(`Static problem data not found for ID: ${problemId}`);
       throw new ApiError(
         `Static problem data missing for ID ${problemId}`,
-        404
+        404,
       );
     }
   }
   const response = await fetch(`${API_BASE_URL}/problems/${problemId}`, {
     method: "GET",
-    headers: {
-      "Content-Type": "application/json",
-    },
+    headers: { "Content-Type": "application/json" },
   });
   return handleApiResponse(response) as Promise<ProblemDetail>;
 };
@@ -196,8 +209,8 @@ export interface RunCodePayload {
   executionMode: "RUN_CUSTOM_TESTS";
   userCode: string;
   language: string;
-  customTestCases: Array<Record<string, unknown> | string | number[]>; // Array of inputs
-  problemId?: string; // Optional, but good for time limits
+  customTestCases: Array<Record<string, unknown> | string | number[]>;
+  problemId?: string;
 }
 
 export interface RunCodeSingleResult {
@@ -212,9 +225,9 @@ export interface RunCodeSingleResult {
     error: string | null;
     isSuccessful: boolean;
     returnValue: unknown;
-    runCodeLambdaError?: boolean; 
-    errorMessage?: string; 
-    trace?: string[]; 
+    runCodeLambdaError?: boolean;
+    errorMessage?: string;
+    trace?: string[];
   };
 }
 export interface RunCodeResponse {
@@ -222,25 +235,24 @@ export interface RunCodeResponse {
   results: RunCodeSingleResult[];
 }
 
-
-export const runCustomTests = async (payload: RunCodePayload, idToken: string): Promise<RunCodeResponse> => {
+export const runCustomTests = async (
+  payload: RunCodePayload,
+  idToken: string,
+): Promise<RunCodeResponse> => {
   if (!CODE_GRADER_API_URL) {
     throw new Error("Code Grader API URL is not configured.");
   }
-
   const response = await fetch(`${CODE_GRADER_API_URL}/grade`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "Authorization": `Bearer ${idToken}`,
+      Authorization: `Bearer ${idToken}`,
     },
     body: JSON.stringify(payload),
   });
-
   return handleApiResponse(response) as Promise<RunCodeResponse>;
 };
 
-// --- New types and function for solution submission ---
 export interface SubmitSolutionPayload {
   problemId: string;
   userCode: string;
@@ -249,46 +261,51 @@ export interface SubmitSolutionPayload {
 
 export interface TestCaseResultDetail {
   caseNumber: number;
-  status: "ACCEPTED" | "WRONG_ANSWER" | "TIME_LIMIT_EXCEEDED" | "RUNTIME_ERROR" | "INTERNAL_ERROR";
-  executionTime: number; // in seconds, as returned by backend
+  status:
+    | "ACCEPTED"
+    | "WRONG_ANSWER"
+    | "TIME_LIMIT_EXCEEDED"
+    | "RUNTIME_ERROR"
+    | "INTERNAL_ERROR";
+  executionTime: number;
   stdout?: string | null;
   stderr?: string | null;
 }
 
 export interface SubmissionResponse {
   submissionId: string;
-  status: "ACCEPTED" | "WRONG_ANSWER" | "TIME_LIMIT_EXCEEDED" | "RUNTIME_ERROR" | "INTERNAL_ERROR";
-  executionTime: number; // Overall execution time (e.g., max time for a case) in seconds
+  status:
+    | "ACCEPTED"
+    | "WRONG_ANSWER"
+    | "TIME_LIMIT_EXCEEDED"
+    | "RUNTIME_ERROR"
+    | "INTERNAL_ERROR";
+  executionTime: number;
   results: TestCaseResultDetail[];
   errorMessage?: string | null;
-  executionMode: "GRADE_SUBMISSION_RESULTS"; 
-  // Problem title fields from backend
+  executionMode: "GRADE_SUBMISSION_RESULTS";
   problemTitle?: string;
   problemTitleTranslated?: string;
-  // Optional fields from backend
-  score?: number; // 0-100
+  score?: number;
   passedCaseCount?: number;
   totalCaseCount?: number;
 }
 
-export const submitSolution = async (payload: SubmitSolutionPayload, idToken: string): Promise<SubmissionResponse> => {
+export const submitSolution = async (
+  payload: SubmitSolutionPayload,
+  idToken: string,
+): Promise<SubmissionResponse> => {
   if (!CODE_GRADER_API_URL) {
     throw new Error("Code Grader API URL is not configured.");
   }
-
-  const submissionPayload = {
-    ...payload,
-    executionMode: "GRADE_SUBMISSION", // Crucial for backend to know the mode
-  };
-
+  const submissionPayload = { ...payload, executionMode: "GRADE_SUBMISSION" };
   const response = await fetch(`${CODE_GRADER_API_URL}/grade`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "Authorization": `Bearer ${idToken}`,
+      Authorization: `Bearer ${idToken}`,
     },
     body: JSON.stringify(submissionPayload),
   });
-
   return handleApiResponse(response) as Promise<SubmissionResponse>;
 };
