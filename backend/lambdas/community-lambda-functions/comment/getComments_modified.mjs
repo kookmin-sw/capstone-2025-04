@@ -16,6 +16,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
 
+const DEFAULT_PAGE_SIZE = 10; // Default number of comments per page
+
 // No login required (as per original comment)
 export const handler = async (event) => {
   // Handle OPTIONS preflight requests for CORS
@@ -29,46 +31,65 @@ export const handler = async (event) => {
 
   try {
     const { postId } = event.pathParameters || {};
+    const queryParams = event.queryStringParameters || {};
+    const pageSize = parseInt(queryParams.pageSize, 10) || DEFAULT_PAGE_SIZE;
+    const lastEvaluatedKeyRaw = queryParams.lastEvaluatedKey;
 
     const params = {
       TableName: tableName,
-      KeyConditionExpression:
-        "PK = :postId AND begins_with(SK, :commentPrefix)",
+      IndexName: "commentSortIndex", // Use the new GSI for comment sorting
+      KeyConditionExpression: "PK = :postId",
       ExpressionAttributeValues: {
         ":postId": postId,
-        ":commentPrefix": "COMMENT#",
       },
-      // Select only needed attributes to reduce payload size
       ProjectionExpression: "commentId, content, author, createdAt, SK, userId",
-      ScanIndexForward: false, // Get latest comments first (descending sort key order)
+      ScanIndexForward: false, // Get latest comments first (descending order by createdAt)
+      Limit: pageSize,
     };
+
+    if (lastEvaluatedKeyRaw) {
+      try {
+        params.ExclusiveStartKey = JSON.parse(
+          decodeURIComponent(lastEvaluatedKeyRaw),
+        );
+      } catch (e) {
+        console.warn(
+          "Invalid lastEvaluatedKey format:",
+          lastEvaluatedKeyRaw,
+          e,
+        );
+        return {
+          statusCode: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          body: JSON.stringify({ message: "Invalid lastEvaluatedKey format." }),
+        };
+      }
+    }
 
     // --- DynamoDB Query using SDK v3 style ---
     const command = new QueryCommand(params);
     const result = await dynamoDB.send(command);
     const items = result.Items || [];
 
-    // Map results using logic from community/getComments.js
     const comments = items.map(
       ({ content, author, createdAt, SK, commentId, userId }) => ({
-        // Prefer using the dedicated commentId attribute if available, otherwise parse SK
         commentId: commentId || SK.replace("COMMENT#", ""),
         content,
         author,
         createdAt,
-        userId, // Include userId for author verification
-      })
+        userId,
+      }),
     );
-    
-    // Sort comments by createdAt in ascending order (oldest first)
-    comments.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+
+    // Comments are now properly sorted by the GSI's createdAt sort key (descending order with ScanIndexForward: false)
 
     // --- SUCCESS RESPONSE ---
     const responseBody = {
-      comments: comments,
-      commentCount: comments.length, // Count based on retrieved items
-      // Note: If pagination is added, this count reflects only the current page.
-      // The total count might be better retrieved from the post item's commentCount attribute.
+      comments: comments, // Keep 'comments' key as per original
+      lastEvaluatedKey: result.LastEvaluatedKey
+        ? encodeURIComponent(JSON.stringify(result.LastEvaluatedKey))
+        : null,
+      commentCount: comments.length, // Count based on retrieved items for the current page
     };
     return {
       statusCode: 200,

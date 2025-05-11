@@ -23,6 +23,10 @@ resource "aws_dynamodb_table" "community_table" {
     name = "GSI1SK" # GSI Sort Key (e.g., createdAt for sorting posts)
     type = "S"
   }
+  attribute {
+    name = "createdAt" # For comment sorting (using existing attribute instead of new one)
+    type = "S"
+  }
 
   # Global Secondary Index for fetching all posts (postOnlyIndex)
   # Allows querying for all items where GSI1PK = "POST", sorted by GSI1SK (createdAt)
@@ -44,6 +48,21 @@ resource "aws_dynamodb_table" "community_table" {
       "userId"
       # createdAt is the range key (GSI1SK), so it's automatically included
       # PK is automatically included as it's the main table's hash key -> This comment is incorrect for INCLUDE projection
+    ]
+  }
+
+  # Global Secondary Index for comment sorting
+  global_secondary_index {
+    name            = "commentSortIndex"
+    hash_key        = "PK"          # Still partition by postId
+    range_key       = "createdAt"   # Sort by comment creation time (using existing field)
+    projection_type = "INCLUDE"
+    non_key_attributes = [
+      "content",
+      "author",
+      "commentId",
+      "userId",
+      "SK"
     ]
   }
 

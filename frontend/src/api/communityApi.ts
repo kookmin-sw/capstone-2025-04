@@ -14,8 +14,8 @@ export interface PostSummary {
   author: string;
   createdAt: string;
   likesCount: number;
-  commentCount: number;
-  problemId?: string | null; // Changed from problemId
+  commentCount: number; // This is the total comment count from the post item
+  problemId?: string | null;
 }
 
 // For GET /community/{postId} (Detail)
@@ -29,8 +29,8 @@ export interface PostDetail {
   updatedAt?: string | null;
   likesCount: number;
   likedUsers: string[];
-  problemId?: string | null; // Changed from problemId
-  // commentCount is not directly on the post detail in the spec, fetched separately
+  commentCount: number; // <<< ADDED HERE: Total comment count for the post
+  problemId?: string | null;
 }
 
 // For GET /community/{postId}/comment (List)
@@ -42,10 +42,32 @@ export interface Comment {
   createdAt: string;
 }
 
-export interface GetCommentsResponse {
-  comments: Comment[];
-  commentCount: number;
+// Generic Paginated Response
+export interface PaginatedResponse<T> {
+  items: T[];
+  lastEvaluatedKey: string | null;
+  count: number; // Number of items on the current page
 }
+
+// Params and Response for Get Posts
+export interface GetPostsParams {
+  pageSize?: number;
+  lastEvaluatedKey?: string | null;
+}
+export type GetPostsResponse = PaginatedResponse<PostSummary>;
+
+
+// Params and Response for Get Comments
+export interface GetCommentsParams {
+  pageSize?: number;
+  lastEvaluatedKey?: string | null;
+}
+export interface GetCommentsResponse { 
+  comments: Comment[];
+  commentCount: number; // Number of comments on the current page
+  lastEvaluatedKey: string | null;
+}
+
 
 // For POST /community
 export interface CreatePostPayload {
@@ -85,6 +107,17 @@ export interface CreateCommentPayload {
   content: string;
   author: string;
 }
+// For POST /community/{postId}/comment response
+export interface CreateCommentResponse {
+    message: string;
+    postId: string;
+    commentId: string;
+    author: string;
+    userId: string;
+    content: string;
+    createdAt: string;
+}
+
 
 // --- Authentication Helper ---
 
@@ -212,22 +245,42 @@ const handleApiResponse = async (response: Response) => {
 // --- API Functions ---
 
 /**
- * Fetches the list of all posts.
+ * Fetches the list of all posts with pagination.
  * GET /community
  */
-export const getPosts = async (): Promise<PostSummary[]> => {
-  const response = await fetch(`${API_BASE_URL}/community`, {
+export const getPosts = async (params?: GetPostsParams): Promise<GetPostsResponse> => {
+  const queryParams = new URLSearchParams();
+  if (params?.pageSize) queryParams.append("pageSize", String(params.pageSize));
+  if (params?.lastEvaluatedKey) queryParams.append("lastEvaluatedKey", params.lastEvaluatedKey);
+  
+  const url = `${API_BASE_URL}/community${queryParams.toString() ? `?${queryParams.toString()}` : ""}`;
+  
+  const response = await fetch(url, {
     method: "GET",
     headers: {
       "Content-Type": "application/json",
     },
   });
-  // Use unknown type for the initial result as handleApiResponse can return various types
-  const result: unknown = await handleApiResponse(response);
-  // Log the result to see what the API actually returned
-  console.log("API response result in getPosts:", result);
-  // Ensure the result is always an array, return empty array otherwise
-  return Array.isArray(result) ? result : [];
+  // Ensure that handleApiResponse's result is correctly shaped or provide a default.
+  const result = await handleApiResponse(response);
+
+  // Check if the result matches the expected structure.
+  // If 'result' is undefined (e.g. from a 204 or empty body after parsing attempts),
+  // or if 'items' is not an array, return a default empty response.
+  if (
+    typeof result !== 'object' ||
+    result === null ||
+    !Array.isArray((result as GetPostsResponse).items) // Check if items is an array
+  ) {
+    console.warn(
+      "getPosts received malformed or empty data from API, returning default empty response. Raw result:",
+      result
+    );
+    return { items: [], lastEvaluatedKey: null, count: 0 };
+  }
+  
+  // If it looks like GetPostsResponse, cast and return.
+  return result as GetPostsResponse;
 };
 
 /**
@@ -246,14 +299,22 @@ export const getPostById = async (postId: string): Promise<PostDetail> => {
 };
 
 /**
- * Fetches the comments for a specific post.
+ * Fetches the comments for a specific post with pagination.
  * GET /community/{postId}/comments
  */
 export const getComments = async (
-  postId: string
+  postId: string,
+  params?: GetCommentsParams
 ): Promise<GetCommentsResponse> => {
   if (!postId) throw new Error("postId is required.");
-  const response = await fetch(`${API_BASE_URL}/community/${postId}/comments`, {
+
+  const queryParams = new URLSearchParams();
+  if (params?.pageSize) queryParams.append("pageSize", String(params.pageSize));
+  if (params?.lastEvaluatedKey) queryParams.append("lastEvaluatedKey", params.lastEvaluatedKey);
+
+  const url = `${API_BASE_URL}/community/${postId}/comments${queryParams.toString() ? `?${queryParams.toString()}` : ""}`;
+  
+  const response = await fetch(url, {
     method: "GET",
     headers: {
       "Content-Type": "application/json",
@@ -270,8 +331,6 @@ export const getComments = async (
 export const createPost = async (
   payload: CreatePostPayload
 ): Promise<CreatePostResponse> => {
-  // Use specific response type
-  // Use unknown
   const headers = await getAuthHeaders();
   const response = await fetch(`${API_BASE_URL}/community`, {
     method: "POST",
@@ -289,8 +348,7 @@ export const createPost = async (
 export const updatePost = async (
   postId: string,
   payload: UpdatePostPayload
-): Promise<unknown> => {
-  // Use unknown
+): Promise<PostDetail> => { // Assuming PATCH returns the updated post
   if (!postId) throw new Error("postId is required.");
   const headers = await getAuthHeaders();
   const response = await fetch(`${API_BASE_URL}/community/${postId}`, {
@@ -306,17 +364,15 @@ export const updatePost = async (
  * DELETE /community/{postId}
  * Requires Authentication.
  */
-export const deletePost = async (postId: string): Promise<unknown> => {
-  // Use unknown
+export const deletePost = async (postId: string): Promise<{ message: string; deletedCommentsCount: number }> => {
   if (!postId) throw new Error("postId is required.");
   const headers = await getAuthHeaders();
-  // DELETE requests might not need Content-Type if no body is sent
   delete headers["Content-Type"];
   const response = await fetch(`${API_BASE_URL}/community/${postId}`, {
     method: "DELETE",
     headers: headers,
   });
-  return handleApiResponse(response); // Expects 200 OK with body or potentially 204 No Content
+  return handleApiResponse(response);
 };
 
 /**
@@ -327,14 +383,9 @@ export const deletePost = async (postId: string): Promise<unknown> => {
 export const likePost = async (postId: string): Promise<LikeResponse> => {
   if (!postId) throw new Error("postId is required.");
   const headers = await getAuthHeaders();
-  // Like toggle might not send a body, adjust Content-Type if needed by backend
-  // If the backend expects an empty body, keep Content-Type. If not, remove it.
-  // Assuming it might not need a body:
-  // delete headers['Content-Type'];
   const response = await fetch(`${API_BASE_URL}/community/${postId}/like`, {
     method: "POST",
     headers: headers,
-    // body: JSON.stringify({}) // Send empty body if required by backend
   });
   return handleApiResponse(response);
 };
@@ -347,8 +398,7 @@ export const likePost = async (postId: string): Promise<LikeResponse> => {
 export const createComment = async (
   postId: string,
   payload: CreateCommentPayload
-): Promise<unknown> => {
-  // Use unknown
+): Promise<CreateCommentResponse> => {
   if (!postId) throw new Error("postId is required.");
   const headers = await getAuthHeaders();
   const response = await fetch(`${API_BASE_URL}/community/${postId}/comments`, {
@@ -367,12 +417,11 @@ export const createComment = async (
 export const deleteComment = async (
   postId: string,
   commentId: string
-): Promise<unknown> => {
-  // Use unknown
+): Promise<{message: string, postId: string, commentId: string}> => {
   if (!postId) throw new Error("postId is required.");
   if (!commentId) throw new Error("commentId is required.");
   const headers = await getAuthHeaders();
-  delete headers["Content-Type"]; // DELETE requests typically don't have a body
+  delete headers["Content-Type"]; 
   const response = await fetch(
     `${API_BASE_URL}/community/${postId}/comments/${commentId}`,
     {
@@ -380,5 +429,5 @@ export const deleteComment = async (
       headers: headers,
     }
   );
-  return handleApiResponse(response); // Expects 200 OK with body or potentially 204 No Content
+  return handleApiResponse(response);
 };
