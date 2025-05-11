@@ -8,7 +8,13 @@ const cognitoClientId = process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID;
 
 const cognitoDomain = process.env.NEXT_PUBLIC_COGNITO_DOMAIN; // Full domain from Cognito (e.g., alpaco-auth-prod-kmu.auth.ap-northeast-2.amazoncognito.com)
 const awsRegion = process.env.NEXT_PUBLIC_AWS_REGION;
-const appBaseUrl = process.env.NEXT_PUBLIC_APP_BASE_URL;
+let appBaseUrl = process.env.NEXT_PUBLIC_APP_BASE_URL;
+
+// Normalize appBaseUrl to prevent double "https://" prefix
+if (appBaseUrl) {
+  // Fix for double https:// issue
+  appBaseUrl = appBaseUrl.replace(/^https:\/\/https:\/\//, 'https://');
+}
 
 // Ensure all required variables are present
 if (
