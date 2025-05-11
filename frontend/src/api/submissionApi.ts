@@ -14,8 +14,9 @@ export interface SubmissionSummary {
     | "INTERNAL_ERROR";
   submissionTime: string; // ISO String or number, API 반환값에 따라 조정
   executionTime?: number; // 초 단위
-  language?: string;
+  language?: string; // Ensure this is consistently populated for single submission
   errorMessage?: string | null;
+  userCode?: string; // <<< ADDED: for sharing to community
 }
 
 export interface GetSubmissionsParams {
@@ -117,8 +118,10 @@ export const getSubmissions = async (
   if (params.userId) queryParams.append("userId", params.userId);
   if (params.problemId) queryParams.append("problemId", params.problemId);
   if (params.author) queryParams.append("author", params.author);
-  if (params.problemTitle) queryParams.append("problemTitle", params.problemTitle);
-  if (params.problemTitleTranslated) queryParams.append("problemTitleTranslated", params.problemTitleTranslated);
+  if (params.problemTitle)
+    queryParams.append("problemTitle", params.problemTitle);
+  if (params.problemTitleTranslated)
+    queryParams.append("problemTitleTranslated", params.problemTitleTranslated);
   if (params.pageSize) queryParams.append("pageSize", String(params.pageSize));
   if (params.lastEvaluatedKey)
     queryParams.append("lastEvaluatedKey", params.lastEvaluatedKey);
@@ -139,10 +142,13 @@ export const getSubmissions = async (
 };
 
 // Simple in-memory cache for submission data to prevent duplicate requests
-const submissionCache: Record<string, {
-  data: SubmissionSummary;
-  timestamp: number;
-}> = {};
+const submissionCache: Record<
+  string,
+  {
+    data: SubmissionSummary;
+    timestamp: number;
+  }
+> = {};
 
 // Cache expiry in milliseconds (5 minutes)
 const CACHE_EXPIRY = 5 * 60 * 1000;
@@ -150,19 +156,21 @@ const CACHE_EXPIRY = 5 * 60 * 1000;
 /**
  * Fetches a specific submission by ID.
  * Uses in-memory cache to prevent duplicate network requests.
+ * This function should return userCode and language.
  */
 export const getSubmissionById = async (
-  submissionId: string
+  submissionId: string,
 ): Promise<SubmissionSummary> => {
+  // Returns SubmissionSummary which now includes userCode and language
   // Check if we have a valid cached entry
   const cachedEntry = submissionCache[submissionId];
   const now = Date.now();
-  
+
   if (cachedEntry && now - cachedEntry.timestamp < CACHE_EXPIRY) {
     console.log(`Using cached submission data for ID: ${submissionId}`);
     return cachedEntry.data;
   }
-  
+
   if (!SUBMISSIONS_API_BASE_URL) {
     console.error(
       "Submissions API URL is not configured. Please set NEXT_PUBLIC_SUBMISSIONS_API_BASE_URL.",
@@ -170,12 +178,13 @@ export const getSubmissionById = async (
     throw new Error("Submissions API URL is not configured.");
   }
 
-  // Simpler approach without using performance API
   const queryParams = new URLSearchParams();
   queryParams.append("submissionId", submissionId);
 
   const url = `${SUBMISSIONS_API_BASE_URL}/submissions?${queryParams.toString()}`;
-  console.log(`Fetching submission details for ID: ${submissionId}`);
+  console.log(
+    `Fetching submission details for ID: ${submissionId} from URL: ${url}`,
+  );
 
   try {
     const response = await fetch(url, {
@@ -184,22 +193,39 @@ export const getSubmissionById = async (
         "Content-Type": "application/json",
       },
     });
-    
-    const submissionsResponse = await handleApiResponse(response) as GetSubmissionsResponse;
-    
-    // Since we're requesting by ID, we should get exactly one item
+
+    // The Lambda for submissionId query returns GetSubmissionsResponse structure
+    const submissionsResponse = (await handleApiResponse(
+      response,
+    )) as GetSubmissionsResponse;
+
     if (submissionsResponse.items && submissionsResponse.items.length > 0) {
+      const submissionDetail = submissionsResponse.items[0];
+      // Ensure language is a lowercase string for Markdown compatibility, default if not present
+      if (submissionDetail.language) {
+        submissionDetail.language = submissionDetail.language.toLowerCase();
+      } else {
+        console.warn(
+          `Submission ${submissionId} has no language specified. Defaulting to 'plaintext'.`,
+        );
+        submissionDetail.language = "plaintext"; // Default language for Markdown
+      }
+
       // Cache the result
       submissionCache[submissionId] = {
-        data: submissionsResponse.items[0],
-        timestamp: now
+        data: submissionDetail,
+        timestamp: now,
       };
-      return submissionsResponse.items[0];
+      return submissionDetail;
     }
-    
+
     throw new ApiError(`Submission with ID ${submissionId} not found`, 404);
   } catch (error) {
     console.error(`Error fetching submission ${submissionId}:`, error);
+    if (error instanceof ApiError && error.status === 404) {
+      // Clear cache for this ID if it resulted in a 404
+      delete submissionCache[submissionId];
+    }
     throw error;
   }
 };

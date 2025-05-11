@@ -8,6 +8,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { SubmissionSummary, getSubmissionById } from "@/api/submissionApi";
 import { getProblemById, ProblemDetail } from "@/api/problemApi";
+import { useAuthenticator } from "@aws-amplify/ui-react";
 
 // submissions/page.tsx 에서 가져온 유틸리티 함수
 const getStatusClass = (status: SubmissionSummary["status"] | undefined) => {
@@ -45,6 +46,7 @@ const getStatusKorean = (
 const CodingTestResultContent: React.FC = () => {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { user } = useAuthenticator((context) => [context.user]); // Get the current logged-in user
   const problemId = searchParams.get("id");
   const submissionId = searchParams.get("submissionId");
 
@@ -53,6 +55,9 @@ const CodingTestResultContent: React.FC = () => {
   const [problem, setProblem] = useState<ProblemDetail | null>(null);
   const [submission, setSubmission] = useState<SubmissionSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Check if the current user is the owner of the submission
+  const isCurrentUserSubmission = user?.userId === submission?.userId;
 
   // Fetch problem data
   useEffect(() => {
@@ -83,7 +88,7 @@ const CodingTestResultContent: React.FC = () => {
     fetchProblem();
   }, [problemId]);
 
-  // Fetch submission result
+  // Fetch submission result (this will now include userCode and language)
   useEffect(() => {
     if (!submissionId) {
       setError("제출 ID가 없습니다.");
@@ -94,8 +99,12 @@ const CodingTestResultContent: React.FC = () => {
     const fetchSubmission = async () => {
       setIsLoadingSubmission(true);
       try {
+        console.log(
+          `Fetching submission with ID: ${submissionId} for result page`,
+        );
         const data = await getSubmissionById(submissionId);
         setSubmission(data);
+        console.log("Fetched submission data:", data); // For debugging
       } catch (err) {
         console.error("Failed to fetch submission:", err);
         const errorMsg =
@@ -112,13 +121,26 @@ const CodingTestResultContent: React.FC = () => {
     fetchSubmission();
   }, [submissionId]);
 
+  const problemTitleDisplay =
+    submission?.problemTitleTranslated ||
+    submission?.problemTitle ||
+    problem?.title_translated ||
+    problem?.title ||
+    "제목 정보 없음";
+
   const handleShareToCommunity = () => {
-    if (problemId) {
-      router.push(
-        `/community/create?fromTest=true&id=${problemId}&submissionId=${submissionId}`,
-      );
+    if (problemId && submissionId && submission) {
+      const query = {
+        fromTest: "true",
+        problemId: problemId,
+        submissionId: submissionId,
+        problemTitle: encodeURIComponent(problemTitleDisplay), // Pass title for convenience
+        language: submission.language || "plaintext", // Pass language
+      };
+      const queryString = new URLSearchParams(query).toString();
+      router.push(`/community/create?${queryString}`);
     } else {
-      toast.error("문제 ID가 없어 커뮤니티에 공유할 수 없습니다.");
+      toast.error("문제 또는 제출 정보가 없어 커뮤니티에 공유할 수 없습니다.");
     }
   };
 
@@ -170,12 +192,6 @@ const CodingTestResultContent: React.FC = () => {
     );
   }
 
-  const problemTitleDisplay =
-    submission?.problemTitleTranslated ||
-    submission?.problemTitle ||
-    problem?.title_translated ||
-    problem?.title ||
-    "제목 정보 없음";
   const score = submission?.status === "ACCEPTED" ? 100 : 0;
   const executionTimeDisplay =
     submission?.executionTime != null
@@ -227,9 +243,11 @@ const CodingTestResultContent: React.FC = () => {
           </div>
         </div>
 
-        <div className="mb-6 p-4 rounded-md ${getStatusClass(submission?.status)}">
+        <div
+          className={`mb-6 p-4 rounded-md ${getStatusClass(submission?.status)}`}
+        >
           <p
-            className={`text-xl font-semibold text-center ${submission?.status === "ACCEPTED" ? "text-green-700" : submission?.status ? getStatusClass(submission.status).split(" ")[1] : "text-gray-700"}`}
+            className={`text-xl font-semibold text-center ${submission?.status === "ACCEPTED" ? "text-green-700" : submission?.status ? getStatusClass(submission.status).split(" ")[1].replace("text-", "text-") : "text-gray-700"}`}
           >
             {getStatusKorean(submission?.status)}
           </p>
@@ -269,22 +287,22 @@ const CodingTestResultContent: React.FC = () => {
           </div>
         )}
 
-        {/* 테스트 케이스 상세 정보 테이블은 제거됨 */}
-
         <div className="mt-8 flex flex-col sm:flex-row justify-end gap-3">
           <Link
-            href={`/submissions?problemId=${problemId}&userId=${submission?.userId}`}
+            href={`/submissions?problemId=${problemId}&userId=${submission?.userId}&author=${submission?.author ? encodeURIComponent(submission.author) : ''}`}
             className="px-4 py-2 border border-gray-300 text-sm font-medium rounded-md bg-white text-gray-700 hover:bg-gray-50 transition text-center"
           >
             제출 현황 보기
           </Link>
-          <button
-            onClick={handleShareToCommunity}
-            disabled={!problemId}
-            className="px-4 py-2 bg-primary text-white font-medium rounded-md hover:bg-primary-hover transition disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            커뮤니티에 풀이 공유
-          </button>
+          {isCurrentUserSubmission && (
+            <button
+              onClick={handleShareToCommunity}
+              disabled={!problemId || !submissionId || !submission?.userCode} // Disable if code is not available
+              className="px-4 py-2 bg-primary text-white font-medium rounded-md hover:bg-primary-hover transition disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {submission?.userCode ? "커뮤니티에 풀이 공유" : "코드 로딩 중..."}
+            </button>
+          )}
         </div>
       </div>
     </div>

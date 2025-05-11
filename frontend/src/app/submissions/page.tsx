@@ -88,7 +88,7 @@ const SubmissionsContent: React.FC = () => {
   const [lastEvaluatedKey, setLastEvaluatedKey] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(true);
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+   
   const [filterUserId, setFilterUserId] = useState(
     searchParamsHook.get("userId") || "",
   );
@@ -215,14 +215,21 @@ const SubmissionsContent: React.FC = () => {
             >
               작성자 (닉네임)
             </label>
-            <input
-              type="text"
-              id="authorFilter"
-              value={filterAuthor}
-              onChange={(e) => setFilterAuthor(e.target.value)}
-              className="w-full p-2 border border-gray-300 rounded-md text-sm focus:ring-primary focus:border-primary"
-              placeholder="예: alpaco_user"
-            />
+            <div className="relative">
+              <input
+                type="text"
+                id="authorFilter"
+                value={filterAuthor}
+                onChange={(e) => setFilterAuthor(e.target.value)}
+                className="w-full p-2 border border-gray-300 rounded-md text-sm focus:ring-primary focus:border-primary"
+                placeholder="예: alpaco_user"
+              />
+              {(filterUserId || filterAuthor) && (
+                <div className="mt-1 text-xs text-primary">
+                  {filterAuthor ? `특정 사용자 "${filterAuthor}"의 제출만 표시 중` : `특정 사용자 ID로 필터링 중`}
+                </div>
+              )}
+            </div>
           </div>
           <div>
             <label
@@ -242,6 +249,28 @@ const SubmissionsContent: React.FC = () => {
             </select>
           </div>
         </div>
+        
+        {(filterUserId || filterAuthor || filterProblemTitle) && (
+          <div className="mt-4 p-2 bg-blue-50 border border-blue-200 rounded-md text-sm text-blue-700 flex justify-between items-center">
+            <span>
+              {[
+                filterProblemTitle && `문제: "${filterProblemTitle}"`,
+                filterAuthor && `작성자: "${filterAuthor}"`,
+                filterUserId && !filterAuthor && "특정 사용자 ID로 필터링됨"
+              ].filter(Boolean).join(' / ')}
+            </span>
+            <button 
+              onClick={() => {
+                setFilterProblemTitle('');
+                setFilterAuthor('');
+                setFilterUserId('');
+              }}
+              className="text-xs bg-white px-2 py-1 rounded border border-blue-200 hover:bg-blue-100"
+            >
+              필터 초기화
+            </button>
+          </div>
+        )}
       </div>
 
       {isLoading && submissions.length === 0 ? (
