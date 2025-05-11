@@ -22,16 +22,8 @@ export default function Home() {
 
       <div className="min-h-screen flex flex-col">
         <Header />
-        <main className="flex-grow relative">
-          {/* 파랑 → 회색(vertical) 그라디언트 */}
-          <div
-                aria-hidden
-                className="fixed inset-0
-                          bg-gradient-to-b
-                          from-primary-300
-                          via-primary-100
-                          to-background"
-              />
+        <main className="flex-grow relative bg-gradient-to-b from-primary-300 via-primary-100 to-background">
+          
           <div className="w-full px-4 mx-auto max-w-7xl">
             <motion.section
               className="pt-16 pb-10 px-16 text-center bg-white rounded-lg shadow-sm my-8 border-t-8 border-t-primary"
