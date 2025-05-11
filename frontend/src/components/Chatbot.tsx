@@ -388,7 +388,7 @@ const Chatbot: React.FC<ChatbotProps> = ({ problemDetails, userCode }) => {
             />
           </div>
           <div className="flex flex-col space-y-0 -mt-1">
-            <h2 className="text-lg font-semibold text-primary-700 leading-none mb-0.5">코딩 도우미 알파코</h2>
+            <h2 className="text-lg font-semibold text-primary-700 leading-none mb-0.5">AI 핼퍼 알파코</h2>
             <p className="text-xs text-gray-500 leading-tight">언제든지 물어보세요! 🦙✨</p>
           </div>
         </div>
