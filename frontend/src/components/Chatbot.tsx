@@ -388,7 +388,7 @@ const Chatbot: React.FC<ChatbotProps> = ({ problemDetails, userCode }) => {
             />
           </div>
           <div className="flex flex-col space-y-0 -mt-1">
-            <h2 className="text-lg font-semibold text-primary-700 leading-none mb-0.5">코딩 도우미 알파코</h2>
+            <h2 className="text-lg font-semibold text-primary-700 leading-none mb-0.5">AI 핼퍼 알파코</h2>
             <p className="text-xs text-gray-500 leading-tight">언제든지 물어보세요! 🦙✨</p>
           </div>
         </div>
@@ -430,7 +430,7 @@ const Chatbot: React.FC<ChatbotProps> = ({ problemDetails, userCode }) => {
               />
             </div>
             <h3 className="text-xl font-semibold text-primary-700 mb-2">안녕하세요! 알파코예요! 🦙</h3>
-            <p className="text-gray-600 max-w-md mb-2">코딩 문제 해결을 도와드릴게요. 무엇이든 물어보세요!</p>
+            <p className="text-gray-600 max-w-md mb-2 break-keep">코딩 문제 해결을 도와드릴게요. <br/> 무엇이든 물어보세요!</p>
             <div className="text-sm text-gray-500 bg-gray-100 p-3 rounded-lg max-w-sm mt-2">
               <p className="font-medium mb-1">💡 이런 것들을 물어볼 수 있어요:</p>
               <ul className="list-disc pl-5 text-left">

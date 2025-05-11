@@ -724,7 +724,7 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
         <button
           onClick={handleRunCode}
           disabled={isRunningCode || isSubmitting} 
-          className="px-3 py-1 text-sm border border-green-500 text-green-600 rounded hover:bg-green-50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+          className="px-3 py-1 text-sm border border-green-500 text-green-600 rounded hover:bg-green-50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center break-keep"
         >
           <PlayIcon className="h-4 w-4 mr-1" />
           {isRunningCode ? "실행 중..." : "코드 실행"}
@@ -732,7 +732,7 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
         <button
           onClick={handleSubmit}
           disabled={isRunningCode || isSubmitting} 
-          className="px-4 py-1 bg-primary text-white text-sm font-medium rounded-md hover:bg-primary-hover transition disabled:opacity-50"
+          className="px-4 py-1 bg-primary text-white text-sm font-medium rounded-md hover:bg-primary-hover transition disabled:opacity-50 break-keep h-full"
         >
           {isSubmitting ? "채점 중..." : "제출"} 
         </button>
