@@ -1,6 +1,5 @@
-import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import pkg from "@aws-sdk/lib-dynamodb";
-const { DynamoDBDocumentClient, QueryCommand, GetItemCommand } = pkg;
+import { DynamoDBClient, GetItemCommand } from "@aws-sdk/client-dynamodb";
+import { DynamoDBDocumentClient, QueryCommand } from "@aws-sdk/lib-dynamodb";
 
 // Initialize DynamoDB Client
 const client = new DynamoDBClient({});
@@ -55,12 +54,13 @@ export const handler = async (event) => {
       const params = {
         TableName: tableName,
         Key: {
-          submissionId: submissionId
+          submissionId: { S: submissionId }
         }
       };
       
+      // Use the regular DynamoDB client for GetItemCommand
       const command = new GetItemCommand(params);
-      const result = await dynamoDB.send(command);
+      const result = await client.send(command);
       
       if (!result.Item) {
         return {
@@ -72,9 +72,12 @@ export const handler = async (event) => {
         };
       }
       
+      // Convert the DynamoDB attribute values to JavaScript objects
+      const unmarshalled = unmarshallItem(result.Item);
+      
       // Wrap the single item in the same response format for consistency
       const responseBody = {
-        items: [result.Item],
+        items: [unmarshalled],
         lastEvaluatedKey: null,
         count: 1,
         scannedCount: 1,
@@ -224,3 +227,32 @@ export const handler = async (event) => {
     };
   }
 };
+
+// Helper function to convert DynamoDB attribute values to JavaScript objects
+function unmarshallItem(item) {
+  if (!item) return null;
+  
+  const result = {};
+  
+  for (const [key, value] of Object.entries(item)) {
+    if (value.S !== undefined) {
+      result[key] = value.S;
+    } else if (value.N !== undefined) {
+      result[key] = Number(value.N);
+    } else if (value.BOOL !== undefined) {
+      result[key] = value.BOOL;
+    } else if (value.NULL !== undefined) {
+      result[key] = null;
+    } else if (value.L !== undefined) {
+      result[key] = value.L.map(unmarshallItem);
+    } else if (value.M !== undefined) {
+      result[key] = unmarshallItem(value.M);
+    } else if (value.SS !== undefined) {
+      result[key] = value.SS;
+    } else if (value.NS !== undefined) {
+      result[key] = value.NS.map(Number);
+    }
+  }
+  
+  return result;
+}

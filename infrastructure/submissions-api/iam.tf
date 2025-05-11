@@ -29,7 +29,8 @@ resource "aws_iam_policy" "get_submission_dynamodb_policy" {
         Sid    = "AllowDynamoDBQueryOnSubmissions"
         Effect = "Allow"
         Action = [
-          "dynamodb:Query" # Query는 GSI 사용에 필수
+          "dynamodb:Query", # Query는 GSI 사용에 필수
+          "dynamodb:GetItem" # Added GetItem permission for retrieving specific items by ID
         ]
         Resource = [
           local.submissions_table_arn_from_remote,             # 기본 테이블에 대한 권한

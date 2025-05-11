@@ -138,12 +138,31 @@ export const getSubmissions = async (
   return handleApiResponse(response) as Promise<GetSubmissionsResponse>;
 };
 
+// Simple in-memory cache for submission data to prevent duplicate requests
+const submissionCache: Record<string, {
+  data: SubmissionSummary;
+  timestamp: number;
+}> = {};
+
+// Cache expiry in milliseconds (5 minutes)
+const CACHE_EXPIRY = 5 * 60 * 1000;
+
 /**
  * Fetches a specific submission by ID.
+ * Uses in-memory cache to prevent duplicate network requests.
  */
 export const getSubmissionById = async (
   submissionId: string
 ): Promise<SubmissionSummary> => {
+  // Check if we have a valid cached entry
+  const cachedEntry = submissionCache[submissionId];
+  const now = Date.now();
+  
+  if (cachedEntry && now - cachedEntry.timestamp < CACHE_EXPIRY) {
+    console.log(`Using cached submission data for ID: ${submissionId}`);
+    return cachedEntry.data;
+  }
+  
   if (!SUBMISSIONS_API_BASE_URL) {
     console.error(
       "Submissions API URL is not configured. Please set NEXT_PUBLIC_SUBMISSIONS_API_BASE_URL.",
@@ -151,27 +170,36 @@ export const getSubmissionById = async (
     throw new Error("Submissions API URL is not configured.");
   }
 
+  // Simpler approach without using performance API
   const queryParams = new URLSearchParams();
   queryParams.append("submissionId", submissionId);
 
   const url = `${SUBMISSIONS_API_BASE_URL}/submissions?${queryParams.toString()}`;
   console.log(`Fetching submission details for ID: ${submissionId}`);
 
-  const response = await fetch(url, {
-    method: "GET",
-    headers: {
-      "Content-Type": "application/json",
-      // 필요시 Authorization 헤더 추가 (예: Cognito 인증 사용 시)
-      // 'Authorization': `Bearer ${idToken}`
-    },
-  });
-  
-  const submissionsResponse = await handleApiResponse(response) as GetSubmissionsResponse;
-  
-  // Since we're requesting by ID, we should get exactly one item
-  if (submissionsResponse.items && submissionsResponse.items.length > 0) {
-    return submissionsResponse.items[0];
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+    
+    const submissionsResponse = await handleApiResponse(response) as GetSubmissionsResponse;
+    
+    // Since we're requesting by ID, we should get exactly one item
+    if (submissionsResponse.items && submissionsResponse.items.length > 0) {
+      // Cache the result
+      submissionCache[submissionId] = {
+        data: submissionsResponse.items[0],
+        timestamp: now
+      };
+      return submissionsResponse.items[0];
+    }
+    
+    throw new ApiError(`Submission with ID ${submissionId} not found`, 404);
+  } catch (error) {
+    console.error(`Error fetching submission ${submissionId}:`, error);
+    throw error;
   }
-  
-  throw new ApiError(`Submission with ID ${submissionId} not found`, 404);
 };
