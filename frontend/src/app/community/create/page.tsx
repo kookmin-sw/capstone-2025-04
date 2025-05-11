@@ -9,7 +9,7 @@ import { useAuthenticator } from "@aws-amplify/ui-react";
 import { fetchUserAttributes } from "aws-amplify/auth";
 import { toast } from "sonner";
 import { createPost } from "@/api/communityApi";
-import { getSubmissionById, SubmissionSummary } from "@/api/submissionApi"; // Import submission API
+import { getSubmissionById } from "@/api/submissionApi"; // Import submission API without unused type
 
 // New component containing all form logic and state
 const CreatePageContent: React.FC = () => {
@@ -27,8 +27,6 @@ const CreatePageContent: React.FC = () => {
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [isLoadingSubmission, setIsLoadingSubmission] = useState(false);
-  const [fetchedSubmission, setFetchedSubmission] =
-    useState<SubmissionSummary | null>(null);
 
   // problemId to be submitted with the post
   const [problemIdForPost, setProblemIdForPost] = useState<string | undefined>(
@@ -53,7 +51,6 @@ const CreatePageContent: React.FC = () => {
             `Fetching submission ${submissionIdFromQuery} for community create page`,
           );
           const submissionData = await getSubmissionById(submissionIdFromQuery);
-          setFetchedSubmission(submissionData);
 
           const problemTitleToUse =
             problemTitleFromQuery ||
@@ -234,7 +231,7 @@ ${codeBlock}
             <br />
             &#96;&#96;&#96;python
             <br />
-            print("hello")
+            print(&quot;hello&quot;)
             <br />
             &#96;&#96;&#96;
             <br />
