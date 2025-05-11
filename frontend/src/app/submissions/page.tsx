@@ -17,44 +17,38 @@ import { ko } from "date-fns/locale";
 
 const formatSubmissionTime = (timeValue: string | number | undefined | null): string => {
   if (timeValue === null || timeValue === undefined || String(timeValue).trim() === "") {
-    console.warn(`formatSubmissionTime received empty or invalid value: ${timeValue}`);
-    return "N/A"; // 또는 다른 기본값
+    // console.warn(`formatSubmissionTime received empty or invalid value: ${timeValue}`); // Can be noisy
+    return "N/A";
   }
 
   let dateToFormat: Date | number;
 
-  // 1. 숫자형 타임스탬프 (초 단위라고 가정) 처리
   if (typeof timeValue === 'number') {
-    dateToFormat = new Date(timeValue * 1000); // 초 단위를 밀리초로 변환
+    dateToFormat = new Date(timeValue * 1000); 
   }
-  // 2. 문자열일 경우
   else if (typeof timeValue === 'string') {
-    // 2a. 순수 숫자 문자열인지 확인 (Unix 타임스탬프 가능성)
     if (/^\d+$/.test(timeValue)) {
-      dateToFormat = new Date(parseInt(timeValue, 10) * 1000); // 초 단위를 밀리초로 변환
+      dateToFormat = new Date(parseInt(timeValue, 10) * 1000); 
     }
-    // 2b. ISO 8601 형식 시도
     else {
       dateToFormat = parseISO(timeValue);
     }
   }
-  // 3. 그 외 타입은 처리 불가
   else {
     console.warn(`formatSubmissionTime received unhandled type: ${typeof timeValue}, value: ${timeValue}`);
-    return String(timeValue); // 원본 값 반환 또는 에러 표시
+    return String(timeValue); 
   }
 
-  // 최종적으로 유효한 Date 객체인지 확인
   if (isValid(dateToFormat)) {
     try {
       return format(dateToFormat, "yyyy-MM-dd HH:mm:ss", { locale: ko });
     } catch (formatError) {
       console.error(`Error formatting date '${dateToFormat}':`, formatError);
-      return String(timeValue); // 포맷팅 실패 시 원본 값 반환
+      return String(timeValue); 
     }
   } else {
-    console.warn(`Failed to parse '${timeValue}' into a valid date.`);
-    return String(timeValue); // 파싱 실패 시 원본 값 반환
+    // console.warn(`Failed to parse '${timeValue}' into a valid date.`); // Can be noisy
+    return String(timeValue); 
   }
 };
 
@@ -86,8 +80,7 @@ const getStatusKorean = (status: SubmissionSummary["status"]): string => {
 };
 
 const SubmissionsContent: React.FC = () => {
-
-  const searchParamsHook = useSearchParams(); // Renamed to avoid conflict
+  const searchParamsHook = useSearchParams();
 
   const [submissions, setSubmissions] = useState<SubmissionSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -95,28 +88,24 @@ const SubmissionsContent: React.FC = () => {
   const [lastEvaluatedKey, setLastEvaluatedKey] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(true);
 
-  // Filters and Sort State
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [filterUserId, setFilterUserId] = useState(
     searchParamsHook.get("userId") || "",
-  ); // For admin or specific user views
-
+  );
   const [filterAuthor, setFilterAuthor] = useState(
     searchParamsHook.get("author") || "",
   );
-  
   const [filterProblemTitle, setFilterProblemTitle] = useState(
     searchParamsHook.get("problemTitle") || "",
   );
-  
   const [sortOrder, setSortOrder] = useState<"ASC" | "DESC">("DESC");
 
   const PAGE_SIZE = 20;
 
   const fetchSubmissions = useCallback(
-    async (loadMore = false) => {
+    async (loadMore = false, keyForThisFetch?: string | null) => {
       setIsLoading(true);
-      setError(null);
+      // Error will be cleared at the start of the try block
 
       const params: GetSubmissionsParams = {
         pageSize: PAGE_SIZE,
@@ -124,24 +113,23 @@ const SubmissionsContent: React.FC = () => {
       };
       if (filterUserId) params.userId = filterUserId;
       if (filterAuthor) params.author = filterAuthor;
-      
-      // Only use problemTitleTranslated for searching
       if (filterProblemTitle) {
         params.problemTitleTranslated = filterProblemTitle;
       }
       
-      if (loadMore && lastEvaluatedKey) {
-        params.lastEvaluatedKey = lastEvaluatedKey;
+      if (loadMore && keyForThisFetch) {
+        params.lastEvaluatedKey = keyForThisFetch;
       }
 
       try {
+        setError(null); // Clear previous error before new attempt
         const response = await getSubmissions(params);
         if (loadMore) {
           setSubmissions((prev) => [...prev, ...response.items]);
         } else {
-          setSubmissions(response.items);
+          setSubmissions(response.items); // Reset for new search/filter
         }
-        setLastEvaluatedKey(response.lastEvaluatedKey);
+        setLastEvaluatedKey(response.lastEvaluatedKey); // Set key for *next* potential fetch
         setHasMore(
           !!response.lastEvaluatedKey && response.items.length === PAGE_SIZE,
         );
@@ -152,21 +140,39 @@ const SubmissionsContent: React.FC = () => {
             ? err.message
             : "제출 목록을 불러오는데 실패했습니다.";
         setError(errorMsg);
+        if (!loadMore) { // If initial/filter fetch fails, clear items
+            setSubmissions([]);
+            setHasMore(false); // No items means no more, or error prevents knowing
+        }
+        // For loadMore error, we keep existing items and button, but show error.
+        // `hasMore` might remain true if the error was transient.
         toast.error(errorMsg);
       } finally {
         setIsLoading(false);
       }
     },
-    [filterUserId, filterAuthor, filterProblemTitle, sortOrder, lastEvaluatedKey],
-  ); // Remove filterProblemId from dependencies
+    // Dependencies for useCallback:
+    // These are the values from the component scope that the function closes over.
+    // `lastEvaluatedKey` (state) is NOT a dependency here.
+    // State setters (setSubmissions, etc.) are stable and don't need to be listed,
+    // but linters might suggest them. PAGE_SIZE is a const within render so not a dep.
+    [filterUserId, filterAuthor, filterProblemTitle, sortOrder, PAGE_SIZE] 
+    // Note: Added PAGE_SIZE as it's used. If it were a prop/state, it'd be essential.
+    // As a local const, its value is fixed per render cycle where useCallback is defined.
+    // For full strictness, all used state setters & imported functions could be listed,
+    // but the primary drivers of change for this callback's identity are filters/sortOrder.
+  );
 
+  // Effect for initial load and when filters/sortOrder change (which recreates fetchSubmissions)
   useEffect(() => {
-    fetchSubmissions(false); // Initial fetch
-  }, [fetchSubmissions]); // Rerun when filters or sortOrder change, but not lastEvaluatedKey here
+    // Fetch the *first page* of data. `loadMore` is false, `keyForThisFetch` is undefined.
+    fetchSubmissions(false);
+  }, [fetchSubmissions]); // `fetchSubmissions` is a dependency. It changes when its own deps change.
 
   const handleLoadMore = () => {
     if (hasMore && !isLoading) {
-      fetchSubmissions(true);
+      // For "Load More", pass `true` for `loadMore` and the current `lastEvaluatedKey` from state.
+      fetchSubmissions(true, lastEvaluatedKey);
     }
   };
 
@@ -184,7 +190,6 @@ const SubmissionsContent: React.FC = () => {
         </Link>
       </div>
 
-      {/* Filters - Basic Example */}
       <div className="mb-6 p-4 bg-white shadow-sm rounded-lg border">
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 items-end">
           <div className="md:col-span-1">
@@ -298,9 +303,8 @@ const SubmissionsContent: React.FC = () => {
                       <Link
                         href={`/coding-test/solve?id=${sub.problemId}`}
                         className="text-sm text-gray-700 hover:text-primary hover:underline max-w-[120px] sm:max-w-[180px]"
-                        title={sub.problemId}
+                        title={sub.problemTitleTranslated || sub.problemTitle || sub.problemId}
                       >
-                        {/* 문제 제목 표시 */}
                         {sub.problemTitleTranslated || sub.problemTitle || `문제 ${sub.problemId.substring(0, 8)}...`}
                       </Link>
                     </td>
@@ -312,7 +316,7 @@ const SubmissionsContent: React.FC = () => {
                       </span>
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
-                      {sub.executionTime !== undefined
+                      {sub.executionTime !== undefined && sub.executionTime !== null
                         ? `${sub.executionTime.toFixed(3)} 초`
                         : "-"}
                     </td>
@@ -326,7 +330,7 @@ const SubmissionsContent: React.FC = () => {
                       {sub.author}
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
-                      {formatSubmissionTime(String(sub.submissionTime))}
+                      {formatSubmissionTime(sub.submissionTime)}
                     </td>
                   </tr>
                 ))}
@@ -350,7 +354,6 @@ const SubmissionsContent: React.FC = () => {
   );
 };
 
-// Main page component wrapping the content in Suspense
 const SubmissionsPage: React.FC = () => {
   return (
     <>
