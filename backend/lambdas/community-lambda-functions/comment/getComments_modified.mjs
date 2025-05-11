@@ -39,8 +39,10 @@ export const handler = async (event) => {
       TableName: tableName,
       IndexName: "commentSortIndex", // Use the new GSI for comment sorting
       KeyConditionExpression: "PK = :postId",
+      FilterExpression: "begins_with(SK, :comment_prefix)", // <--- MODIFIED: Add filter
       ExpressionAttributeValues: {
         ":postId": postId,
+        ":comment_prefix": "COMMENT#", // <--- MODIFIED: Add prefix for filter
       },
       ProjectionExpression: "commentId, content, author, createdAt, SK, userId",
       ScanIndexForward: false, // Get latest comments first (descending order by createdAt)
