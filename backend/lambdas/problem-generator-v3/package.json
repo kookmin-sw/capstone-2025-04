@@ -1,11 +1,15 @@
 {
-  "name": "problem-generator-v2",
+  "name": "problem-generator-v3",
   "version": "1.0.0",
   "description": "Lambda function to generate coding problems using LLMs with SSE",
   "main": "index.mjs",
   "type": "module",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "test:local": "node local-test.mjs",
+    "test:auto": "node local-test.mjs auto",
+    "test:mock": "node local-test.mjs mock",
+    "test:real": "node local-test.mjs real"
   },
   "keywords": [
     "lambda",
@@ -21,6 +25,7 @@
   "license": "ISC",
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.540.0",
+    "@aws-sdk/client-lambda": "^3.804.0",
     "@aws-sdk/lib-dynamodb": "^3.540.0",
     "@langchain/core": "^0.2.6",
     "@langchain/google-genai": "^0.0.13",
@@ -30,6 +35,7 @@
   "devDependencies": {
     "@types/aws-lambda": "^8.10.136",
     "@types/node": "^20.11.25",
-    "@types/uuid": "^9.0.8"
+    "@types/uuid": "^9.0.8",
+    "dotenv": "^16.5.0"
   }
 }

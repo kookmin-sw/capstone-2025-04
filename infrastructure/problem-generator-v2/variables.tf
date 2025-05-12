@@ -45,9 +45,9 @@ variable "lambda_handler" {
 }
 
 variable "lambda_code_path" {
-  description = "Path to the Lambda function handler code (relative to this module)"
+  description = "Path to the Lambda function code directory (relative to this module)"
   type        = string
-  default     = "../../backend/lambdas/problem-generator-v2/index.mjs"
+  default     = "../../backend/lambdas/problem-generator-v2/src"
 }
 
 # lambda_layer_path is now handled by the build script output path

@@ -20,9 +20,10 @@ export default function Home() {
         />
       </Head>
 
-      <div className="min-h-screen flex flex-col bg-gray-50">
+      <div className="min-h-screen flex flex-col">
         <Header />
-        <main className="flex-grow">
+        <main className="flex-grow relative bg-gradient-to-b from-primary-300 via-primary-100 to-background">
+          
           <div className="w-full px-4 mx-auto max-w-7xl">
             <motion.section
               className="pt-16 pb-10 px-16 text-center bg-white rounded-lg shadow-sm my-8 border-t-8 border-t-primary"

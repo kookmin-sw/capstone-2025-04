@@ -32,7 +32,7 @@ export const handler = async (event) => {
 
     // Get user info from API Gateway JWT Authorizer
     const claims = event.requestContext?.authorizer?.claims;
-    if (!claims || !claims["cognito:username"]) {
+    if (!claims || !claims.sub) {
       console.warn("❌ Missing or invalid claims:", claims); // 콘솔 로그 추가
       return {
         statusCode: 401,
@@ -40,7 +40,7 @@ export const handler = async (event) => {
         body: JSON.stringify({ message: "인증 정보가 없습니다." }),
       };
     }
-    const username = claims["cognito:username"]; // Use username for clarity
+    const userId = claims.sub;
     const commentSK = `COMMENT#${commentId}`;
 
     // --- OPTIONAL Pre-check (Alternative to complex transaction error handling) ---
@@ -56,8 +56,8 @@ export const handler = async (event) => {
           Delete: {
             TableName: tableName,
             Key: { PK: postId, SK: commentSK },
-            ConditionExpression: "attribute_exists(PK) AND author = :username", // Check existence and ownership
-            ExpressionAttributeValues: { ":username": username },
+            ConditionExpression: "attribute_exists(PK) AND userId = :userId", // Check existence and ownership
+            ExpressionAttributeValues: { ":userId": userId },
           },
         },
         {
@@ -118,8 +118,7 @@ export const handler = async (event) => {
             statusCode = 404;
             message = "삭제할 댓글을 찾을 수 없습니다.";
           } else if (
-            checkComment.Item.author !==
-            event.requestContext?.authorizer?.claims?.["cognito:username"]
+            checkComment.Item.userId !== userId
           ) {
             statusCode = 403;
             message = "댓글을 삭제할 권한이 없습니다.";

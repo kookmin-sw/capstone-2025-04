@@ -30,6 +30,31 @@ resource "aws_cloudfront_origin_access_control" "oac" {
   signing_protocol                  = "sigv4"
 }
 
+# CloudFront Function 생성 (Viewer Request URL Rewrite)
+# Next.js 정적 export 시 /path -> /path/index.html 과 같이 경로를 처리하여 새로고침 시 403/404 오류 방지
+resource "aws_cloudfront_function" "url_rewrite_function" {
+  name    = "${var.project_name}-url-rewrite-${var.environment}"
+  runtime = "cloudfront-js-2.0"
+  comment = "Rewrites URI for Next.js static export (e.g., /path to /path/index.html)"
+  publish = true # 즉시 게시
+  code = <<-EOT
+    function handler(event) {
+        var request = event.request;
+        var uri = request.uri;
+        
+        // Check whether the URI is missing a file name.
+        if (uri.endsWith('/')) {
+            request.uri += 'index.html';
+        } 
+        // Check whether the URI is missing a file extension.
+        else if (!uri.includes('.')) {
+            request.uri += '/index.html';
+        }
+        return request;
+    }
+  EOT
+}
+
 # CloudFront 배포 생성
 resource "aws_cloudfront_distribution" "s3_distribution" {
   origin {
@@ -62,6 +87,12 @@ resource "aws_cloudfront_distribution" "s3_distribution" {
     min_ttl                = 0
     default_ttl            = 3600 # 1 hour
     max_ttl                = 86400 # 24 hours
+
+    # CloudFront Function 연결 (Viewer Request)
+    function_association {
+      event_type   = "viewer-request"
+      function_arn = aws_cloudfront_function.url_rewrite_function.arn
+    }
   }
 
   # 에러 발생 시 /index.html로 리다이렉트 (Next.js 정적 라우팅 처리 위임)
@@ -147,6 +178,9 @@ resource "aws_iam_role" "github_actions_deploy_role" {
         Condition = {
           "StringEquals": {
             "${var.github_oidc_provider_url}:sub": "repo:${var.github_repository}:environment:${var.environment}"
+            # 만약 특정 브랜치/태그에서만 작동하도록 하려면 아래와 같이 조건 추가
+            # "${var.github_oidc_provider_url}:ref": "refs/heads/main" # main 브랜치
+            # "${var.github_oidc_provider_url}:ref": "refs/tags/v*" # v로 시작하는 태그
           }
         }
       }

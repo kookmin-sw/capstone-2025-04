@@ -72,7 +72,7 @@ resource "aws_cognito_user_pool_client" "app_client" {
   # OAuth 2.0 설정 (웹 앱 표준: Authorization Code Grant)
   allowed_oauth_flows_user_pool_client = true
   allowed_oauth_flows                  = ["code"]                       # PKCE 사용 권장
-  allowed_oauth_scopes                 = ["openid", "email", "profile"] # 요청할 사용자 정보 범위
+  allowed_oauth_scopes                 = ["openid", "email", "profile", "aws.cognito.signin.user.admin"] # 요청할 사용자 정보 범위
 
   # Google 로그인 후 리디렉션될 앱 URL
   callback_urls = [
