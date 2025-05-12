@@ -1,7 +1,7 @@
 // src/components/Header.tsx
 "use client";
 import Link from "next/link";
-import React, { useState, useEffect } from "react"; // Import useState, useEffect
+import React, { useState, useEffect, useRef } from "react"; // Added useRef
 import { useAuthenticator } from "@aws-amplify/ui-react"; // Import the hook
 import { fetchAuthSession } from "aws-amplify/auth"; // Import fetchAuthSession
 import { fetchUserAttributes } from "aws-amplify/auth"; // Import fetchUserAttributes back
@@ -35,6 +35,25 @@ const Header: React.FC = () => {
   const [isNicknameChecked, setIsNicknameChecked] = useState<boolean>(false);
   const [shouldRedirect, setShouldRedirect] = useState<boolean>(false);
   const [isInitialLoad, setIsInitialLoad] = useState<boolean>(true);
+  const [isMenuOpen, setIsMenuOpen] = useState<boolean>(false); // Added state for mobile menu
+  const menuRef = useRef<HTMLDivElement>(null); // Ref for click outside handling
+  const hamburgerRef = useRef<HTMLButtonElement>(null); // Ref for hamburger button
+
+  // 메뉴 열기/닫기 핸들러
+  const toggleMenu = () => {
+    setIsMenuOpen(!isMenuOpen);
+  };
+
+  // 메뉴 닫기 핸들러
+  const closeMenu = () => {
+    setIsMenuOpen(false);
+  };
+
+  // 링크 클릭 핸들러 - 모바일 메뉴를 닫고 페이지 이동
+  const handleLinkClick = (href: string) => {
+    closeMenu();
+    router.push(href);
+  };
 
   // 닉네임이 변경될 때마다 로컬 스토리지에 저장
   useEffect(() => {
@@ -49,6 +68,25 @@ const Header: React.FC = () => {
       localStorage.removeItem(NICKNAME_STORAGE_KEY);
     }
   }, [isAuthenticated]);
+
+  // Close menu when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      // 햄버거 버튼이나 메뉴 자체를 클릭한 경우에는 무시
+      if (
+        (hamburgerRef.current && hamburgerRef.current.contains(event.target as Node)) ||
+        (menuRef.current && menuRef.current.contains(event.target as Node))
+      ) {
+        return;
+      }
+      closeMenu();
+    }
+    
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
 
   useEffect(() => {
     const fetchAttributesFromToken = async () => {
@@ -150,8 +188,8 @@ const Header: React.FC = () => {
           </Link>
         </div>
 
-        {/* Navigation */}
-        <nav className="flex gap-6 items-center">
+        {/* Desktop Navigation */}
+        <nav className="hidden md:flex gap-6 items-center">
           <Link
             href="/community"
             className="font-medium text-gray-600 relative hover:text-primary transition-colors duration-200 hover:after:content-[''] hover:after:absolute hover:after:bottom-[-0.5rem] hover:after:left-0 hover:after:w-full hover:after:h-0.5 hover:after:bg-primary hover:after:rounded-sm"
@@ -164,7 +202,7 @@ const Header: React.FC = () => {
           >
             코딩 테스트
           </Link>
-          {isAuthenticated && ( // Only show storage if authenticated
+          {isAuthenticated && (
             <Link
               href="/storage"
               className="font-medium text-gray-600 relative hover:text-primary transition-colors duration-200 hover:after:content-[''] hover:after:absolute hover:after:bottom-[-0.5rem] hover:after:left-0 hover:after:w-full hover:after:h-0.5 hover:after:bg-primary hover:after:rounded-sm"
@@ -179,12 +217,12 @@ const Header: React.FC = () => {
             제출 현황
           </Link>
 
-          {/* Auth Buttons / User Info */}
+          {/* Auth Buttons / User Info - Desktop */}
           {isAuthenticated ? (
             <>
               <div className="flex items-center gap-2">
-                <span className="text-sm text-gray-700 hidden md:inline">
-                  {getUserIdentifier()}님 {/* Display user identifier */}
+                <span className="text-sm text-gray-700">
+                  {getUserIdentifier()}님
                 </span>
                 <Link
                   href="/user/settings"
@@ -208,8 +246,8 @@ const Header: React.FC = () => {
                 </Link>
               </div>
               <button
-                onClick={signOut} // Use the signOut function from the hook
-                className="font-medium text-gray-600 relative hover:text-primary transition-colors duration-200 hover:after:content-[''] hover:after:absolute hover:after:bottom-[-0.5rem] hover:after:left-0 hover:after:w-full hover:after:h-0.5 hover:after:bg-primary hover:after:rounded-sm"
+                onClick={signOut}
+                className="font-medium text-gray-600 relative hover:text-primary transition-colors duration-200 hover:after:content-[''] hover:after:absolute hover:after:bottom-[-0.5rem] hover:after:left-0 hover:after:w-full hover:after:h-0.5 hover:after:bg-primary hover:after:rounded-sm break-words"
               >
                 로그아웃
               </button>
@@ -217,13 +255,108 @@ const Header: React.FC = () => {
           ) : (
             <Link
               href="/auth/login"
-              className="font-medium text-gray-600 relative hover:text-primary transition-colors duration-200 hover:after:content-[''] hover:after:absolute hover:after:bottom-[-0.5rem] hover:after:left-0 hover:after:w-full hover:after:h-0.5 hover:after:bg-primary hover:after:rounded-sm"
+              className="font-medium text-gray-600 relative hover:text-primary transition-colors duration-200 hover:after:content-[''] hover:after:absolute hover:after:bottom-[-0.5rem] hover:after:left-0 hover:after:w-full hover:after:h-0.5 hover:after:bg-primary hover:after:rounded-sm break-words"
             >
               로그인
             </Link>
           )}
         </nav>
+
+        {/* Mobile Hamburger Button */}
+        <button 
+          ref={hamburgerRef}
+          className="md:hidden flex items-center" 
+          onClick={toggleMenu}
+          aria-label="Toggle menu"
+        >
+          <svg 
+            xmlns="http://www.w3.org/2000/svg" 
+            fill="none" 
+            viewBox="0 0 24 24" 
+            strokeWidth={1.5} 
+            stroke="currentColor" 
+            className="w-6 h-6 text-gray-700"
+          >
+            <path 
+              strokeLinecap="round" 
+              strokeLinejoin="round" 
+              d={isMenuOpen 
+                ? "M6 18L18 6M6 6l12 12" // X icon when open
+                : "M3.75 6.75h16.5M3.75 12h16.5M3.75 17.25h16.5" // Hamburger icon when closed
+              } 
+            />
+          </svg>
+        </button>
       </div>
+
+      {/* Mobile Menu Dropdown */}
+      {isMenuOpen && (
+        <div 
+          ref={menuRef}
+          className="md:hidden absolute top-full left-0 right-0 bg-white shadow-lg z-20 px-4 py-2 border-t border-gray-200 animate-slide-down"
+        >
+          <div className="flex flex-col">
+            {/* Mobile Navigation Links */}
+            <button 
+              onClick={() => handleLinkClick('/community')}
+              className="text-left font-medium text-gray-600 block py-2 hover:text-primary transition-colors duration-200"
+            >
+              커뮤니티
+            </button>
+            <button 
+              onClick={() => handleLinkClick('/coding-test')}
+              className="text-left font-medium text-gray-600 block py-2 hover:text-primary transition-colors duration-200"
+            >
+              코딩 테스트
+            </button>
+            {isAuthenticated && (
+              <button 
+                onClick={() => handleLinkClick('/storage')}
+                className="text-left font-medium text-gray-600 block py-2 hover:text-primary transition-colors duration-200"
+              >
+                내 저장소
+              </button>
+            )}
+            <button 
+              onClick={() => handleLinkClick('/submissions')}
+              className="text-left font-medium text-gray-600 block py-2 hover:text-primary transition-colors duration-200"
+            >
+              제출 현황
+            </button>
+
+            {/* Auth Buttons / User Info - Mobile */}
+            {isAuthenticated ? (
+              <>
+                <div className="py-2 font-medium text-gray-700">
+                  {getUserIdentifier()}님
+                </div>
+                <button 
+                  onClick={() => handleLinkClick('/user/settings')}
+                  className="text-left font-medium text-gray-600 block py-2 hover:text-primary transition-colors duration-200"
+                >
+                  설정
+                </button>
+                <button
+                  onClick={() => {
+                    closeMenu();
+                    signOut();
+                  }}
+                  className="text-left font-medium text-gray-600 block py-2 hover:text-primary transition-colors duration-200"
+                >
+                  로그아웃
+                </button>
+              </>
+            ) : (
+              <button 
+                onClick={() => handleLinkClick('/auth/login')}
+                className="text-left font-medium text-gray-600 block py-2 hover:text-primary transition-colors duration-200"
+              >
+                로그인
+              </button>
+            )}
+          </div>
+        </div>
+      )}
     </header>
   );
 };
