@@ -16,6 +16,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
 
+const DEFAULT_PAGE_SIZE = 10; // Default number of posts per page
+
 // No login required
 export const handler = async (event) => {
   // Handle OPTIONS preflight requests for CORS
@@ -28,43 +30,71 @@ export const handler = async (event) => {
   }
 
   try {
+    const queryParams = event.queryStringParameters || {};
+    const pageSize = parseInt(queryParams.pageSize, 10) || DEFAULT_PAGE_SIZE;
+    const lastEvaluatedKeyRaw = queryParams.lastEvaluatedKey;
+
     // --- Query using GSI and SDK v3 style ---
-    // Assuming GSI name is 'postOnlyIndex' with GSI1PK as partition key and GSI1SK as sort key (createdAt)
-    // Using the GSI definition from _modified.mjs
     const params = {
       TableName: tableName,
-      IndexName: "postOnlyIndex", // Use the GSI name specified in community/getAllPosts.js
-      KeyConditionExpression: "GSI1PK = :gsi1pk", // Use GSI1PK from _modified.mjs structure
+      IndexName: "postOnlyIndex", // Use the GSI name
+      KeyConditionExpression: "GSI1PK = :gsi1pk",
       ExpressionAttributeValues: {
-        ":gsi1pk": "POST", // Value to query all posts in the GSI
+        ":gsi1pk": "POST",
       },
-      // Select only the attributes needed for the list view
       ProjectionExpression:
-        "PK, title, author, createdAt, likesCount, commentCount, problemId",
+        "PK, title, author, userId, createdAt, likesCount, commentCount, problemId",
       ScanIndexForward: false, // false = descending order (latest first based on GSI1SK which is createdAt)
+      Limit: pageSize,
     };
+
+    if (lastEvaluatedKeyRaw) {
+      try {
+        params.ExclusiveStartKey = JSON.parse(
+          decodeURIComponent(lastEvaluatedKeyRaw),
+        );
+      } catch (e) {
+        console.warn(
+          "Invalid lastEvaluatedKey format:",
+          lastEvaluatedKeyRaw,
+          e,
+        );
+        return {
+          statusCode: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          body: JSON.stringify({ message: "Invalid lastEvaluatedKey format." }),
+        };
+      }
+    }
 
     const command = new QueryCommand(params);
     const result = await dynamoDB.send(command);
     const items = result.Items || [];
 
-    // Map results using logic from community/getAllPosts.js
     const posts = items.map((item) => ({
-      postId: item.PK, // PK is the postId
+      postId: item.PK,
       title: item.title,
       author: item.author,
       userId: item.userId,
       createdAt: item.createdAt,
-      likesCount: item.likesCount ?? 0, // Use nullish coalescing for default
-      commentCount: item.commentCount ?? 0, // Use nullish coalescing for default
-      problemId: item.problemId || null, // Default to null if missing
+      likesCount: item.likesCount ?? 0,
+      commentCount: item.commentCount ?? 0,
+      problemId: item.problemId || null,
     }));
 
     // --- SUCCESS RESPONSE ---
+    const responseBody = {
+      items: posts, // Changed from 'posts' to 'items' for consistency
+      lastEvaluatedKey: result.LastEvaluatedKey
+        ? encodeURIComponent(JSON.stringify(result.LastEvaluatedKey))
+        : null,
+      count: posts.length, // Number of items on the current page
+    };
+
     return {
       statusCode: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
-      body: JSON.stringify(posts),
+      body: JSON.stringify(responseBody),
     };
   } catch (error) {
     console.error("게시글 목록 조회 중 오류 발생:", error);

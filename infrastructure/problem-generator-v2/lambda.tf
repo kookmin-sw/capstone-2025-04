@@ -1,8 +1,8 @@
 # 1. Archive the Lambda handler code into a zip file
 data "archive_file" "problem_generator_v2_lambda_zip" {
   type = "zip"
-  # Source the single Node.js handler file
-  source_file = var.lambda_code_path # Should point to index.mjs via variables.tf default
+  # Source the entire source directory
+  source_dir  = var.lambda_code_path
   # Define the output path for the zip file (Terraform manages this temporary file)
   output_path = "${path.module}/problem_generator_v2_lambda.zip"
 }

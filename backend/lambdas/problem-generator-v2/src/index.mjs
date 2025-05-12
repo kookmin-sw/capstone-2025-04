@@ -15,6 +15,7 @@ import {
 import { z } from "zod";
 import { v4 as uuidv4 } from "uuid";
 import { Readable } from "stream"; // Node.js built-in stream
+import { cleanLlmOutput } from "./utils/cleanLlmOutput.mjs";
 
 // Environment Variables
 const PROBLEMS_TABLE_NAME =
@@ -48,7 +49,7 @@ if (GOOGLE_AI_API_KEY) {
   // const BEDROCK_MODEL_ID = process.env.BEDROCK_MODEL_ID;
   // llm = new ChatBedrock({ model: BEDROCK_MODEL_ID, streaming: false /* Important for structured output */ });
   console.error(
-    "FATAL: No LLM provider configured. Set GOOGLE_AI_API_KEY environment variable."
+    "FATAL: No LLM provider configured. Set GOOGLE_AI_API_KEY environment variable.",
   );
   // We can't easily throw here before the handler starts, so we'll check inside
 }
@@ -60,17 +61,17 @@ const IntentAnalysisOutputSchema = z
     analyzed_intent: z
       .string()
       .describe(
-        "Concise description of the core algorithm, data structure, or concept."
+        "Concise description of the core algorithm, data structure, or concept.",
       ),
     // Use z.any() for flexibility, validation can happen later if needed
     test_specs: z
       .any()
       .describe(
-        "Diverse set of test cases (e.g., array of objects with 'input' and 'expected_output', or a descriptive string)"
+        "Diverse set of test cases (e.g., array of objects with 'input' and 'expected_output', or a descriptive string)",
       ),
   })
   .describe(
-    "Structured output for Step 1: Intent Analysis & Test Case Design."
+    "Structured output for Step 1: Intent Analysis & Test Case Design.",
   );
 
 const ValidationOutputSchema = z
@@ -99,13 +100,13 @@ const ConstraintsOutputSchema = z
 
 // --- LangChain Parsers ---
 const intentAnalysisParser = StructuredOutputParser.fromZodSchema(
-  IntentAnalysisOutputSchema
+  IntentAnalysisOutputSchema,
 );
 const validationParser = StructuredOutputParser.fromZodSchema(
-  ValidationOutputSchema
+  ValidationOutputSchema,
 );
 const constraintsParser = StructuredOutputParser.fromZodSchema(
-  ConstraintsOutputSchema
+  ConstraintsOutputSchema,
 );
 const stringParser = new StringOutputParser();
 
@@ -125,7 +126,7 @@ Target Language: {language}
 
 {format_instructions}
 
-Valid JSON Output:`
+Valid JSON Output:`,
 );
 
 const solutionGenerationPromptTemplate = PromptTemplate.fromTemplate(
@@ -147,7 +148,7 @@ Requirements:
 
 **CRITICAL:** Output **ONLY** the raw source code for the solution. Do not include explanations, comments about the code, markdown formatting (like \`\`\`python), or any other text.
 
-{language} Solution Code:`
+{language} Solution Code:`,
 );
 
 const testGenPromptTemplate = PromptTemplate.fromTemplate(
@@ -173,7 +174,7 @@ Requirements:
 
 **CRITICAL:** Output **ONLY** the raw source code for the test case generator function. Do not include example usage, explanations, markdown formatting (like \`\`\`python), or any other text.
 
-{language} Test Case Generator Code:`
+{language} Test Case Generator Code:`,
 );
 
 const validationPromptTemplate = PromptTemplate.fromTemplate(
@@ -202,7 +203,7 @@ Review Checklist:
 
 {format_instructions}
 
-Valid JSON Output:`
+Valid JSON Output:`,
 );
 
 const constraintsDerivationPromptTemplate = PromptTemplate.fromTemplate(
@@ -226,7 +227,7 @@ Derive the following constraints, considering the {difficulty} level:
 
 {format_instructions}
 
-Valid JSON Output:`
+Valid JSON Output:`,
 );
 
 const descriptionGenerationPromptTemplate = PromptTemplate.fromTemplate(
@@ -250,7 +251,7 @@ Instructions:
 - Ensure the overall tone, narrative complexity, and example difficulty match the specified **{difficulty}** level.
 
 **CRITICAL:** Output **ONLY** the final problem description content as a single block of plain text, starting directly with the narrative or relevant sections. Use markdown for formatting (like \`### Section Title\` for subsections like Input/Output/Constraints/Examples, \`\`\`code\`\`\`, or bullet points \`-\`). The entire output should be the description text ready for display, **WITHOUT a main title heading**.
-Problem Description:` // Updated instructions
+Problem Description:`, // Updated instructions
 );
 
 // --- LangChain Chains (using .pipe()) ---
@@ -287,7 +288,7 @@ Requirements:
 
 **CRITICAL:** Output **ONLY** the final title string. Do not include explanations or any other text.
 
-Title:`
+Title:`,
 );
 
 const titleGenerationChain = titleGenerationPromptTemplate
@@ -306,7 +307,7 @@ Original Text:
 ---
 
 Translate the above text into {target_language}. Output only the translated text with no additional comments, instructions, or explanations.
-`
+`,
 );
 
 const translationChain = translationPromptTemplate.pipe(llm).pipe(stringParser);
@@ -369,70 +370,13 @@ async function updateDynamoDbStatus(problemId, updates) {
     await docClient.send(command);
     if (GENERATOR_VERBOSE) {
       console.log(
-        `DynamoDB updated for ${problemId}: ${JSON.stringify(updates)}`
+        `DynamoDB updated for ${problemId}: ${JSON.stringify(updates)}`,
       );
     }
   } catch (error) {
     console.error(`Error updating DynamoDB for ${problemId}:`, error);
     // Decide if this should be fatal or just logged
   }
-}
-
-/**
- * Cleans LLM string output, removing markdown fences or extra text.
- * @param {string} outputString - The raw output from the LLM.
- * @param {'code' | 'json' | 'text'} expectedType - The expected type of content.
- * @returns {string} The cleaned string.
- */
-function cleanLlMOutput(outputString, expectedType = "code") {
-  let cleaned = outputString.trim();
-
-  // Generic removal of ```<lang>\n ... ``` fences
-  // Covers ```python, ```json, ``` etc.
-  const fenceMatch = cleaned.match(/^```(?:\w*\n)?([\s\S]*?)```$/);
-  if (fenceMatch && fenceMatch[1]) {
-    cleaned = fenceMatch[1].trim();
-  }
-
-  // Additional cleanup specific to types if needed
-  if (expectedType === "json") {
-    // Remove // comments
-    cleaned = cleaned.replace(/\/\/.*$/gm, "");
-    // Remove /* */ comments (multiline)
-    cleaned = cleaned.replace(/\/\*[\s\S]*?\*\//g, "");
-
-    // Ensure it looks like JSON, find first { and last }
-    const start = cleaned.indexOf("{");
-    const end = cleaned.lastIndexOf("}");
-    if (start !== -1 && end !== -1 && end > start) {
-      cleaned = cleaned.substring(start, end + 1);
-    }
-    // Optionally try parsing and stringifying to ensure validity/formatting
-    try {
-      cleaned = JSON.stringify(JSON.parse(cleaned));
-    } catch (e) {
-      console.warn("Cleaned JSON output might still be invalid:", cleaned);
-    }
-  } else if (expectedType === "text") {
-    // Remove any lines that look like instructions or meta-commentary
-    cleaned = cleaned.replace(/^---.*?---$/gm, ""); // Remove separator lines
-    cleaned = cleaned.replace(/^\*\*.*?\*\*:.*$/gm, ""); // Remove instructions like **IMPORTANT:** ...
-    cleaned = cleaned.replace(/^Translated Text:$/gim, ""); // Remove header
-    cleaned = cleaned.replace(/^Translation:$/gim, ""); // Remove header
-
-    // Remove any text that looks like it might be an instruction about the translation
-    const instructionPatterns = [
-      /^.*?번역된 텍스트.*?출력.*$/gim, // Korean instructions about translated text output
-      /^.*?원본 텍스트.*?포함.*$/gim, // Korean instructions about not including original text
-      /^.*?설명.*?포함하지 않.*$/gim, // Korean instructions about not including explanations
-    ];
-
-    for (const pattern of instructionPatterns) {
-      cleaned = cleaned.replace(pattern, "");
-    }
-  }
-
-  return cleaned.trim();
 }
 
 // --- Main Lambda Handler ---
@@ -448,7 +392,7 @@ export const handler = awslambda.streamifyResponse(
       };
       responseStream = awslambda.HttpResponseStream.from(
         responseStream,
-        metadata
+        metadata,
       );
       sendSse(responseStream, "error", {
         payload: "LLM provider not configured on the server.",
@@ -471,7 +415,7 @@ export const handler = awslambda.streamifyResponse(
     // Apply metadata - this returns the stream to use for writing
     const stream = awslambda.HttpResponseStream.from(
       responseStream,
-      sseMetadata
+      sseMetadata,
     );
 
     let problemId = null; // Initialize problemId
@@ -485,7 +429,7 @@ export const handler = awslambda.streamifyResponse(
       } else {
         console.warn(
           "Event body is not a string, using directly (check invocation source). Event body:",
-          event.body
+          event.body,
         );
         body = event.body || {}; // Fallback to empty object
       }
@@ -497,13 +441,13 @@ export const handler = awslambda.streamifyResponse(
 
       if (!userPrompt) {
         throw new Error(
-          "User prompt ('prompt') is missing in the request body."
+          "User prompt ('prompt') is missing in the request body.",
         );
       }
 
       problemId = uuidv4();
       console.log(
-        `Generating problem ${problemId} for prompt: '${userPrompt}' (${difficulty})`
+        `Generating problem ${problemId} for prompt: '${userPrompt}' (${difficulty})`,
       );
 
       // 2. Create Initial DynamoDB Record
@@ -530,7 +474,7 @@ export const handler = awslambda.streamifyResponse(
       } catch (error) {
         if (error.name === "ConditionalCheckFailedException") {
           console.warn(
-            `Problem ID ${problemId} already exists. Restarting generation.`
+            `Problem ID ${problemId} already exists. Restarting generation.`,
           );
           await updateDynamoDbStatus(problemId, {
             generationStatus: "restarted",
@@ -538,7 +482,7 @@ export const handler = awslambda.streamifyResponse(
         } else {
           console.error("Error creating initial DynamoDB record:", error);
           throw new Error(
-            `Failed to initialize problem state: ${error.message}`
+            `Failed to initialize problem state: ${error.message}`,
           ); // Make it fatal
         }
       }
@@ -551,7 +495,7 @@ export const handler = awslambda.streamifyResponse(
         chain,
         inputData,
         outputKey,
-        parser
+        parser,
       ) {
         sendSse(stream, "status", {
           step: stepNum,
@@ -619,13 +563,13 @@ export const handler = awslambda.streamifyResponse(
         intentAnalysisChain,
         step1Input,
         "Intent/Tests",
-        intentAnalysisParser // Pass parser for format instructions
+        intentAnalysisParser, // Pass parser for format instructions
       );
       analyzedIntent = step1Output.analyzed_intent;
       testSpecs = step1Output.test_specs; // Can be object/array/string
       if (!analyzedIntent || !testSpecs) {
         throw new Error(
-          "Step 1 failed to produce valid intent and test specs."
+          "Step 1 failed to produce valid intent and test specs.",
         );
       }
       testSpecsStr = JSON.stringify(testSpecs); // Store as JSON string
@@ -663,9 +607,9 @@ export const handler = awslambda.streamifyResponse(
           2,
           solutionGenerationChain,
           step2Input,
-          "Solution Code"
+          "Solution Code",
         );
-        solutionCode = cleanLlMOutput(solutionCodeRaw, "code"); // Update outer scope variable
+        solutionCode = cleanLlmOutput(solutionCodeRaw, "code"); // Update outer scope variable
         await updateDynamoDbStatus(problemId, {
           generationStatus: `step2_attempt_${attempt}`,
           solutionCode: solutionCode, // Save latest attempt
@@ -692,9 +636,9 @@ export const handler = awslambda.streamifyResponse(
           3,
           testGenChain,
           step3Input,
-          "Test Gen Code"
+          "Test Gen Code",
         );
-        testGenCode = cleanLlMOutput(testGenCodeRaw, "code"); // Update outer scope variable
+        testGenCode = cleanLlmOutput(testGenCodeRaw, "code"); // Update outer scope variable
         await updateDynamoDbStatus(problemId, {
           generationStatus: `step3_attempt_${attempt}`,
           testGeneratorCode: testGenCode, // Save latest attempt
@@ -720,11 +664,11 @@ export const handler = awslambda.streamifyResponse(
           validationChain,
           step4Input,
           "Validation",
-          validationParser // Pass parser for format instructions
+          validationParser, // Pass parser for format instructions
         ); // Update outer scope variable
         console.log(
           `Step 4 Output (Validation Attempt ${attempt + 1}):`,
-          validationResult
+          validationResult,
         );
 
         if (validationResult.status?.toLowerCase() === "pass") {
@@ -768,7 +712,7 @@ export const handler = awslambda.streamifyResponse(
             throw new Error(
               `Validation failed after ${
                 MAX_RETRIES + 1
-              } attempts. Last error: ${validationFeedback}`
+              } attempts. Last error: ${validationFeedback}`,
             );
           }
           // Otherwise, the loop continues for the next attempt
@@ -780,10 +724,10 @@ export const handler = awslambda.streamifyResponse(
         // This case should theoretically be caught by the throw inside the loop,
         // but as a safeguard:
         console.error(
-          "Exited retry loop but validationFeedback is still set. This indicates a logic error."
+          "Exited retry loop but validationFeedback is still set. This indicates a logic error.",
         );
         throw new Error(
-          `Validation failed after exhausting retries. Last feedback: ${validationFeedback}`
+          `Validation failed after exhausting retries. Last feedback: ${validationFeedback}`,
         );
       }
 
@@ -804,7 +748,7 @@ export const handler = awslambda.streamifyResponse(
         constraintsDerivationChain,
         step5Input,
         "Constraints",
-        constraintsParser // Pass parser for format instructions
+        constraintsParser, // Pass parser for format instructions
       );
       constraintsJson = JSON.stringify(constraints); // Assign to outer scope variable
       await updateDynamoDbStatus(problemId, {
@@ -832,7 +776,7 @@ export const handler = awslambda.streamifyResponse(
       } catch (e) {
         console.warn(
           "Could not parse testSpecs for examples, using original string:",
-          e
+          e,
         );
         exampleSpecsStr = testSpecsStr;
       }
@@ -848,9 +792,9 @@ export const handler = awslambda.streamifyResponse(
         6,
         descriptionGenerationChain,
         step6Input,
-        "Description"
+        "Description",
       );
-      problemDescription = cleanLlMOutput(problemDescriptionRaw, "text"); // Assign to outer scope variable
+      problemDescription = cleanLlmOutput(problemDescriptionRaw, "text"); // Assign to outer scope variable
       await updateDynamoDbStatus(problemId, {
         generationStatus: "step6_complete",
         description: problemDescription,
@@ -875,9 +819,9 @@ export const handler = awslambda.streamifyResponse(
         6.5,
         titleGenerationChain,
         step6_5Input,
-        "Title Generation"
+        "Title Generation",
       );
-      problemTitle = cleanLlMOutput(problemTitle, "text").trim(); // Clean and trim
+      problemTitle = cleanLlmOutput(problemTitle, "text").trim(); // Clean and trim
       // Add difficulty back if LLM didn't include it (optional safeguard)
       if (!/\(.*\)/.test(problemTitle)) {
         problemTitle = `${problemTitle} (${difficulty})`;
@@ -912,11 +856,11 @@ export const handler = awslambda.streamifyResponse(
             7.1, // Sub-step
             translationChain,
             titleTranslateInput,
-            "Title Translation"
+            "Title Translation",
           );
           if (GENERATOR_VERBOSE)
             console.log("Raw Translated Title:", translatedTitleRaw);
-          translatedTitle = cleanLlMOutput(translatedTitleRaw, "text").trim();
+          translatedTitle = cleanLlmOutput(translatedTitleRaw, "text").trim();
 
           // Additional cleaning for titles - remove any markdown-like formatting or instructions
           translatedTitle = translatedTitle
@@ -937,21 +881,21 @@ export const handler = awslambda.streamifyResponse(
             7.2, // Sub-step
             translationChain,
             descriptionTranslateInput,
-            "Description Translation"
+            "Description Translation",
           );
           if (GENERATOR_VERBOSE)
             console.log(
               "Raw Translated Description:",
-              translatedDescriptionRaw
+              translatedDescriptionRaw,
             );
-          translatedDescription = cleanLlMOutput(
+          translatedDescription = cleanLlmOutput(
             translatedDescriptionRaw,
-            "text"
+            "text",
           ).trim();
           if (GENERATOR_VERBOSE)
             console.log(
               "Cleaned Translated Description:",
-              translatedDescription
+              translatedDescription,
             );
 
           await updateDynamoDbStatus(problemId, {
@@ -967,7 +911,7 @@ export const handler = awslambda.streamifyResponse(
         } catch (translationError) {
           console.error(
             `Translation to ${targetLanguage} failed:`,
-            translationError
+            translationError,
           );
           // Use default values (original text) but log the error
           await updateDynamoDbStatus(problemId, {
@@ -1065,7 +1009,7 @@ export const handler = awslambda.streamifyResponse(
         } catch (dbError) {
           console.error(
             "Failed to update DynamoDB with error status:",
-            dbError
+            dbError,
           );
         }
       }
@@ -1081,5 +1025,5 @@ export const handler = awslambda.streamifyResponse(
       console.log("Ending response stream.");
       stream.end(); // Ensure stream is closed
     }
-  }
+  },
 );

@@ -3,9 +3,12 @@ import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useAuthenticator } from "@aws-amplify/ui-react";
 import { useRouter } from "next/navigation";
-// Assuming sonner is installed: npm install sonner
-// You'll need to add <Toaster /> in your layout.tsx or a parent component.
 import { toast } from "sonner";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import rehypeRaw from "rehype-raw";
+import { PrismAsyncLight as SyntaxHighlighter } from 'react-syntax-highlighter'; // Use AsyncLight for smaller bundle
+import { oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism'; // Choose a style
 import {
   getPostById,
   getComments,
@@ -15,13 +18,23 @@ import {
   deleteComment,
   PostDetail,
   Comment,
-} from "@/api/communityApi"; // Import API functions and types
+} from "@/api/communityApi";
 import { fetchUserAttributes } from "aws-amplify/auth";
-// Remove dummy data function
+
+// Register languages you expect to use (optional, but good for bundle size if you know them)
+// SyntaxHighlighter.registerLanguage('javascript', require('react-syntax-highlighter/dist/esm/languages/prism/javascript'));
+// SyntaxHighlighter.registerLanguage('python', require('react-syntax-highlighter/dist/esm/languages/prism/python'));
+// SyntaxHighlighter.registerLanguage('java', require('react-syntax-highlighter/dist/esm/languages/prism/java'));
+// SyntaxHighlighter.registerLanguage('cpp', require('react-syntax-highlighter/dist/esm/languages/prism/cpp'));
+// SyntaxHighlighter.registerLanguage('bash', require('react-syntax-highlighter/dist/esm/languages/prism/bash'));
+// SyntaxHighlighter.registerLanguage('markdown', require('react-syntax-highlighter/dist/esm/languages/prism/markdown'));
+
 
 interface CommunityDetailProps {
   id: string;
 }
+
+const COMMENTS_PAGE_SIZE = 5;
 
 const CommunityDetail: React.FC<CommunityDetailProps> = ({ id }) => {
   const router = useRouter();
@@ -30,14 +43,13 @@ const CommunityDetail: React.FC<CommunityDetailProps> = ({ id }) => {
     context.authStatus,
   ]);
   const isAuthenticated = authStatus === "authenticated";
-  console.log("user:", user);
-  const currentUserId = user?.userId; // Or use signInDetails?.loginId depending on config
-  
+  const currentUserId = user?.userId;
+
   const [post, setPost] = useState<PostDetail | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
-  const [commentCount, setCommentCount] = useState(0);
   const [isLoadingPost, setIsLoadingPost] = useState(true);
   const [isLoadingComments, setIsLoadingComments] = useState(true);
+  const [isLoadingMoreComments, setIsLoadingMoreComments] = useState(false);
   const [errorPost, setErrorPost] = useState<string | null>(null);
   const [errorComments, setErrorComments] = useState<string | null>(null);
   const [newComment, setNewComment] = useState("");
@@ -47,88 +59,111 @@ const CommunityDetail: React.FC<CommunityDetailProps> = ({ id }) => {
   const [likeCount, setLikeCount] = useState(0);
   const [isDeletingPost, setIsDeletingPost] = useState(false);
   const [deletingCommentId, setDeletingCommentId] = useState<string | null>(
-    null
-  ); // Track which comment is being deleted
+    null,
+  );
 
-  // Fetch post and comments data
-  const fetchData = useCallback(async () => {
+  const [commentsLastEvaluatedKey, setCommentsLastEvaluatedKey] = useState<
+    string | null
+  >(null);
+  const [hasMoreComments, setHasMoreComments] = useState(true);
+
+  const fetchPostData = useCallback(async () => {
     setIsLoadingPost(true);
-    setIsLoadingComments(true);
     setErrorPost(null);
-    setErrorComments(null);
-
     try {
-      const postPromise = getPostById(id);
-      const commentsPromise = getComments(id);
-
-      const [postResult, commentsResult] = await Promise.allSettled([
-        postPromise,
-        commentsPromise,
-      ]);
-
-      // Handle Post Result
-      if (postResult.status === "fulfilled") {
-        setPost(postResult.value);
-        setLikeCount(postResult.value.likesCount ?? 0);
-        // Check if current user liked this post
-        setIsLiked(
-          !!currentUserId &&
-            postResult.value.likedUsers?.includes(currentUserId)
-        );
-      } else {
-        console.error("Failed to fetch post:", postResult.reason);
-        setErrorPost(
-          postResult.reason instanceof Error
-            ? postResult.reason.message
-            : "게시글 정보를 불러오는데 실패했습니다."
-        );
-        toast.error(errorPost || "게시글 정보를 불러오는데 실패했습니다.");
-      }
-
-      // Handle Comments Result
-      if (commentsResult.status === "fulfilled") {
-        setComments(commentsResult.value.comments);
-        setCommentCount(commentsResult.value.commentCount);
-      } else {
-        console.error("Failed to fetch comments:", commentsResult.reason);
-        setErrorComments(
-          commentsResult.reason instanceof Error
-            ? commentsResult.reason.message
-            : "댓글을 불러오는데 실패했습니다."
-        );
-        toast.error(errorComments || "댓글을 불러오는데 실패했습니다.");
-      }
+      const postResult = await getPostById(id);
+      setPost(postResult);
+      setLikeCount(postResult.likesCount ?? 0);
+      setIsLiked(
+        !!currentUserId && !!postResult.likedUsers?.includes(currentUserId),
+      );
     } catch (err) {
-      // Catch any unexpected error during Promise.allSettled or setup
-      console.error("Unexpected error fetching data:", err);
-      const errorMsg =
-        err instanceof Error ? err.message : "데이터 로딩 중 오류 발생";
-      setErrorPost(errorMsg); // Show a general error if setup fails
-      setErrorComments(errorMsg);
-      toast.error(errorMsg);
+      console.error("Failed to fetch post:", err);
+      const msg =
+        err instanceof Error
+          ? err.message
+          : "게시글 정보를 불러오는데 실패했습니다.";
+      setErrorPost(msg);
+      toast.error(msg);
     } finally {
       setIsLoadingPost(false);
-      setIsLoadingComments(false);
     }
-  }, [id, currentUserId, errorPost, errorComments]); // Add dependencies
+  }, [id, currentUserId]);
+
+  const fetchPaginatedComments = useCallback(
+    async (loadMore = false, keyForFetch?: string | null) => {
+      if (loadMore) {
+        setIsLoadingMoreComments(true);
+      } else {
+        setIsLoadingComments(true);
+        setComments([]);
+      }
+      setErrorComments(null);
+
+      try {
+        const response = await getComments(id, {
+          pageSize: COMMENTS_PAGE_SIZE,
+          lastEvaluatedKey: keyForFetch,
+        });
+
+        if (loadMore) {
+          setComments((prevComments) => [
+            ...prevComments,
+            ...response.comments,
+          ]);
+        } else {
+          setComments(response.comments);
+        }
+        setCommentsLastEvaluatedKey(response.lastEvaluatedKey);
+        setHasMoreComments(
+          !!response.lastEvaluatedKey &&
+            response.comments.length === COMMENTS_PAGE_SIZE,
+        );
+      } catch (err) {
+        console.error("Failed to fetch comments:", err);
+        const errorMsg =
+          err instanceof Error
+            ? err.message
+            : "댓글을 불러오는데 실패했습니다.";
+        setErrorComments(errorMsg);
+        toast.error(errorMsg);
+        if (!loadMore) {
+          setComments([]);
+          setHasMoreComments(false);
+        }
+      } finally {
+        if (loadMore) {
+          setIsLoadingMoreComments(false);
+        } else {
+          setIsLoadingComments(false);
+        }
+      }
+    },
+    [id],
+  );
 
   useEffect(() => {
     if (id) {
-      fetchData();
+      fetchPostData();
+      fetchPaginatedComments(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]); // Run effect when id changes
+  }, [id, fetchPostData, fetchPaginatedComments]);
+
+  const handleLoadMoreComments = () => {
+    if (hasMoreComments && !isLoadingMoreComments && !isLoadingComments) {
+      fetchPaginatedComments(true, commentsLastEvaluatedKey);
+    }
+  };
 
   const handleCommentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setNewComment(e.target.value);
   };
 
-  // Handle Comment Submission
   const handleCommentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isAuthenticated) {
       toast.error("댓글을 작성하려면 로그인이 필요합니다.");
-      // Optionally redirect to login: router.push('/auth/login');
+      router.push("/auth/login");
       return;
     }
     if (!newComment.trim()) {
@@ -139,49 +174,66 @@ const CommunityDetail: React.FC<CommunityDetailProps> = ({ id }) => {
     setIsSubmittingComment(true);
     try {
       const userAttributes = await fetchUserAttributes();
-      const author = userAttributes.nickname || userAttributes.cognito_username || "익명";
+      const author =
+        userAttributes.nickname ||
+        userAttributes.preferred_username ||
+        userAttributes.name ||
+        "익명";
       await createComment(id, { content: newComment, author });
       toast.success("댓글이 성공적으로 등록되었습니다.");
-      setNewComment(""); // Clear input
-      // Refetch comments to show the new one
-      const updatedCommentsData = await getComments(id);
-      setComments(updatedCommentsData.comments);
-      setCommentCount(updatedCommentsData.commentCount);
+      setNewComment("");
+      fetchPaginatedComments(false);
+      fetchPostData();
     } catch (err) {
       console.error("Failed to submit comment:", err);
       toast.error(
-        err instanceof Error ? err.message : "댓글 등록 중 오류가 발생했습니다."
+        err instanceof Error
+          ? err.message
+          : "댓글 등록 중 오류가 발생했습니다.",
       );
     } finally {
       setIsSubmittingComment(false);
     }
   };
 
-  // Handle Like Toggle
   const handleLike = async () => {
     if (!isAuthenticated) {
       toast.error("좋아요를 누르려면 로그인이 필요합니다.");
+      router.push("/auth/login");
       return;
     }
-    if (!post) return;
+    if (!post || !currentUserId) {
+      toast.error(
+        "사용자 정보를 불러오는 중입니다. 잠시 후 다시 시도해주세요.",
+      );
+      return;
+    }
 
     setIsLiking(true);
     try {
       const response = await likePost(post.postId);
       setIsLiked(response.isLiked);
       setLikeCount(response.likesCount);
+      setPost((prevPost) =>
+        prevPost
+          ? {
+              ...prevPost,
+              likesCount: response.likesCount,
+              likedUsers: response.likedUsers,
+            }
+          : null,
+      );
       toast.success(response.message);
     } catch (err) {
       console.error("Failed to toggle like:", err);
       toast.error(
-        err instanceof Error ? err.message : "좋아요 처리 중 오류 발생"
+        err instanceof Error ? err.message : "좋아요 처리 중 오류 발생",
       );
     } finally {
       setIsLiking(false);
     }
   };
 
-  // Handle Post Deletion
   const handleDeletePost = async () => {
     if (!isAuthenticated || !post || post.userId !== currentUserId) {
       toast.error("게시글을 삭제할 권한이 없습니다.");
@@ -193,11 +245,11 @@ const CommunityDetail: React.FC<CommunityDetailProps> = ({ id }) => {
       try {
         await deletePost(post.postId);
         toast.success("게시글이 성공적으로 삭제되었습니다.");
-        router.push("/community"); // Navigate back to list
+        router.push("/community");
       } catch (err) {
         console.error("Failed to delete post:", err);
         toast.error(
-          err instanceof Error ? err.message : "게시글 삭제 중 오류 발생"
+          err instanceof Error ? err.message : "게시글 삭제 중 오류 발생",
         );
       } finally {
         setIsDeletingPost(false);
@@ -205,9 +257,7 @@ const CommunityDetail: React.FC<CommunityDetailProps> = ({ id }) => {
     }
   };
 
-  // Handle Comment Deletion
   const handleDeleteComment = async (commentId: string) => {
-    // Find the comment to check author - requires comments to be loaded
     const commentToDelete = comments.find((c) => c.commentId === commentId);
     if (
       !isAuthenticated ||
@@ -219,27 +269,22 @@ const CommunityDetail: React.FC<CommunityDetailProps> = ({ id }) => {
     }
 
     if (window.confirm("정말로 이 댓글을 삭제하시겠습니까?")) {
-      setDeletingCommentId(commentId); // Indicate which comment is being deleted
+      setDeletingCommentId(commentId);
       try {
         await deleteComment(id, commentId);
         toast.success("댓글이 성공적으로 삭제되었습니다.");
-        // Refetch comments or filter locally
-        setComments((prevComments) =>
-          prevComments.filter((comment) => comment.commentId !== commentId)
-        );
-        setCommentCount((prev) => prev - 1); // Decrement count
+        fetchPaginatedComments(false);
+        fetchPostData();
       } catch (err) {
         console.error("Failed to delete comment:", err);
         toast.error(
-          err instanceof Error ? err.message : "댓글 삭제 중 오류 발생"
+          err instanceof Error ? err.message : "댓글 삭제 중 오류 발생",
         );
       } finally {
-        setDeletingCommentId(null); // Reset deleting indicator
+        setDeletingCommentId(null);
       }
     }
   };
-
-  // --- Render Logic ---
 
   if (isLoadingPost) {
     return (
@@ -279,11 +324,53 @@ const CommunityDetail: React.FC<CommunityDetailProps> = ({ id }) => {
 
   const isAuthor = isAuthenticated && post.userId === currentUserId;
 
+  const markdownComponents = {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    code({ inline, className, children, ...props }: any) {
+      const match = /language-(\w+)/.exec(className || '');
+      const codeText = String(children).replace(/\n$/, '');
+      if (!inline && match) {
+        return (
+          <SyntaxHighlighter
+            style={oneLight} // Or oneLight, or any other theme
+            language={match[1]}
+            PreTag="div"
+            {...props}
+            className="rounded-md border bg-gray-50 text-sm my-2" // Custom class for the container
+            customStyle={{ margin: '0', padding: '0.75rem' }} // Override default margin/padding
+            codeTagProps={{ style: { fontFamily: 'var(--font-mono)', fontSize: '0.875rem' } }} // Style for the inner <code>
+          >
+            {codeText}
+          </SyntaxHighlighter>
+        );
+      }
+      return (
+        <code className="bg-gray-200 text-gray-800 px-1 py-0.5 rounded-sm text-sm mx-0.5" {...props}>
+          {children}
+        </code>
+      );
+    },
+    // Optional: customize other elements if needed by prose
+    h1: ({ ...props }) => <h1 className="text-2xl font-bold my-4" {...props} />,
+    h2: ({ ...props }) => <h2 className="text-xl font-semibold my-3" {...props} />,
+    h3: ({ ...props }) => <h3 className="text-lg font-semibold my-2" {...props} />,
+    p: ({ ...props }) => <p className="my-2 leading-relaxed" {...props} />,
+    ul: ({ ...props }) => <ul className="list-disc pl-5 my-2" {...props} />,
+    ol: ({ ...props }) => <ol className="list-decimal pl-5 my-2" {...props} />,
+    li: ({ ...props }) => <li className="my-1" {...props} />,
+    blockquote: ({ ...props }) => <blockquote className="border-l-4 border-gray-300 pl-4 italic my-2 text-gray-600" {...props} />,
+    table: ({ ...props }) => <table className="min-w-full border-collapse border border-gray-300 my-3" {...props} />,
+    th: ({ ...props }) => <th className="border border-gray-300 px-3 py-1.5 bg-gray-100 text-left font-medium" {...props} />,
+    td: ({ ...props }) => <td className="border border-gray-300 px-3 py-1.5" {...props} />,
+    a: ({ ...props }) => <a className="text-primary hover:underline" {...props} />,
+    details: ({ ...props }) => <details className="border border-gray-200 rounded-md my-2 p-2" {...props} />,
+    summary: ({ ...props }) => <summary className="font-medium cursor-pointer py-1" {...props} />,
+  };
+
   return (
     <div className="max-w-5xl mx-auto p-8">
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-3xl font-bold text-gray-900">게시글</h1>
-        {/* Update Back link to always go to the list view */}
         <Link
           href="/community"
           className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 bg-white hover:bg-gray-50 transition text-sm"
@@ -295,18 +382,26 @@ const CommunityDetail: React.FC<CommunityDetailProps> = ({ id }) => {
       <article className="bg-white rounded-lg shadow-sm overflow-hidden">
         <div className="p-6">
           <div className="flex justify-between items-start mb-4">
-            <h2 className="text-2xl font-bold text-gray-900 flex-grow mr-4">
-              {post.title}
-            </h2>
-            {/* Edit/Delete Buttons for Author */}
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900 flex-grow mr-4">
+                {post.title}
+              </h2>
+              {post.problemId && (
+                <Link
+                  href={`/coding-test/solve?id=${post.problemId}`}
+                  className="text-sm text-primary hover:underline mt-1 inline-block"
+                >
+                  [연관 문제 보기: {post.problemId.substring(0, 8)}...]
+                </Link>
+              )}
+            </div>
             {isAuthor && (
               <div className="flex space-x-2 flex-shrink-0">
-                {/* Update Edit link to use query parameter */}
                 <Link
                   href={{
                     pathname: "/community/edit",
                     query: { id: post.postId },
-                  }} // Use object href
+                  }}
                   className="px-3 py-1 text-sm border border-gray-300 rounded-md text-gray-700 bg-white hover:bg-gray-50 transition"
                 >
                   수정
@@ -326,19 +421,19 @@ const CommunityDetail: React.FC<CommunityDetailProps> = ({ id }) => {
             <span>{post.author}</span>
             <span className="mx-2 text-gray-300">•</span>
             <span>{new Date(post.createdAt).toLocaleString()}</span>
-            {post.updatedAt && (
-              <>
-                <span className="mx-2 text-gray-300">•</span>
-                <span className="text-xs italic">
-                  (수정됨: {new Date(post.updatedAt).toLocaleString()})
-                </span>
-              </>
-            )}
+            {post.updatedAt &&
+              post.updatedAt !== post.createdAt && (
+                <>
+                  <span className="mx-2 text-gray-300">•</span>
+                  <span className="text-xs italic">
+                    (수정됨: {new Date(post.updatedAt).toLocaleString()})
+                  </span>
+                </>
+              )}
             <span className="mx-2 text-gray-300">•</span>
-            {/* Like Button */}
             <button
               onClick={handleLike}
-              disabled={isLiking}
+              disabled={isLiking || !currentUserId}
               className={`flex items-center p-1 rounded hover:bg-red-50 transition disabled:opacity-50 ${
                 isLiked ? "text-red-500" : "text-gray-400 hover:text-red-400"
               }`}
@@ -360,29 +455,32 @@ const CommunityDetail: React.FC<CommunityDetailProps> = ({ id }) => {
             </button>
           </div>
 
-          {/* Post Content */}
-          <div
-            className="prose prose-sm max-w-none text-gray-700 mb-8" // Using prose for potential markdown later
-          >
-            {/* Render content safely. If it's markdown, use a library like react-markdown */}
-            <p className="whitespace-pre-wrap">{post.content}</p>
+          <div className="text-gray-700 mb-8"> 
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              rehypePlugins={[rehypeRaw]}
+              components={markdownComponents}
+            >
+              {post.content}
+            </ReactMarkdown>
           </div>
 
-          {/* Comments Section */}
           <div className="border-t border-gray-200 pt-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-4">
-              댓글 ({commentCount})
+              댓글 ({post.commentCount !== undefined ? post.commentCount : 0})
             </h3>
 
-            {isLoadingComments ? (
+            {isLoadingComments && comments.length === 0 ? (
               <div className="text-center py-4 text-gray-500">
                 댓글 로딩 중...
               </div>
-            ) : errorComments ? (
+            ) : errorComments && comments.length === 0 ? (
               <div className="text-center py-4 text-red-500">
                 {errorComments}
               </div>
-            ) : comments.length === 0 ? (
+            ) : !isLoadingComments &&
+              comments.length === 0 &&
+              post.commentCount === 0 ? (
               <div className="text-center py-4 text-gray-500">
                 아직 댓글이 없습니다.
               </div>
@@ -402,22 +500,18 @@ const CommunityDetail: React.FC<CommunityDetailProps> = ({ id }) => {
                           {new Date(comment.createdAt).toLocaleString()}
                         </span>
                       </div>
-                      {/* Delete Button for Comment Author */}
-                      {isAuthenticated &&
-                        comment.userId === currentUserId && (
-                          <button
-                            onClick={() =>
-                              handleDeleteComment(comment.commentId)
-                            }
-                            disabled={deletingCommentId === comment.commentId}
-                            className="text-xs text-red-500 hover:text-red-700 transition disabled:opacity-50"
-                            aria-label="Delete comment"
-                          >
-                            {deletingCommentId === comment.commentId
-                              ? "삭제중..."
-                              : "삭제"}
-                          </button>
-                        )}
+                      {isAuthenticated && comment.userId === currentUserId && (
+                        <button
+                          onClick={() => handleDeleteComment(comment.commentId)}
+                          disabled={deletingCommentId === comment.commentId}
+                          className="text-xs text-red-500 hover:text-red-700 transition disabled:opacity-50"
+                          aria-label="Delete comment"
+                        >
+                          {deletingCommentId === comment.commentId
+                            ? "삭제중..."
+                            : "삭제"}
+                        </button>
+                      )}
                     </div>
                     <p className="text-gray-600 text-sm whitespace-pre-wrap">
                       {comment.content}
@@ -427,7 +521,23 @@ const CommunityDetail: React.FC<CommunityDetailProps> = ({ id }) => {
               </div>
             )}
 
-            {/* Comment Form */}
+            {hasMoreComments && !isLoadingComments && comments.length > 0 && (
+              <div className="mt-6 text-center">
+                <button
+                  onClick={handleLoadMoreComments}
+                  disabled={isLoadingMoreComments}
+                  className="px-4 py-2 bg-gray-100 text-gray-600 rounded-md hover:bg-gray-200 transition text-sm disabled:opacity-50"
+                >
+                  {isLoadingMoreComments ? "댓글 로딩 중..." : "댓글 더 보기"}
+                </button>
+              </div>
+            )}
+            {errorComments && isLoadingMoreComments && (
+              <div className="mt-4 text-center text-red-500 text-sm">
+                오류: {errorComments}
+              </div>
+            )}
+
             {isAuthenticated ? (
               <form onSubmit={handleCommentSubmit} className="mt-6">
                 <h4 className="text-md font-medium text-gray-900 mb-2">
