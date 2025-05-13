@@ -48,6 +48,7 @@ import {
   PlayIcon,
   DocumentTextIcon,
   CheckCircleIcon, // For success modal
+  ArrowUpTrayIcon, // For exporting to chatbot
   // XCircleIcon, // For error display (already imported if needed)
 } from "@heroicons/react/24/outline";
 
@@ -189,6 +190,9 @@ const CodingTestContent: React.FC = () => {
   const [showSuccessModal, setShowSuccessModal] = useState(false);
 
   const [activeResultsTab, setActiveResultsTab] = useState<ResultsTab>("examples");
+
+  // State for Chatbot input, managed by CodingTestContent
+  const [chatbotUserInput, setChatbotUserInput] = useState("");
 
   const editorLocalStorageKey = useMemo(() => {
     const problemLang = problemDetails?.language?.startsWith("python") ? "python" :
@@ -374,6 +378,19 @@ const CodingTestContent: React.FC = () => {
     } finally {
       setIsRunningCode(false);
     }
+  };
+
+  // Callback for ResultsPanel to send formatted result text to Chatbot
+  const handleExportResultToChatbot = (formattedText: string) => {
+    setChatbotUserInput(formattedText + '\n');
+    if (chatbotPanelRef.current && isChatbotCollapsed) {
+      chatbotPanelRef.current.expand();
+      chatbotPanelRef.current.resize(CHATBOT_DEFAULT_SIZE);
+      setIsChatbotCollapsed(false);
+    }
+    // Consider focusing the chatbot input after setting text, if possible and desired.
+    // This might require a ref to the chatbot's input element.
+    toast.info("실행 결과가 AI 챗봇 입력창에 복사되었습니다.");
   };
 
   const togglePanelToDefaultSize = ( panelRef: React.RefObject<ImperativePanelHandle>, isCollapsed: boolean, defaultSize: number ) => { 
@@ -586,6 +603,7 @@ const CodingTestContent: React.FC = () => {
                   isSubmitting={isSubmitting} 
                   activeTab={activeResultsTab}
                   setActiveTab={setActiveResultsTab}
+                  onExportToChatbot={handleExportResultToChatbot}
                 />
               )}
               {isResultsCollapsed && ( <div className="h-full w-full bg-white"></div> )}
@@ -597,7 +615,12 @@ const CodingTestContent: React.FC = () => {
 
         <Panel ref={chatbotPanelRef} defaultSize={CHATBOT_DEFAULT_SIZE} minSize={15} collapsible={true} collapsedSize={0} order={3} id="chatbot-panel" className="bg-gray-50 border-l border-gray-200" onCollapse={() => setIsChatbotCollapsed(true)} onExpand={() => setIsChatbotCollapsed(false)} >
           {!isChatbotCollapsed && problemDetails && (
-            <Chatbot problemDetails={problemDetails} userCode={code} />
+            <Chatbot 
+              problemDetails={problemDetails} 
+              userCode={code} 
+              userInput={chatbotUserInput}
+              setUserInput={setChatbotUserInput}
+            />
           )}
         </Panel>
       </PanelGroup>
@@ -759,6 +782,7 @@ interface ResultsPanelProps {
   isSubmitting: boolean; 
   activeTab: ResultsTab;
   setActiveTab: (tab: ResultsTab) => void;
+  onExportToChatbot: (formattedText: string) => void; // New prop
 }
 
 const ResultsPanel: React.FC<ResultsPanelProps> = ({ 
@@ -768,12 +792,14 @@ const ResultsPanel: React.FC<ResultsPanelProps> = ({
   submissionResults, 
   isSubmitting, 
   activeTab,
-  setActiveTab
+  setActiveTab,
+  onExportToChatbot, // Destructure new prop
  }) => {
   const exampleTestCasesToDisplay = useMemo(() => {
     try {
       const allTestCases = JSON.parse(problemDetails.finalTestCases || "[]") as TestCaseDisplay[];
-      return allTestCases; 
+      // Display only up to 3 example test cases
+      return allTestCases.slice(0, 3); 
     } catch (error) {
       console.error("Failed to parse finalTestCases for examples:", error);
       return [];
@@ -811,6 +837,60 @@ const ResultsPanel: React.FC<ResultsPanelProps> = ({
     };
     return map[status] || "알 수 없음";
   }
+
+  const formatRunCodeResultForChatbot = (result: RunCodeSingleResult, exampleTestCase?: TestCaseDisplay): string => {
+    const { input, runCodeOutput } = result;
+    let markdown = `### 실행 결과 상세 (${result.caseIdentifier || '예제'})
+
+**Input:**
+\`\`\`json
+${formatOutputForDisplay(input)}
+\`\`\`
+`;
+    if (exampleTestCase && exampleTestCase.expected_output !== undefined) {
+      markdown += `
+**Expected Output:**
+\`\`\`json
+${formatOutputForDisplay(exampleTestCase.expected_output)}
+\`\`\`
+`;
+    }
+    if (runCodeOutput.isSuccessful) {
+      markdown += `
+**Return Value:**
+\`\`\`json
+${formatOutputForDisplay(runCodeOutput.returnValue)}
+\`\`\`
+`;
+    }
+    if (runCodeOutput.stdout) {
+      markdown += `
+**Stdout:**
+\`\`\`
+${runCodeOutput.stdout.trim()}
+\`\`\`
+`;
+    }
+    if (runCodeOutput.stderr) {
+      markdown += `
+**Stderr:**
+\`\`\`
+${runCodeOutput.stderr.trim()}
+\`\`\`
+`;
+    }
+    if (runCodeOutput.error) {
+      markdown += `
+**Error Message:**
+\`\`\`
+${runCodeOutput.error.trim()}
+\`\`\`
+`;
+    }
+    markdown += `\n실행 시간: ${runCodeOutput.executionTimeMs}ms\n`;
+    return markdown;
+  };
+
 
   const renderTabContent = () => {
     switch (activeTab) {
@@ -906,52 +986,64 @@ const ResultsPanel: React.FC<ResultsPanelProps> = ({
                   </div>
                   <p className="text-xs text-gray-500 mb-2">실행 시간: {outputDetails.executionTimeMs}ms</p>
 
-                  <details className="text-xs cursor-pointer group">
-                      <summary className="text-gray-600 hover:text-primary group-open:mb-1 text-[11px]">세부 정보</summary>
-                      <div className="mt-1 space-y-1.5 bg-white p-2 rounded border border-gray-200">
-                        <div>
-                            <strong className="font-medium text-gray-500 block text-[10px]">Input:</strong>
-                            <pre className="bg-gray-50 p-1 rounded text-gray-700 font-mono text-[10px] whitespace-pre-wrap">
-                                {formatOutputForDisplay(result.input)}
-                            </pre>
+                  <div className="flex justify-between items-end"> {/* Container for details and export button */}
+                    <details className="text-xs cursor-pointer group">
+                        <summary className="text-gray-600 hover:text-primary group-open:mb-1 text-[11px]">세부 정보</summary>
+                        <div className="mt-1 space-y-1.5 bg-white p-2 rounded border border-gray-200">
+                          <div>
+                              <strong className="font-medium text-gray-500 block text-[10px]">Input:</strong>
+                              <pre className="bg-gray-50 p-1 rounded text-gray-700 font-mono text-[10px] whitespace-pre-wrap">
+                                  {formatOutputForDisplay(result.input)}
+                              </pre>
+                          </div>
+                          {exampleTestCase && logicalCorrectnessChecked && (
+                          <div>
+                              <strong className="font-medium text-gray-500 block text-[10px]">Expected Output:</strong>
+                              <pre className="bg-gray-50 p-1 rounded text-gray-700 font-mono text-[10px] whitespace-pre-wrap">
+                                  {formatOutputForDisplay(exampleTestCase.expected_output)}
+                              </pre>
+                          </div>
+                          )}
+                          {outputDetails.isSuccessful && (
+                          <div>
+                              <strong className="font-medium text-gray-500 block text-[10px]">Return Value:</strong>
+                              <pre className={`p-1 rounded font-mono text-[10px] whitespace-pre-wrap ${statusType === "ACCEPTED" ? "bg-green-50 text-green-700" : (statusType === "WRONG_ANSWER" ? "bg-red-50 text-red-700" : "bg-gray-50 text-gray-700")}`}>
+                                  {formatOutputForDisplay(outputDetails.returnValue)}
+                              </pre>
+                          </div>
+                          )}
+                          {outputDetails.stdout && (
+                              <div>
+                                  <strong className="font-medium text-gray-500 block text-[10px]">Stdout:</strong>
+                                  <pre className="bg-gray-50 p-1 rounded text-gray-700 font-mono text-[10px] whitespace-pre-wrap">
+                                  {outputDetails.stdout}
+                                  </pre>
+                              </div>
+                          )}
+                          {outputDetails.stderr && (
+                              <div>
+                                  <strong className="font-medium text-red-500 block text-[10px]">Stderr:</strong>
+                                  <pre className="bg-red-50 p-1 rounded text-red-700 font-mono text-[10px] whitespace-pre-wrap">
+                                  {outputDetails.stderr}
+                                  </pre>
+                              </div>
+                          )}
+                          {outputDetails.runCodeLambdaError && outputDetails.errorMessage && (
+                              <p className="text-xs text-orange-700 mt-1">실행기 오류 상세: {outputDetails.errorMessage}</p>
+                          )}
                         </div>
-                        {exampleTestCase && logicalCorrectnessChecked && (
-                        <div>
-                            <strong className="font-medium text-gray-500 block text-[10px]">Expected Output:</strong>
-                            <pre className="bg-gray-50 p-1 rounded text-gray-700 font-mono text-[10px] whitespace-pre-wrap">
-                                {formatOutputForDisplay(exampleTestCase.expected_output)}
-                            </pre>
-                        </div>
-                        )}
-                        {outputDetails.isSuccessful && (
-                        <div>
-                            <strong className="font-medium text-gray-500 block text-[10px]">Return Value:</strong>
-                             <pre className={`p-1 rounded font-mono text-[10px] whitespace-pre-wrap ${statusType === "ACCEPTED" ? "bg-green-50 text-green-700" : (statusType === "WRONG_ANSWER" ? "bg-red-50 text-red-700" : "bg-gray-50 text-gray-700")}`}>
-                                {formatOutputForDisplay(outputDetails.returnValue)}
-                            </pre>
-                        </div>
-                        )}
-                        {outputDetails.stdout && (
-                            <div>
-                                <strong className="font-medium text-gray-500 block text-[10px]">Stdout:</strong>
-                                <pre className="bg-gray-50 p-1 rounded text-gray-700 font-mono text-[10px] whitespace-pre-wrap">
-                                {outputDetails.stdout}
-                                </pre>
-                            </div>
-                        )}
-                        {outputDetails.stderr && (
-                            <div>
-                                <strong className="font-medium text-red-500 block text-[10px]">Stderr:</strong>
-                                <pre className="bg-red-50 p-1 rounded text-red-700 font-mono text-[10px] whitespace-pre-wrap">
-                                {outputDetails.stderr}
-                                </pre>
-                            </div>
-                        )}
-                        {outputDetails.runCodeLambdaError && outputDetails.errorMessage && (
-                            <p className="text-xs text-orange-700 mt-1">실행기 오류 상세: {outputDetails.errorMessage}</p>
-                        )}
-                      </div>
-                  </details>
+                    </details>
+                    <button
+                      onClick={() => {
+                        const formattedText = formatRunCodeResultForChatbot(result, exampleTestCase);
+                        onExportToChatbot(formattedText);
+                      }}
+                      className="p-1 text-gray-500 hover:text-primary rounded-md focus:outline-none focus:ring-1 focus:ring-primary"
+                      title="AI 챗봇으로 내보내기"
+                    >
+                      <ArrowUpTrayIcon className="h-4 w-4" />
+                    </button>
+                  </div>
                 </div>
               );
             })}

@@ -18,7 +18,7 @@ const Banner: React.FC = () => {
           <motion.h1
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="text-4xl font-bold mb-4 text-gray-900 relative inline-block break-keep "
+            className="text-4xl font-bold mb-4 text-gray-900 relative inline-block break-keep text-start"
           >
             개발자로 성장하는 여정,{" "}
             <span className="text-primary font-semibold">ALPACO</span>와 함께
@@ -26,32 +26,32 @@ const Banner: React.FC = () => {
           <motion.p
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="text-lg text-gray-600 break-keep"
+            className="text-lg text-gray-600 break-keep text-start"
           >
             클라우드 기반 AI을 활용한 개인 맞춤형 문제와 함께
           </motion.p>
           <motion.p
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="text-lg text-gray-600 break-keep"
+            className="text-lg text-gray-600 break-keep text-start"
           >
             체계적으로 개발자로 성장할 수 있는 환경을 제공합니다.
           </motion.p>
         </div>
         <motion.div
-          className="flex gap-4 items-start pb-8"
+          className="flex gap-4 justify-start pb-8 w-full"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
         >
           <Link
             href="/coding-test"
-            className="bg-primary text-white py-2 px-4 rounded-md font-medium transition-colors duration-200 hover:bg-primary-hover"
+            className="bg-primary text-white py-2 px-4 rounded-md font-medium transition-colors duration-200 hover:bg-primary-hover break-keep mt-4"
           >
             테스트 시작하기
           </Link>
           <Link
             href="https://kookmin-sw.github.io/capstone-2025-04/"
-            className="bg-transparent border border-gray-300 py-2 px-4 rounded-md font-medium transition-all duration-200 hover:bg-gray-100"
+            className="bg-transparent border border-gray-300 py-2 px-4 rounded-md font-medium transition-all duration-200 hover:bg-gray-100 break-keep mt-4"
           >
             더 알아보기
           </Link>

@@ -41,7 +41,7 @@ variable "google_client_secret" {
 variable "app_base_url" {
   type        = string
   description = "Base URL of your application."
-  default     = "https://d2rgzjzynamwq2.cloudfront.net"
+  default     = "https://alpaco.us"
 }
 
 variable "localhost_base_url" {

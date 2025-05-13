@@ -30,6 +30,60 @@ resource "aws_cloudfront_origin_access_control" "oac" {
   signing_protocol                  = "sigv4"
 }
 
+# --- Custom Domain Setup ---
+
+# Get the Route 53 hosted zone for your custom domain
+data "aws_route53_zone" "main" {
+  name         = "${var.custom_domain_name}." # Note the trailing dot
+  private_zone = false
+}
+
+# Request an ACM certificate in us-east-1
+resource "aws_acm_certificate" "cert" {
+  provider          = aws.us_east_1 # Must be in us-east-1 for CloudFront
+  domain_name       = var.custom_domain_name
+  subject_alternative_names = [
+    "www.${var.custom_domain_name}",
+    "auth.${var.custom_domain_name}"  # auth 서브도메인 추가
+  ]
+  validation_method = "DNS"
+
+  tags = {
+    Name        = "${var.project_name}-frontend-cert-${var.environment}"
+    Environment = var.environment
+    Project     = var.project_name
+  }
+
+  lifecycle {
+    create_before_destroy = true # Recommended for certificates
+  }
+}
+
+# Create Route 53 records for ACM certificate validation
+resource "aws_route53_record" "cert_validation" {
+  for_each = {
+    for dvo in aws_acm_certificate.cert.domain_validation_options : dvo.domain_name => {
+      name   = dvo.resource_record_name
+      record = dvo.resource_record_value
+      type   = dvo.resource_record_type
+    }
+  }
+
+  allow_overwrite = true # Useful if records might already exist (e.g., from previous attempts)
+  name            = each.value.name
+  records         = [each.value.record]
+  ttl             = 60
+  type            = each.value.type
+  zone_id         = data.aws_route53_zone.main.zone_id
+}
+
+# Validate the ACM certificate using the DNS records
+resource "aws_acm_certificate_validation" "cert" {
+  provider                = aws.us_east_1 # Must be in us-east-1
+  certificate_arn         = aws_acm_certificate.cert.arn
+  validation_record_fqdns = [for record in aws_route53_record.cert_validation : record.fqdn]
+}
+
 # CloudFront Function 생성 (Viewer Request URL Rewrite)
 # Next.js 정적 export 시 /path -> /path/index.html 과 같이 경로를 처리하여 새로고침 시 403/404 오류 방지
 resource "aws_cloudfront_function" "url_rewrite_function" {
@@ -68,8 +122,7 @@ resource "aws_cloudfront_distribution" "s3_distribution" {
   default_root_object = "index.html"
 
   # S3 버킷 정책에서 CloudFront 접근 허용 필요
-  # depends_on = [aws_s3_bucket_policy.cloudfront_access]
-  # │ Error: Cycle: data.aws_iam_policy_document.cloudfront_access, aws_s3_bucket_policy.cloudfront_access, aws_cloudfront_distribution.s3_distribution
+  # depends_on = [aws_s3_bucket_policy.cloudfront_access] # Cycle already handled by Terraform's implicit dependency on ARN
 
   default_cache_behavior {
     allowed_methods  = ["GET", "HEAD", "OPTIONS"]
@@ -100,13 +153,13 @@ resource "aws_cloudfront_distribution" "s3_distribution" {
     error_caching_min_ttl = 0
     error_code            = 403
     response_code         = 200
-    response_page_path    = "/index.html" 
+    response_page_path    = "/index.html"
   }
   custom_error_response {
     error_caching_min_ttl = 0
     error_code            = 404
     response_code         = 200
-    response_page_path    = "/index.html" 
+    response_page_path    = "/index.html"
   }
 
   price_class = "PriceClass_200" # 아시아, 미국, 유럽
@@ -117,13 +170,19 @@ resource "aws_cloudfront_distribution" "s3_distribution" {
     }
   }
 
+  # --- Viewer Certificate Configuration for Custom Domain ---
+  aliases = [var.custom_domain_name, "www.${var.custom_domain_name}"]
+
   viewer_certificate {
-    cloudfront_default_certificate = true
+    acm_certificate_arn      = aws_acm_certificate_validation.cert.certificate_arn # Use validated certificate
+    ssl_support_method       = "sni-only"
+    minimum_protocol_version = "TLSv1.2_2021" # Recommended
   }
 
   tags = {
     Environment = var.environment
     Project     = var.project_name
+    Domain      = var.custom_domain_name
   }
 }
 
@@ -149,6 +208,32 @@ data "aws_iam_policy_document" "cloudfront_access" {
 resource "aws_s3_bucket_policy" "cloudfront_access" {
   bucket = aws_s3_bucket.website_bucket.id
   policy = data.aws_iam_policy_document.cloudfront_access.json
+}
+
+
+# --- Route 53 Alias Records for CloudFront ---
+resource "aws_route53_record" "app_domain" {
+  zone_id = data.aws_route53_zone.main.zone_id
+  name    = var.custom_domain_name
+  type    = "A"
+
+  alias {
+    name                   = aws_cloudfront_distribution.s3_distribution.domain_name
+    zone_id                = aws_cloudfront_distribution.s3_distribution.hosted_zone_id # This is a special zone ID for CloudFront
+    evaluate_target_health = false
+  }
+}
+
+resource "aws_route53_record" "www_app_domain" {
+  zone_id = data.aws_route53_zone.main.zone_id
+  name    = "www.${var.custom_domain_name}"
+  type    = "A"
+
+  alias {
+    name                   = aws_cloudfront_distribution.s3_distribution.domain_name
+    zone_id                = aws_cloudfront_distribution.s3_distribution.hosted_zone_id
+    evaluate_target_health = false
+  }
 }
 
 
@@ -178,9 +263,6 @@ resource "aws_iam_role" "github_actions_deploy_role" {
         Condition = {
           "StringEquals": {
             "${var.github_oidc_provider_url}:sub": "repo:${var.github_repository}:environment:${var.environment}"
-            # 만약 특정 브랜치/태그에서만 작동하도록 하려면 아래와 같이 조건 추가
-            # "${var.github_oidc_provider_url}:ref": "refs/heads/main" # main 브랜치
-            # "${var.github_oidc_provider_url}:ref": "refs/tags/v*" # v로 시작하는 태그
           }
         }
       }
@@ -208,7 +290,7 @@ resource "aws_iam_role_policy" "deploy_policy" {
           "s3:PutObject",
           "s3:GetObject",
           "s3:ListBucket",
-          "s3:DeleteObject" 
+          "s3:DeleteObject"
         ]
         Resource = [
           aws_s3_bucket.website_bucket.arn,

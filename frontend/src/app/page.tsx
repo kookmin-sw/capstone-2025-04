@@ -26,7 +26,7 @@ export default function Home() {
           
           <div className="w-full px-4 mx-auto max-w-7xl">
             <motion.section
-              className="pt-16 pb-10 px-16 text-center bg-white rounded-lg shadow-sm my-8 border-t-8 border-t-primary"
+              className="pt-16 pb-10 px-8 md:px-16 text-center bg-white rounded-lg shadow-sm my-8 border-t-8 border-t-primary " 
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
             >

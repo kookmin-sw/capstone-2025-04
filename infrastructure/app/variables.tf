@@ -35,3 +35,9 @@ variable "github_repository" {
   default = "kookmin-sw/capstone-2025-04" 
 }
 
+# --- New Variable for Custom Domain ---
+variable "custom_domain_name" {
+  description = "The custom domain name for the CloudFront distribution (e.g., app.example.com)"
+  type        = string
+  default     = "alpaco.us" # Your custom domain
+}
