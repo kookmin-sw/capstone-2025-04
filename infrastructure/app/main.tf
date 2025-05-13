@@ -42,7 +42,10 @@ data "aws_route53_zone" "main" {
 resource "aws_acm_certificate" "cert" {
   provider          = aws.us_east_1 # Must be in us-east-1 for CloudFront
   domain_name       = var.custom_domain_name
-  subject_alternative_names = ["www.${var.custom_domain_name}"]
+  subject_alternative_names = [
+    "www.${var.custom_domain_name}",
+    "auth.${var.custom_domain_name}"  # auth 서브도메인 추가
+  ]
   validation_method = "DNS"
 
   tags = {
