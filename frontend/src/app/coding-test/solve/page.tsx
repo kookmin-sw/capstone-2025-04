@@ -773,7 +773,8 @@ const ResultsPanel: React.FC<ResultsPanelProps> = ({
   const exampleTestCasesToDisplay = useMemo(() => {
     try {
       const allTestCases = JSON.parse(problemDetails.finalTestCases || "[]") as TestCaseDisplay[];
-      return allTestCases; 
+      // Display only up to 3 example test cases
+      return allTestCases.slice(0, 3); 
     } catch (error) {
       console.error("Failed to parse finalTestCases for examples:", error);
       return [];
