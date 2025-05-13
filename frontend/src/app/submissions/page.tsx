@@ -169,6 +169,18 @@ const SubmissionsContent: React.FC = () => {
     fetchSubmissions(false);
   }, [fetchSubmissions]); // `fetchSubmissions` is a dependency. It changes when its own deps change.
 
+  // Look for problemId in URL params and convert to problem title if needed
+  useEffect(() => {
+    const problemId = searchParamsHook.get("problemId");
+    if (problemId && !filterProblemTitle) {
+      // If we have a problemId in the URL but no problem title,
+      // we could try to fetch the problem name from the API here in the future
+      // For now, just provide a basic identifier from the ID
+      const shortId = problemId.substring(0, 8);
+      setFilterProblemTitle(`문제 ${shortId}...`);
+    }
+  }, [searchParamsHook, filterProblemTitle]);
+
   const handleLoadMore = () => {
     if (hasMore && !isLoading) {
       // For "Load More", pass `true` for `loadMore` and the current `lastEvaluatedKey` from state.
@@ -199,21 +211,37 @@ const SubmissionsContent: React.FC = () => {
             >
               문제 제목 (한글)
             </label>
-            <input
-              type="text"
-              id="problemTitleFilter"
-              value={filterProblemTitle}
-              onChange={(e) => setFilterProblemTitle(e.target.value)}
-              className="w-full p-2 border border-gray-300 rounded-md text-sm focus:ring-primary focus:border-primary"
-              placeholder="예: 두 수의 합"
-            />
+            <div className="relative">
+              <input
+                type="text"
+                id="problemTitleFilter"
+                value={filterProblemTitle}
+                onChange={(e) => setFilterProblemTitle(e.target.value)}
+                className="w-full p-2 border border-gray-300 rounded-md text-sm focus:ring-primary focus:border-primary"
+                placeholder="예: 두 수의 합"
+              />
+              {filterProblemTitle && (
+                <div className="absolute right-2 top-2">
+                  <button
+                    onClick={() => setFilterProblemTitle('')}
+                    className="text-gray-400 hover:text-gray-600"
+                    title="문제 필터 지우기"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="18" y1="6" x2="6" y2="18"></line>
+                      <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
           <div>
             <label
               htmlFor="authorFilter"
               className="block text-sm font-medium text-gray-700 mb-1"
             >
-              작성자 (닉네임)
+              작성자 (닉네임) {filterUserId && <span className="text-xs text-gray-500">- 사용자 ID가 설정된 경우 우선 적용됨</span>}
             </label>
             <div className="relative">
               <input
@@ -224,9 +252,27 @@ const SubmissionsContent: React.FC = () => {
                 className="w-full p-2 border border-gray-300 rounded-md text-sm focus:ring-primary focus:border-primary"
                 placeholder="예: alpaco_user"
               />
+              {filterAuthor && (
+                <div className="absolute right-2 top-2">
+                  <button
+                    onClick={() => setFilterAuthor('')}
+                    className="text-gray-400 hover:text-gray-600"
+                    title="작성자 필터 지우기"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="18" y1="6" x2="6" y2="18"></line>
+                      <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                  </button>
+                </div>
+              )}
               {(filterUserId || filterAuthor) && (
                 <div className="mt-1 text-xs text-primary">
-                  {filterAuthor ? `특정 사용자 "${filterAuthor}"의 제출만 표시 중` : `특정 사용자 ID로 필터링 중`}
+                  {filterUserId && filterAuthor 
+                    ? `"${filterAuthor}" 사용자의 고유 ID로 필터링 중 (닉네임보다 ID가 우선함)`
+                    : filterAuthor 
+                      ? `특정 사용자 "${filterAuthor}"의 제출만 표시 중` 
+                      : `특정 사용자 ID로 필터링 중`}
                 </div>
               )}
             </div>
@@ -255,7 +301,8 @@ const SubmissionsContent: React.FC = () => {
             <span>
               {[
                 filterProblemTitle && `문제: "${filterProblemTitle}"`,
-                filterAuthor && `작성자: "${filterAuthor}"`,
+                filterUserId && filterAuthor && `작성자: "${filterAuthor}" (사용자 ID로 필터링 중)`,
+                filterAuthor && !filterUserId && `작성자: "${filterAuthor}"`,
                 filterUserId && !filterAuthor && "특정 사용자 ID로 필터링됨"
               ].filter(Boolean).join(' / ')}
             </span>
@@ -269,6 +316,11 @@ const SubmissionsContent: React.FC = () => {
             >
               필터 초기화
             </button>
+          </div>
+        )}
+        {filterProblemTitle && (
+          <div className="mt-1 text-xs text-primary">
+            &ldquo;{filterProblemTitle}&rdquo; 문제에 대한 제출만 표시 중
           </div>
         )}
       </div>
