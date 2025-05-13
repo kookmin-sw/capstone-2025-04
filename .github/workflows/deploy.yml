@@ -74,13 +74,16 @@ jobs:
           NEXT_PUBLIC_COGNITO_CLIENT_ID: ${{ secrets.NEXT_PUBLIC_COGNITO_CLIENT_ID }}
           NEXT_PUBLIC_COGNITO_DOMAIN: ${{ secrets.NEXT_PUBLIC_COGNITO_DOMAIN }}
           # 프로덕션 URL 설정 (CloudFront 도메인 사용)
-          NEXT_PUBLIC_APP_BASE_URL: https://${{ secrets.CLOUDFRONT_DOMAIN_NAME }} # GitHub Secret (Terraform 'app' 출력값: cloudfront_distribution_domain_name)
+          NEXT_PUBLIC_APP_BASE_URL: https://${{ secrets.ROUTE53_DOMAIN_NAME }} # GitHub Secret (Terraform 'app' 출력값: cloudfront_distribution_domain_name)
           # API Gateway Invoke URL (Community API)
           NEXT_PUBLIC_COMMUNITY_API_BASE_URL: ${{ secrets.NEXT_PUBLIC_COMMUNITY_API_BASE_URL }} # GitHub Secret (API Gateway Invoke URL)
           # NODE_ENV: production # Optional: Explicitly set Node environment for build if needed
           NEXT_PUBLIC_CHATBOT_API_ENDPOINT: ${{ secrets.NEXT_PUBLIC_CHATBOT_API_ENDPOINT }}
           NEXT_PUBLIC_PROBLEM_GENERATION_API_BASE_URL: ${{ secrets.NEXT_PUBLIC_PROBLEM_GENERATION_API_BASE_URL }}
           NEXT_PUBLIC_PROBLEM_API_BASE_URL: ${{ secrets.NEXT_PUBLIC_PROBLEM_API_BASE_URL }}
+          NEXT_PUBLIC_CODE_GRADER_BASE_URL: ${{ secrets.NEXT_PUBLIC_CODE_GRADER_BASE_URL }}
+          NEXT_PUBLIC_SUBMISSIONS_API_BASE_URL: ${{ secrets.NEXT_PUBLIC_SUBMISSIONS_API_BASE_URL }}
+
           # ---------------------------
 
       - name: Sync files to S3

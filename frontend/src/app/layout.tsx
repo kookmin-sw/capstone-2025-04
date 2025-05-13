@@ -18,6 +18,11 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "ALPACO | 코딩테스트 플랫폼",
   description: "ALPACO - 클라우드 기반 LLM 코딩테스트 플랫폼",
+  icons: {
+    icon: '/alpaco_square_logo_blue.svg',
+    shortcut: '/alpaco_square_logo_blue.svg',
+    apple: '/alpaco_square_logo_blue.svg',
+  },
 };
 
 export default function RootLayout({

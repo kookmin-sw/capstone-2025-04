@@ -5,7 +5,7 @@ import React, { useEffect, Suspense, useState } from "react";
 import Head from "next/head";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuthenticator } from "@aws-amplify/ui-react";
-import { configureAmplify } from "@/utils/configureAmplify"; // 👈 꼭 import!
+
 
 const LoadingSpinner = () => (
   <div className="flex justify-center items-center min-h-screen">
@@ -29,7 +29,6 @@ const CallbackContentInternal = () => {
   console.log("configured: ", configured); // Debugging line
 
   useEffect(() => {
-    configureAmplify(); // 👈 콜백 페이지에서 한 번 더 설정
     setConfigured(true);
   }, []);
 

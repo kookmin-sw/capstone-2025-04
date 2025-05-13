@@ -1,46 +1,209 @@
 "use client";
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import Head from "next/head";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import Link from "next/link";
+import { fetchAuthSession } from "aws-amplify/auth";
+import {
+  getProblems,
+  ProblemSummary,
+  GetProblemsParams,
+} from "@/api/problemApi";
+import { format } from "date-fns";
+import { toast } from "sonner";
 
-// 가상의 저장된 코딩 테스트 데이터
-const savedTests = [
-  {
-    id: 1,
-    title: "배열에서 가장 큰 수 찾기",
-    type: "알고리즘 기초",
-    date: "2023-04-18",
-    status: "완료",
-    score: 100,
-  },
-  {
-    id: 2,
-    title: "피보나치 수열 구현하기",
-    type: "다이나믹 프로그래밍",
-    date: "2023-04-16",
-    status: "완료",
-    score: 85,
-  },
-  {
-    id: 3,
-    title: "이진 탐색 트리 구현",
-    type: "자료구조",
-    date: "2023-04-10",
-    status: "진행중",
-    score: null,
-  },
-];
+// Format the date from ISO string
+const formatDate = (dateStr: string) => {
+  try {
+    if (!dateStr) return "N/A";
+    return format(new Date(dateStr), "yyyy-MM-dd HH:mm");
+  } catch {
+    return dateStr;
+  }
+};
+
+const PAGE_SIZE = 20;
 
 const StoragePage: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState("");
+  const [problems, setProblems] = useState<ProblemSummary[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const filteredTests = savedTests.filter(
-    (test) =>
-      test.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      test.type.toLowerCase().includes(searchTerm.toLowerCase())
+  const [lastEvaluatedKey, setLastEvaluatedKey] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(true);
+
+  const [sortColumn, setSortColumn] = useState<string>("createdAt");
+  const [sortDirection, setSortDirection] = useState<"ASC" | "DESC">("DESC");
+  const [currentCreatorId, setCurrentCreatorId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const getCreatorId = async () => {
+      try {
+        const session = await fetchAuthSession();
+        const creatorId = session.tokens?.idToken?.payload?.sub as string;
+        if (creatorId) {
+          setCurrentCreatorId(creatorId);
+        } else {
+          setError("사용자 정보를 가져올 수 없습니다. 다시 로그인해주세요.");
+          setLoading(false);
+          setHasMore(false);
+        }
+      } catch (err) {
+        console.error("Failed to fetch creator ID:", err);
+        setError("세션 정보를 가져오는데 실패했습니다.");
+        setLoading(false);
+        setHasMore(false);
+      }
+    };
+    getCreatorId();
+  }, []);
+
+  const fetchUserProblems = useCallback(
+    async (loadMore = false, keyForThisFetch?: string | null) => {
+      if (!currentCreatorId) {
+        // setError will be set by getCreatorId or if still null, don't fetch
+        if (!loading && !error)
+          setError("Creator ID not available to fetch problems.");
+        setLoading(false); // Ensure loading is false if we can't fetch
+        return;
+      }
+      setLoading(true);
+
+      const params: GetProblemsParams = {
+        creatorId: currentCreatorId,
+        pageSize: PAGE_SIZE,
+        sortOrder: sortDirection as "ASC" | "DESC", // Backend sorts by createdAt based on this
+      };
+
+      if (loadMore && keyForThisFetch) {
+        params.lastEvaluatedKey = keyForThisFetch;
+      }
+
+      try {
+        setError(null);
+        const response = await getProblems(params);
+        setProblems((prev) =>
+          loadMore ? [...prev, ...response.items] : response.items,
+        );
+        setLastEvaluatedKey(response.lastEvaluatedKey);
+        setHasMore(
+          !!response.lastEvaluatedKey && response.items.length === PAGE_SIZE,
+        );
+      } catch (err) {
+        console.error("Failed to fetch user problems:", err);
+        const errorMsg =
+          err instanceof Error
+            ? err.message
+            : "문제를 불러오는데 실패했습니다.";
+        setError(errorMsg);
+        toast.error(errorMsg);
+        if (!loadMore) {
+          setProblems([]);
+          setHasMore(false);
+        }
+      } finally {
+        setLoading(false);
+      }
+    },
+    [currentCreatorId, sortDirection], // sortColumn is not a dependency if only createdAt is backend-sorted
   );
+
+  // Effect for initial load and when creatorId or sortDirection (for createdAt) changes
+  useEffect(() => {
+    if (currentCreatorId) {
+      // Only fetch if creatorId is available
+      fetchUserProblems(false);
+    }
+  }, [currentCreatorId, sortDirection, fetchUserProblems]); // Add fetchUserProblems (which depends on sortDirection)
+
+  const handleLoadMore = () => {
+    if (hasMore && !loading) {
+      fetchUserProblems(true, lastEvaluatedKey);
+    }
+  };
+
+  // Filter problems by search term (client-side for currently loaded items)
+  const filteredProblems = problems.filter(
+    (problem) =>
+      (problem.title_translated || problem.title)
+        ?.toLowerCase()
+        .includes(searchTerm.toLowerCase()) ||
+      problem.algorithmType?.toLowerCase().includes(searchTerm.toLowerCase()),
+  );
+
+  // Sort problems (client-side for columns other than createdAt)
+  const sortedProblems = [...filteredProblems].sort((a, b) => {
+    // If sorting by createdAt, backend already handled it. Keep order.
+    // For other columns, sort client-side.
+    if (sortColumn !== "createdAt") {
+      const getValueA = () => {
+        if (sortColumn === "title") return a.title_translated || a.title || "";
+        if (sortColumn === "algorithmType") return a.algorithmType || "기타";
+        if (sortColumn === "difficulty") return a.difficulty || "";
+        return "";
+      };
+      const getValueB = () => {
+        if (sortColumn === "title") return b.title_translated || b.title || "";
+        if (sortColumn === "algorithmType") return b.algorithmType || "기타";
+        if (sortColumn === "difficulty") return b.difficulty || "";
+        return "";
+      };
+
+      const valueA = getValueA();
+      const valueB = getValueB();
+
+      if (sortColumn === "difficulty") {
+        const difficultyOrder = {
+          쉬움: 1,
+          Easy: 1,
+          보통: 2,
+          Medium: 2,
+          어려움: 3,
+          Hard: 3,
+        };
+        const orderA =
+          difficultyOrder[valueA as keyof typeof difficultyOrder] || 0;
+        const orderB =
+          difficultyOrder[valueB as keyof typeof difficultyOrder] || 0;
+        return sortDirection === "ASC" ? orderA - orderB : orderB - orderA;
+      }
+
+      if (sortDirection === "ASC") {
+        return valueA.localeCompare(valueB);
+      } else {
+        return valueB.localeCompare(valueA);
+      }
+    }
+    return 0; // Keep backend order for createdAt
+  });
+
+  const handleSort = (column: string) => {
+    const newDirection =
+      sortColumn === column && sortDirection === "ASC" ? "DESC" : "ASC";
+    setSortColumn(column);
+    setSortDirection(newDirection);
+    // If sorting by 'createdAt', fetchUserProblems will be re-triggered by useEffect due to sortDirection change.
+    // For other columns, client-side sort will apply.
+    // Reset pagination for any sort change to ensure consistency if we decide to make them backend-sortable later.
+    // For now, only `createdAt` is backend sorted.
+    if (column === "createdAt") {
+      setProblems([]); // Clear current problems to show loading spinner properly
+      setLastEvaluatedKey(null);
+      setHasMore(true);
+      // fetchUserProblems will be called by useEffect
+    }
+  };
+
+  const renderSortIndicator = (column: string) => {
+    if (sortColumn !== column) return null;
+    return (
+      <span className="ml-1 text-xs inline-block">
+        {sortDirection === "ASC" ? "▲" : "▼"}
+      </span>
+    );
+  };
 
   return (
     <>
@@ -50,28 +213,11 @@ const StoragePage: React.FC = () => {
       </Head>
       <div className="min-h-screen flex flex-col bg-gray-50">
         <Header />
-
         <main className="flex-grow">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8">
               <h1 className="text-3xl font-bold text-gray-900 flex items-center mb-4 md:mb-0">
-                <span className="mr-2 text-primary">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    className="h-8 w-8"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
-                    />
-                  </svg>
-                </span>
-                내 저장소
+                {/* Icon */} 내 저장소
               </h1>
               <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4 w-full md:w-auto">
                 <div className="relative">
@@ -82,221 +228,147 @@ const StoragePage: React.FC = () => {
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary w-full"
                   />
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
-                    <svg
-                      viewBox="0 0 20 20"
-                      fill="currentColor"
-                      className="h-5 w-5"
-                    >
-                      <path
-                        fillRule="evenodd"
-                        d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z"
-                        clipRule="evenodd"
-                      />
-                    </svg>
-                  </div>
+                  {/* Search Icon */}
                 </div>
                 <Link
                   href="/"
                   className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-lg bg-white hover:bg-gray-50 transition"
                 >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    className="h-5 w-5 mr-2"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M10 19l-7-7m0 0l7-7m-7 7h18"
-                    />
-                  </svg>
-                  뒤로가기
+                  {/* Back Icon */} 뒤로가기
                 </Link>
               </div>
             </div>
 
-            <div className="bg-white shadow-sm rounded-lg overflow-hidden">
+            <div className="bg-white shadow-sm rounded-lg overflow-hidden mb-8">
               <div className="px-6 py-5 border-b border-gray-200">
                 <h2 className="text-xl font-semibold text-gray-900 flex items-center">
-                  <span className="mr-2 text-primary">
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                      className="h-6 w-6"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                      />
-                    </svg>
-                  </span>
-                  저장된 코딩 테스트
+                  {/* List Icon */} 내가 생성한 문제
                 </h2>
                 <p className="mt-1 text-sm text-gray-500">
-                  저장한 문제들을 언제든지 다시 풀어볼 수 있습니다. 총{" "}
-                  {filteredTests.length}개의 문제가 있습니다.
+                  내가 생성한 문제들을 확인할 수 있습니다.
+                  {/* Count will update dynamically based on filteredProblems, or total from backend if available */}
                 </p>
               </div>
 
-              {filteredTests.length > 0 ? (
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          제목
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          유형
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          저장 날짜
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          상태
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          점수
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          작업
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {filteredTests.map((test) => (
-                        <tr key={test.id} className="hover:bg-gray-50">
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="text-sm font-medium text-gray-900">
-                              {test.title}
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="text-sm text-gray-500">
-                              {test.type}
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="text-sm text-gray-500">
-                              {test.date}
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <span
-                              className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                                test.status === "완료"
-                                  ? "bg-green-100 text-green-800"
-                                  : "bg-yellow-100 text-yellow-800"
-                              }`}
-                            >
-                              {test.status === "완료" ? (
-                                <svg
-                                  className="h-3 w-3 mr-1"
-                                  viewBox="0 0 20 20"
-                                  fill="currentColor"
-                                >
-                                  <path
-                                    fillRule="evenodd"
-                                    d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                                    clipRule="evenodd"
-                                  />
-                                </svg>
-                              ) : (
-                                <svg
-                                  className="h-3 w-3 mr-1"
-                                  viewBox="0 0 20 20"
-                                  fill="currentColor"
-                                >
-                                  <path
-                                    fillRule="evenodd"
-                                    d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z"
-                                    clipRule="evenodd"
-                                  />
-                                </svg>
-                              )}
-                              {test.status}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            {test.score !== null ? (
-                              <div className="flex items-center">
-                                <div className="w-32 bg-gray-200 rounded-full h-2.5 mr-2">
-                                  <div
-                                    className="bg-primary h-2.5 rounded-full"
-                                    style={{ width: `${test.score}%` }}
-                                  ></div>
-                                </div>
-                                <span className="text-sm text-gray-600">
-                                  {test.score}/100
-                                </span>
-                              </div>
-                            ) : (
-                              <span className="text-gray-400">-</span>
-                            )}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <Link
-                              href={{
-                                pathname: "/coding-test/solve",
-                                query: { id: test.id, fromStorage: true },
-                              }}
-                              className="inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-md text-primary-hover bg-primary/10 hover:bg-primary/20 transition"
-                            >
-                              {test.status === "완료" ? (
-                                <>
-                                  <svg
-                                    viewBox="0 0 20 20"
-                                    fill="currentColor"
-                                    className="h-4 w-4 mr-1"
-                                  >
-                                    <path
-                                      fillRule="evenodd"
-                                      d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z"
-                                      clipRule="evenodd"
-                                    />
-                                  </svg>
-                                  다시 풀기
-                                </>
-                              ) : (
-                                <>
-                                  <svg
-                                    viewBox="0 0 20 20"
-                                    fill="currentColor"
-                                    className="h-4 w-4 mr-1"
-                                  >
-                                    <path
-                                      fillRule="evenodd"
-                                      d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-8.707l-3-3a1 1 0 00-1.414 0l-3 3a1 1 0 001.414 1.414L9 9.414V13a1 1 0 102 0V9.414l1.293 1.293a1 1 0 001.414-1.414z"
-                                      clipRule="evenodd"
-                                    />
-                                  </svg>
-                                  계속하기
-                                </>
-                              )}
-                            </Link>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+              {loading && problems.length === 0 ? (
+                <div className="py-10 px-6 text-center">
+                  <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                  <p className="mt-2 text-gray-500">문제를 불러오는 중...</p>
+                </div>
+              ) : error ? (
+                <div className="py-10 px-6 text-center">
+                  <p className="text-red-500">{error}</p>
+                </div>
+              ) : problems.length === 0 && !loading ? ( // Check problems.length instead of sortedProblems for "no data" message
+                <div className="py-10 px-6 text-center">
+                  <p className="text-gray-500">
+                    생성한 문제가 없습니다. 문제를 생성해보세요!
+                  </p>
+                  <Link
+                    href="/generate-problem"
+                    className="mt-4 inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary hover:bg-primary-hover transition"
+                  >
+                    문제 생성하기
+                  </Link>
+                </div>
+              ) : sortedProblems.length === 0 && searchTerm ? ( // If search yields no results from current items
+                <div className="py-10 px-6 text-center">
+                  <p className="text-gray-500">
+                    검색 조건에 맞는 문제가 없습니다.
+                  </p>
                 </div>
               ) : (
-                <div className="py-10 px-6 text-center">
-                  <p className="text-gray-500">검색 결과가 없습니다.</p>
-                </div>
+                <>
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th
+                            className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                            onClick={() => handleSort("title")}
+                          >
+                            제목 {renderSortIndicator("title")}
+                          </th>
+                          <th
+                            className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                            onClick={() => handleSort("algorithmType")}
+                          >
+                            알고리즘 유형 {renderSortIndicator("algorithmType")}
+                          </th>
+                          <th
+                            className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                            onClick={() => handleSort("difficulty")}
+                          >
+                            난이도 {renderSortIndicator("difficulty")}
+                          </th>
+                          <th
+                            className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                            onClick={() => handleSort("createdAt")}
+                          >
+                            생성 날짜 {renderSortIndicator("createdAt")}
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {sortedProblems.map((problem) => (
+                          <tr
+                            key={problem.problemId}
+                            className="hover:bg-gray-50 cursor-pointer"
+                            onClick={() =>
+                              (window.location.href = `/coding-test/solve?id=${problem.problemId}`)
+                            }
+                          >
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="text-sm font-medium text-gray-900">
+                                {problem.title_translated || problem.title}
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="text-sm text-gray-500">
+                                {problem.algorithmType || "기타"}
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <span
+                                className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                  problem.difficulty === "쉬움" ||
+                                  problem.difficulty === "Easy"
+                                    ? "bg-green-100 text-green-800"
+                                    : problem.difficulty === "보통" ||
+                                        problem.difficulty === "Medium"
+                                      ? "bg-yellow-100 text-yellow-800"
+                                      : "bg-red-100 text-red-800"
+                                }`}
+                              >
+                                {problem.difficulty}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="text-sm text-gray-500">
+                                {formatDate(problem.createdAt)}
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {hasMore && (
+                    <div className="p-4 text-center">
+                      <button
+                        onClick={handleLoadMore}
+                        disabled={loading}
+                        className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition text-sm disabled:opacity-50"
+                      >
+                        {loading ? "로딩 중..." : "더 보기"}
+                      </button>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </div>
         </main>
-
         <Footer />
       </div>
     </>

@@ -61,8 +61,8 @@ export const handler = async (event) => {
       likedUsers = [], // Default to empty array for Set compatibility later if needed
       updatedAt = null,
       problemId = null,
-      // Include userId if it's stored and might be needed
-      // userId
+      userId,
+      commentCount = 0, // <--- MODIFIED: Add commentCount with a default
     } = post;
 
     // --- SUCCESS RESPONSE ---
@@ -76,7 +76,8 @@ export const handler = async (event) => {
       likedUsers: Array.isArray(likedUsers) ? likedUsers : [], // Ensure it's an array
       updatedAt,
       problemId,
-      // userId
+      userId,
+      commentCount, // <--- MODIFIED: Include commentCount in the response
     };
     return {
       statusCode: 200,

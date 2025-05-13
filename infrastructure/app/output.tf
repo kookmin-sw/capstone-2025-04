@@ -22,3 +22,14 @@ output "github_actions_deploy_role_arn" {
   description = "ARN of the IAM Role for GitHub Actions deployment"
   value       = aws_iam_role.github_actions_deploy_role.arn
 }
+
+# --- New Output for Custom Domain ---
+output "application_url" {
+  description = "The custom domain URL for the application"
+  value       = "https://www.${var.custom_domain_name}" # Or just var.custom_domain_name if you prefer the apex
+}
+
+output "acm_certificate_arn" {
+  description = "ARN of the ACM certificate"
+  value       = aws_acm_certificate_validation.cert.certificate_arn
+}
