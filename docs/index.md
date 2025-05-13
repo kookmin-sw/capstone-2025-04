@@ -20,7 +20,7 @@ permalink: /
 ---
 
 ## 🔗 목차
-{: .no_toc .text-delta }
+{: .no_toc }
 
 1. TOC
 {:toc}
