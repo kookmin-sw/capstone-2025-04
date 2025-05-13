@@ -28,6 +28,8 @@ interface ChatMessage {
 interface ChatbotProps {
   problemDetails: ProblemDetailAPI | null;
   userCode: string;
+  userInput: string; // New prop for controlled input
+  setUserInput: (input: string) => void; // New prop for updating input
 }
 
 // Simple Modal Component for Confirmation (Korean Text)
@@ -75,18 +77,18 @@ const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
   );
 };
 
-const Chatbot: React.FC<ChatbotProps> = ({ problemDetails, userCode }) => {
+const Chatbot: React.FC<ChatbotProps> = ({ 
+    problemDetails, 
+    userCode,
+    userInput, // Use prop
+    setUserInput, // Use prop
+}) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [userInput, setUserInput] = useState<string>("");
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [streamingResponse, setStreamingResponse] = useState<string>("");
   const messagesEndRef = useRef<HTMLDivElement>(null); // Ref for scrolling
+  const textareaRef = useRef<HTMLTextAreaElement>(null); // Ref for textarea
 
-  // Remove Langchain model state
-  // const [chatModel, setChatModel] = useState<ChatGoogleGenerativeAI | null>(
-  //   null
-  // );
-  // const [initError, setInitError] = useState<string | null>(null);
   const hasLoadedInitialHistory = useRef(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
 
@@ -96,10 +98,8 @@ const Chatbot: React.FC<ChatbotProps> = ({ problemDetails, userCode }) => {
       : null;
   }, [problemDetails?.problemId]);
 
-  // Remove Langchain model initialization useEffect
-  // useEffect(() => { ... }, []);
 
-  // Load history from Local Storage (Keep as is)
+  // Load history from Local Storage
   useEffect(() => {
     if (localStorageKey) {
       console.log(`Attempting to load history from key: ${localStorageKey}`);
@@ -133,7 +133,7 @@ const Chatbot: React.FC<ChatbotProps> = ({ problemDetails, userCode }) => {
     }
   }, [localStorageKey]);
 
-  // Save history to Local Storage (Keep as is)
+  // Save history to Local Storage
   useEffect(() => {
     if (
       localStorageKey &&
@@ -157,13 +157,14 @@ const Chatbot: React.FC<ChatbotProps> = ({ problemDetails, userCode }) => {
       console.log(`Clearing history for key: ${localStorageKey}`);
       try {
         localStorage.removeItem(localStorageKey);
-      } catch (error) {
+      } catch (error)
+        {
         console.error("Failed to remove history from localStorage:", error);
       }
     }
   }, [messages, localStorageKey]);
 
-  // Scroll to bottom effect (Keep as is)
+  // Scroll to bottom effect
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
@@ -172,12 +173,77 @@ const Chatbot: React.FC<ChatbotProps> = ({ problemDetails, userCode }) => {
     scrollToBottom();
   }, [messages, streamingResponse]);
 
-  // Input change handler (Keep as is)
-  const handleInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  // userInput이 변경될 때 사용자 입력과 외부 입력 구분
+  const prevInputRef = useRef(userInput);
+  const isUserTypingRef = useRef(false);
+  
+  // 사용자가 직접 입력 중인지 감지
+  const handleInputChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
+    isUserTypingRef.current = true;
     setUserInput(event.target.value);
   };
+  
+  // userInput이 변경될 때 효과
+  useEffect(() => {
+    // 이전 입력값과 현재 입력값 비교
+    const prevInput = prevInputRef.current;
+    
+    // 사용자가 직접 타이핑하지 않았고, 이전 값과 다르면 외부에서 설정된 것으로 판단
+    if (!isUserTypingRef.current && userInput !== prevInput) {
+      // 외부에서 설정된 경우, 커서를 끝으로 이동
+      if (textareaRef.current) {
+        const length = userInput.length;
+        setTimeout(() => {
+          // 비동기로 처리하여 React 렌더링 사이클 이후에 포커스 설정
+          if (textareaRef.current) {
+            textareaRef.current.focus();
+            textareaRef.current.setSelectionRange(length, length);
+            textareaRef.current.scrollTop = textareaRef.current.scrollHeight;
+          }
+        }, 0);
+      }
+    }
+    
+    // 상태 업데이트
+    prevInputRef.current = userInput;
+    isUserTypingRef.current = false;
+    
+  }, [userInput]);
 
-  // Clear history handlers (Keep as is)
+  // Adjust textarea height dynamically
+  useEffect(() => {
+    if (textareaRef.current) {
+      // Store current scroll position
+      const scrollPosition = textareaRef.current.scrollTop;
+      
+      // Temporarily shrink it back to auto to measure the real content height
+      textareaRef.current.style.height = "auto";
+      
+      // Get the proper scrollHeight
+      const scrollHeight = textareaRef.current.scrollHeight;
+      
+      // Get the parent container height and calculate maxHeight as 1/3 of it
+      const chatContainer = document.querySelector('.chat-container');
+      const parentHeight = chatContainer ? chatContainer.clientHeight : window.innerHeight;
+      const maxHeight = Math.max(200, Math.floor(parentHeight / 3));
+      
+      // Apply the new height
+      if (scrollHeight > maxHeight) {
+        textareaRef.current.style.height = `${maxHeight}px`;
+        textareaRef.current.style.overflowY = "auto";
+      } else {
+        textareaRef.current.style.height = `${scrollHeight}px`;
+        textareaRef.current.style.overflowY = "hidden";
+      }
+      
+      // Restore scroll position if needed
+      if (scrollHeight > maxHeight) {
+        textareaRef.current.scrollTop = scrollPosition;
+      }
+    }
+  }, [userInput]); // Adjust height whenever userInput changes
+
+  // Clear history handlers
   const handleClearHistory = () => {
     setShowClearConfirm(true);
   };
@@ -199,11 +265,9 @@ const Chatbot: React.FC<ChatbotProps> = ({ problemDetails, userCode }) => {
     }
   };
 
-  // Remove system prompt memoization, handled by backend now
-  // const systemPromptContent = useMemo(() => { ... }, [problemDetails?.title]);
 
   const handleSendMessage = async () => {
-    const messageToSend = userInput.trim();
+    const messageToSend = userInput.trim(); // Use prop userInput
     if (!messageToSend || isLoading) {
       return;
     }
@@ -215,7 +279,12 @@ const Chatbot: React.FC<ChatbotProps> = ({ problemDetails, userCode }) => {
       content: messageToSend,
     };
     setMessages((prevMessages) => [...prevMessages, newUserMessage]);
-    setUserInput(""); // Clear input field immediately
+    setUserInput(""); // Clear input field immediately using prop setUserInput
+    if (textareaRef.current) { // Reset textarea height after sending
+      textareaRef.current.style.height = "auto";
+      textareaRef.current.style.overflowY = "hidden";
+    }
+
 
     // Prepare context, filtering out the currently streaming response placeholder if any
     const historyForBackend = messages.filter(
@@ -283,12 +352,13 @@ const Chatbot: React.FC<ChatbotProps> = ({ problemDetails, userCode }) => {
     }
   };
 
-  // Key down handler for Enter key (Keep as is)
-  const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+  // Key down handler for Enter key: Use prop userInput
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault(); // Prevent default form submission/newline
       handleSendMessage();
     }
+    // Allow Shift+Enter for new lines naturally with textarea
   };
 
   // Helper component for rendering markdown content
@@ -374,7 +444,7 @@ const Chatbot: React.FC<ChatbotProps> = ({ problemDetails, userCode }) => {
 
   // JSX Rendering with the alpaca profile image
   return (
-    <div className="flex flex-col h-full bg-gray-50 border-l border-border relative">
+    <div className="flex flex-col h-full bg-gray-50 border-l border-border relative chat-container">
       {/* Header */}
       <div className="flex items-center justify-between p-3 border-b border-border bg-white sticky top-0 z-10">
         <div className="flex items-center space-x-2">
@@ -543,22 +613,33 @@ const Chatbot: React.FC<ChatbotProps> = ({ problemDetails, userCode }) => {
 
       {/* Input Area */}
       <div className="p-3 border-t border-border bg-white sticky bottom-0">
-        <div className="flex items-center space-x-2">
-          <input
-            type="text"
-            value={userInput}
-            onChange={handleInputChange}
-            onKeyDown={handleKeyDown}
-            placeholder="AI에게 질문하세요..." // Korean placeholder
-            disabled={isLoading}
-            className="flex-1 px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-70 disabled:cursor-not-allowed"
-          />
+        <div className="flex items-center space-x-2 overflow-visible"> {/* Changed items-end to items-center */}
+          <div className="relative flex-1"> {/* Added wrapper div for textarea */}
+            <textarea
+              ref={textareaRef}
+              rows={1} // Start with one row
+              value={userInput} // Use prop userInput
+              onChange={handleInputChange}
+              onKeyDown={handleKeyDown}
+              placeholder="AI에게 질문하세요..." // Korean placeholder
+              disabled={isLoading}
+              className="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:ring-opacity-50 disabled:opacity-70 disabled:cursor-not-allowed resize-none leading-normal min-h-[40px] transition duration-100 align-middle" // Added align-middle
+              style={{ 
+                height: "40px",
+                boxSizing: "border-box",
+                paddingBottom: "8px",
+                verticalAlign: "middle",
+                marginBottom: "0"
+              }} // Added explicit styling to control spacing
+            />
+          </div>
           <button
             onClick={handleSendMessage}
             disabled={isLoading || !userInput.trim()}
-            className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 focus:outline-none focus:ring-1 focus:ring-primary focus:ring-offset-1 disabled:opacity-70 disabled:cursor-not-allowed"
+            className="p-2 bg-primary text-primary-foreground rounded-full hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1 disabled:opacity-70 disabled:cursor-not-allowed flex-shrink-0 flex items-center justify-center" // Removed self-end
             aria-label="메시지 전송"
             title="메시지 전송"
+            style={{ width: "40px", height: "40px" }} // Fixed size for button
           >
             {/* Modern send icon (paper plane) */}
             <svg
