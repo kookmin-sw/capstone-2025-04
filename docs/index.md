@@ -2,11 +2,11 @@
 layout: default
 title: "메인"
 nav_order: 1
+has_toc: true
 description: "캡스톤디자인 2025"
 permalink: /
 ---
 ## ALPACO : 클라우드 기반 LLM 알고리즘 문제 생성 및 자동 채점 플랫폼
-{: .no_toc }
 <br/><br/>
 
 <p align="center">
@@ -14,11 +14,6 @@ permalink: /
 </p>
 
 <br/><br/>
-
----
-
-## 🔗 목차
-{:toc}
 
 ---
 
