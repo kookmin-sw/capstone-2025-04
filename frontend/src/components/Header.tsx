@@ -327,9 +327,12 @@ const Header: React.FC = () => {
             {/* Auth Buttons / User Info - Mobile */}
             {isAuthenticated ? (
               <>
-                <div className="py-2 font-medium text-gray-700">
+                <button
+                  onClick={() => handleLinkClick('/user/settings')}
+                  className="text-left font-medium text-gray-700 block py-2 hover:text-primary transition-colors duration-200"
+                >
                   {getUserIdentifier()}님
-                </div>
+                </button>
                 <button 
                   onClick={() => handleLinkClick('/user/settings')}
                   className="text-left font-medium text-gray-600 block py-2 hover:text-primary transition-colors duration-200"
