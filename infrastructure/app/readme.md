@@ -14,6 +14,7 @@ Next.js 정적 빌드 결과물을 S3에 배포하고, CloudFront를 통해 전 
 - `aws_s3_bucket_acl`, `aws_s3_bucket_public_access_block`: 웹사이트 버킷 보안 설정 (비공개 유지)
 - `aws_cloudfront_origin_access_control`: CloudFront가 S3 버킷에 안전하게 접근하기 위한 설정
 - `aws_cloudfront_distribution`: S3 버킷을 오리진으로 사용하는 CDN 배포
+- `aws_cloudfront_function`: CloudFront Viewer Request 시 URL을 재작성하여 Next.js 정적 사이트의 경로 문제를 해결 (예: `/path` 요청을 `/path/index.html`로 변경하여 새로고침 시 403/404 오류 방지)
 - `aws_s3_bucket_policy`: CloudFront OAC만 S3 버킷에 접근하도록 허용하는 정책
 - `aws_iam_openid_connect_provider` (선택적): GitHub Actions OIDC 인증용 Provider (계정에 없을 경우 생성)
 - `aws_iam_role` (GitHub Actions용): GitHub Actions 워크플로우가 AWS 리소스(S3 동기화, CloudFront 무효화)에 접근할 때 사용할 역할
@@ -39,26 +40,12 @@ Next.js 정적 빌드 결과물을 S3에 배포하고, CloudFront를 통해 전 
    ```
 
 2. **Terraform 초기화 (원격 백엔드 설정):**
-   `terraform init` 명령을 실행하면서 `-backend-config` 옵션을 사용하여 원격 백엔드 정보를 전달합니다. **아래 명령에서 `<...>` 부분을 실제 값으로 교체하세요.**
+   `terraform init` 명령을 실행하면서 `backend.tf`의 값들을 사용하여 원격 백엔드 정보를 전달합니다.
+   이는 infrastructure/backend 의 설정에 따릅니다.
 
    ```bash
-   terraform init \
-     -backend-config="bucket=<backend-setup에서_출력된_S3_버킷_이름>" \
-     -backend-config="key=app/terraform.tfstate" \
-     -backend-config="region=<백엔드_리소스가_있는_리전>" \
-     -backend-config="dynamodb_table=<backend-setup에서_출력된_DynamoDB_테이블_이름>" \
-     -backend-config="encrypt=true"
-
-     terraform init \
-     -backend-config="bucket=alpaco-tfstate-bucket-kmu" \
-     -backend-config="key=app/terraform.tfstate" \
-     -backend-config="region=ap-northeast-2" \
-     -backend-config="dynamodb_table=alpaco-tfstate-lock-table" \
-     -backend-config="encrypt=true"
+   terraform init
    ```
-
-   - `key`: S3 버킷 내에서 이 애플리케이션의 상태 파일을 저장할 경로입니다. 자유롭게 지정하되 일관성 있게 사용하세요. (예: `alpaco/frontend/terraform.tfstate`)
-   - 초기화 시 기존 로컬 상태를 마이그레이션할지 물을 수 있습니다 (처음 설정 시 해당 없음).
 
 3. **(선택) 실행 계획 검토:**
    생성/변경될 리소스를 미리 확인합니다. GitHub Repository 이름이 기본값과 다른 경우 `-var` 옵션으로 전달해야 할 수 있습니다.
@@ -110,12 +97,12 @@ Next.js 정적 빌드 결과물을 S3에 배포하고, CloudFront를 통해 전 
 **이제 다음 단계를 진행할 수 있습니다:**
 
 1. **GitHub Secrets 설정:**
-   방금 출력된 값들을 사용하여 GitHub Repository의 Secrets를 설정하세요.
+   방금 출력된 값들을 사용하여 GitHub Repository의 Secrets를 설정하세요. (예시 값이며, 실제 출력값을 사용해야 합니다)
 
-   - `AWS_IAM_ROLE_ARN`: `arn:aws:iam::897722694537:role/alpaco-github-actions-deploy-role-dev`
+   - `AWS_IAM_ROLE_ARN`: `arn:aws:iam::ACCOUNT_ID:role/alpaco-github-actions-deploy-role-production`
    - `AWS_REGION`: `ap-northeast-2` (또는 사용한 리전)
-   - `AWS_S3_BUCKET_NAME`: `alpaco-frontend-devalpaco-frontend-bucket`
-   - `AWS_CLOUDFRONT_DISTRIBUTION_ID`: `E3Q5IEHTZGF1U5`
+   - `AWS_S3_BUCKET_NAME`: `alpaco-frontend-production-alpaco-frontend-bucket`
+   - `AWS_CLOUDFRONT_DISTRIBUTION_ID`: `E1234567890ABC`
 
 2. **GitHub Actions 워크플로우 확인:**
 
@@ -134,6 +121,6 @@ Next.js 정적 빌드 결과물을 S3에 배포하고, CloudFront를 통해 전 
 
 4. **배포 확인:**
    - GitHub Repository의 Actions 탭에서 워크플로우가 실행되는 것을 확인합니다.
-   - 워크플로우가 성공적으로 완료되면, 출력된 CloudFront 도메인 (`d2rgzjzynamwq2.cloudfront.net`)으로 접속하여 프론트엔드 애플리케이션이 올바르게 배포되었는지 확인합니다. (캐시 때문에 즉시 반영되지 않을 수 있으니 잠시 기다리거나 브라우저 캐시 삭제 후 확인하세요.)
+   - 워크플로우가 성공적으로 완료되면, 출력된 CloudFront 도메인 (예: `dxxxxxxxxxx.cloudfront.net`)으로 접속하여 프론트엔드 애플리케이션이 올바르게 배포되었는지, 그리고 새로고침 시에도 페이지가 정상적으로 로드되는지 확인합니다. (캐시 때문에 즉시 반영되지 않을 수 있으니 잠시 기다리거나 브라우저 캐시 삭제 후 확인하세요.)
 
 축하합니다! 이제 Terraform으로 관리되는 AWS 인프라와 GitHub Actions를 이용한 자동 배포 파이프라인의 준비가 거의 완료되었습니다. 😊

@@ -52,7 +52,8 @@ export const handler = async (event) => {
         body: JSON.stringify({ message: "인증 정보가 없습니다." }),
       };
     }
-    const username = claims["cognito:username"];
+
+    const userId = claims.sub;
 
     // --- Check Post Existence and Ownership using SDK v3 style ---
     // We use a ConditionExpression in the UpdateCommand instead of a separate Get
@@ -65,12 +66,12 @@ export const handler = async (event) => {
       UpdateExpression:
         "SET title = :title, content = :content, updatedAt = :updatedAt",
       // Condition ensures the post exists AND the author matches
-      ConditionExpression: "attribute_exists(PK) AND author = :author",
+      ConditionExpression: "attribute_exists(PK) AND userId = :userId",
       ExpressionAttributeValues: {
         ":title": title,
         ":content": content,
         ":updatedAt": new Date().toISOString(),
-        ":author": username, // Value for the condition check
+        ":userId": userId,
       },
       ReturnValues: "ALL_NEW", // Return the entire updated item
     });

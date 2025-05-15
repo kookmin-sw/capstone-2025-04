@@ -9,5 +9,18 @@ resource "aws_dynamodb_table" "problems_table" {
     type = "S"
   }
 
+  attribute {
+    name = "creatorId"
+    type = "S"
+  }
+
+  global_secondary_index {
+    name               = "CreatorIdIndex"
+    hash_key           = "creatorId"
+    projection_type    = "ALL"
+    read_capacity      = 0
+    write_capacity     = 0
+  }
+
   tags = var.common_tags
 } 

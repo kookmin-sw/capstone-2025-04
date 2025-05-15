@@ -3,6 +3,8 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useSearchParams } from "next/navigation"; // Added useRouter
 import Link from "next/link"; // Add import for Link
+
+import { fetchUserAttributes } from "aws-amplify/auth"; // Import fetchUserAttributes back
 // Import the REAL STREAMING API function and types
 import {
   streamProblemGeneration, // Import the real streaming function
@@ -216,69 +218,87 @@ const GenerateProblemClient = () => {
       ]);
       textareaRef.current?.blur();
 
-      const params: CreateProblemRequest = {
-        prompt: currentPrompt,
-        difficulty: difficultyMap[difficulty],
-      };
-
+      // Get current user session to get user ID
       try {
-        // Use the new streaming function
-        await streamProblemGeneration(params, {
-          onStatus: (status: ProblemStreamStatus) => {
-            setStatusMessages((prev) => [...prev, status.message]);
-            console.log("Status update:", status);
-          },
-          onResult: (result: ProblemStreamResult) => {
-            console.log("Received final result:", result);
-            if (result && result.payload) {
-              setGeneratedProblem(result.payload); // Set the final detailed problem
-              // Optionally add a final success message to status
-              setStatusMessages((prev) => [...prev, "✅ 생성 완료!"]);
-            } else {
-              console.error(
-                "Received empty or invalid result payload:",
-                result
-              );
-              setError("문제 생성 결과가 비어있거나 형식이 잘못되었습니다.");
-              setStatusMessages((prev) => [
-                ...prev,
-                "❌ 문제 생성 결과가 잘못되었습니다.",
-              ]);
-            }
-          },
-          onError: (error: ProblemStreamError) => {
-            console.error("Generation error:", error);
-            setError(error.payload);
-            setStatusMessages((prev) => [...prev, `❌ 오류: ${error.payload}`]);
-            setIsLoading(false); // Stop loading on error
-          },
-          onComplete: () => {
-            setIsLoading(false); // Stop loading when stream completes
-            // Use function state reference instead of closure to avoid dependency issues
-            setTimeout(() => {
-              // Get current state via setGeneratedProblem's functional form
-              setGeneratedProblem((currentProblem) => {
-                if (!currentProblem) {
-                  console.warn(
-                    "Stream completed but generatedProblem is still null. This might indicate the 'result' event was never received."
-                  );
-                } else {
-                  console.log(
-                    "SSE Stream Completed with valid generatedProblem:",
-                    currentProblem
-                  );
-                }
-                return currentProblem; // Return same value to not change state
-              });
-            }, 100);
-          },
-        });
+        const userAttributes = await fetchUserAttributes();
+        const creatorId = userAttributes.sub as string;
+        const username = (userAttributes.nickname as string) || (userAttributes.cognito_username as string) || undefined;
+        console.log("generate-problem creatorId:", creatorId);
+        const params: CreateProblemRequest = {
+          prompt: currentPrompt,
+          difficulty: difficultyMap[difficulty],
+          creatorId: creatorId, // Add creator ID if available
+          author: username, // Add author if available
+        };
+
+        try {
+          // Use the new streaming function
+          await streamProblemGeneration(params, {
+            onStatus: (status: ProblemStreamStatus) => {
+              setStatusMessages((prev) => [...prev, status.message]);
+              console.log("Status update:", status);
+            },
+            onResult: (result: ProblemStreamResult) => {
+              console.log("Received final result:", result);
+              if (result && result.payload) {
+                setGeneratedProblem(result.payload); // Set the final detailed problem
+                // Optionally add a final success message to status
+                setStatusMessages((prev) => [...prev, "✅ 생성 완료!"]);
+              } else {
+                console.error(
+                  "Received empty or invalid result payload:",
+                  result
+                );
+                setError("문제 생성 결과가 비어있거나 형식이 잘못되었습니다.");
+                setStatusMessages((prev) => [
+                  ...prev,
+                  "❌ 문제 생성 결과가 잘못되었습니다.",
+                ]);
+              }
+            },
+            onError: (error: ProblemStreamError) => {
+              console.error("Generation error:", error);
+              setError(error.payload);
+              setStatusMessages((prev) => [...prev, `❌ 오류: ${error.payload}`]);
+              setIsLoading(false); // Stop loading on error
+            },
+            onComplete: () => {
+              setIsLoading(false); // Stop loading when stream completes
+              // Use function state reference instead of closure to avoid dependency issues
+              setTimeout(() => {
+                // Get current state via setGeneratedProblem's functional form
+                setGeneratedProblem((currentProblem) => {
+                  if (!currentProblem) {
+                    console.warn(
+                      "Stream completed but generatedProblem is still null. This might indicate the 'result' event was never received."
+                    );
+                  } else {
+                    console.log(
+                      "SSE Stream Completed with valid generatedProblem:",
+                      currentProblem
+                    );
+                  }
+                  return currentProblem; // Return same value to not change state
+                });
+              }, 100);
+            },
+          });
+        } catch (err) {
+          // Catch errors from the streamProblemGeneration setup itself
+          const errorMsg =
+            err instanceof Error
+              ? err.message
+              : "스트리밍 시작 중 알 수 없는 오류";
+          setError(errorMsg);
+          setStatusMessages((prev) => [...prev, `❌ 오류: ${errorMsg}`]);
+          setIsLoading(false);
+        }
       } catch (err) {
-        // Catch errors from the streamProblemGeneration setup itself
+        // Catch errors from fetching user session
         const errorMsg =
           err instanceof Error
             ? err.message
-            : "스트리밍 시작 중 알 수 없는 오류";
+            : "세션 정보를 가져오는 중 알 수 없는 오류";
         setError(errorMsg);
         setStatusMessages((prev) => [...prev, `❌ 오류: ${errorMsg}`]);
         setIsLoading(false);

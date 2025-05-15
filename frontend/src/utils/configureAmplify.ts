@@ -8,7 +8,13 @@ const cognitoClientId = process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID;
 
 const cognitoDomain = process.env.NEXT_PUBLIC_COGNITO_DOMAIN; // Full domain from Cognito (e.g., alpaco-auth-prod-kmu.auth.ap-northeast-2.amazoncognito.com)
 const awsRegion = process.env.NEXT_PUBLIC_AWS_REGION;
-const appBaseUrl = process.env.NEXT_PUBLIC_APP_BASE_URL;
+let appBaseUrl = process.env.NEXT_PUBLIC_APP_BASE_URL;
+
+// Normalize appBaseUrl to prevent double "https://" prefix
+if (appBaseUrl) {
+  // Fix for double https:// issue
+  appBaseUrl = appBaseUrl.replace(/^https:\/\/https:\/\//, 'https://');
+}
 
 // Ensure all required variables are present
 if (
@@ -31,7 +37,7 @@ const awsconfig: ResourcesConfig = {
         oauth: {
           domain: cognitoDomain || "",
           // Make sure these match EXACTLY what's in your Cognito App Client settings (variables.tf)
-          scopes: ["openid", "email", "profile"],
+          scopes: ["openid", "email", "profile", "aws.cognito.signin.user.admin"],
           redirectSignIn: appBaseUrl ? [`${appBaseUrl}/auth/callback`] : [], // 로그인 후 홈으로
           redirectSignOut: appBaseUrl ? [`${appBaseUrl}/auth/login`] : [], // 로그아웃 후 로그인 페이지로
           responseType: "code", // Use Authorization Code Grant

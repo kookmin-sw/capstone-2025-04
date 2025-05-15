@@ -30,7 +30,7 @@ export const handler = async (event) => {
   try {
     const { postId } = event.pathParameters || {}; // Use || {} for safety
     const body = JSON.parse(event.body || "{}");
-    const { content } = body;
+    const { content, author } = body;
 
     if (!content) {
       return {
@@ -51,7 +51,7 @@ export const handler = async (event) => {
       };
     }
 
-    const author = claims["cognito:username"];
+    const userId = claims.sub;
     const commentId = uuidv4();
     const createdAt = new Date().toISOString();
 
@@ -67,6 +67,7 @@ export const handler = async (event) => {
               SK: `COMMENT#${commentId}`,
               commentId,
               author,
+              userId,
               content,
               createdAt,
               // Add GSI keys if comments need separate listing/sorting later
@@ -97,6 +98,7 @@ export const handler = async (event) => {
       postId,
       commentId,
       author,
+      userId,
       content,
       createdAt,
     };
