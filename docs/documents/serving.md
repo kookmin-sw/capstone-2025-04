@@ -1,7 +1,7 @@
 ---
 layout: default
 title: "🙋‍♀️ 서비스 가이드"
-nav_order: 2
+nav_order: 3
 has_children: true
 description: "ALPACO 플랫폼 사용 및 운영 가이드"
 permalink: /documents/serving/
@@ -33,4 +33,4 @@ ALPACO 플랫폼의 안정적인 운영 및 관리를 책임지는 분들을 위
   * 사용자 관리 (Amazon Cognito)
   * 애플리케이션 접근 및 도메인 관리 (Route 53, ACM, CloudFront)
   * 프론트엔드 애플리케이션 호스팅 (S3) 관리
-  * 일반적인 문제 해결 팁 및 보안 모범 사례 
+  * 일반적인 문제 해결 팁 및 보안 모범 사례

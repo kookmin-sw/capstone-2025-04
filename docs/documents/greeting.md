@@ -1,7 +1,7 @@
 ---
 layout: default
 title: "👋 안녕하세요!"
-nav_order: 1
+nav_order: 2
 description: "ALPACO 프로젝트 문서에 오신 것을 환영합니다"
 permalink: /documents/greeting/
 ---
