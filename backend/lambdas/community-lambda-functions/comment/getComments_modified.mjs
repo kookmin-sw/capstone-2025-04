@@ -45,7 +45,7 @@ export const handler = async (event) => {
         ":comment_prefix": "COMMENT#", // <--- MODIFIED: Add prefix for filter
       },
       ProjectionExpression: "commentId, content, author, createdAt, SK, userId",
-      ScanIndexForward: false, // Get latest comments first (descending order by createdAt)
+      ScanIndexForward: true, // Get oldest comments first (ascending order by createdAt), so latest appears at the bottom of a list.
       Limit: pageSize,
     };
 
@@ -83,7 +83,8 @@ export const handler = async (event) => {
       }),
     );
 
-    // Comments are now properly sorted by the GSI's createdAt sort key (descending order with ScanIndexForward: false)
+    // Comments are now sorted by createdAt in ascending order.
+    // If displayed directly, oldest will be at the top, newest at the bottom.
 
     // --- SUCCESS RESPONSE ---
     const responseBody = {
