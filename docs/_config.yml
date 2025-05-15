@@ -37,3 +37,5 @@ just_the_docs:
   collections:
     documents:
       name: 문서
+      nav_fold: true
+      nav_order: 2

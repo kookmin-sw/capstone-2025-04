@@ -1,5 +1,5 @@
 ---
-layout: default
+layout: home
 title: "메인"
 nav_order: 1
 has_toc: true
