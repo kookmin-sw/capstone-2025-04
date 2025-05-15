@@ -1,3 +1,10 @@
+---
+layout: default
+title: "👋 안녕하세요!"
+nav_order: 1
+description: "ALPACO 프로젝트 문서에 오신 것을 환영합니다"
+permalink: /documents/greeting/
+---
 # 👋 안녕하세요! ALPACO 프로젝트 문서에 오신 것을 환영합니다
 
 이 문서는 ALPACO 프로젝트의 방대한 문서들을 쉽게 탐색하고 원하는 정보를 빠르게 찾을 수 있도록 도와드리는 안내서입니다. 저희는 ALPACO를 이해하고, 사용하고, 개발하고, 운영하는 데 필요한 모든 정보를 체계적으로 정리해두었습니다.

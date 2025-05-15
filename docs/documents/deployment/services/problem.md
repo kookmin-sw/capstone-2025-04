@@ -1,3 +1,12 @@
+---
+layout: default
+title: "📚 문제 API"
+parent: "🔌 마이크로서비스 API"
+grand_parent: "🧑‍💻 개발 가이드"
+nav_order: 5
+description: "문제 API 가이드"
+permalink: /documents/deployment/services/problem/
+---
 # Problems API 서비스
 
 ## 1. 개요

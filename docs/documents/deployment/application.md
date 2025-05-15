@@ -1,3 +1,12 @@
+---
+layout: default
+title: "🎨 프론트엔드 애플리케이션"
+parent: "🧑‍💻 개발 가이드"
+nav_order: 1
+description: "프론트엔드 애플리케이션 개발 가이드"
+permalink: /documents/deployment/application/
+---
+
 # ALPACO 프론트엔드 애플리케이션
 
 ALPACO (AI Learning PAth COmpanion)는 프로그래밍 및 관련 분야에서 사용자의 학습 여정을 지원하도록 설계된 현대적인 웹 애플리케이션입니다. 이 프론트엔드는 Next.js, TypeScript, Tailwind CSS로 구축되어 반응형 및 대화형 사용자 경험을 제공합니다. 인증을 위한 AWS Cognito, 마이크로서비스 접근을 위한 API Gateway, 호스팅 및 콘텐츠 전송을 위한 S3/CloudFront 등 다양한 백엔드 서비스와 통합됩니다.

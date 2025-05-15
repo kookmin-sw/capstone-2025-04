@@ -1,3 +1,12 @@
+---
+layout: default
+title: "🚀 사용자 매뉴얼"
+parent: "🙋‍♀️ 서비스 가이드"
+nav_order: 1
+description: "ALPACO 플랫폼 사용자 매뉴얼"
+permalink: /documents/serving/howtouser/
+---
+
 # 🚀 ALPACO 사용자 매뉴얼
 
 ![ALPACO Logo](../../assets/alpaco_full_logo.svg)

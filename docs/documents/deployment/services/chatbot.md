@@ -1,3 +1,13 @@
+---
+layout: default
+title: "🤖 AI 챗봇"
+parent: "🔌 마이크로서비스 API"
+grand_parent: "🧑‍💻 개발 가이드"
+nav_order: 2
+description: "AI 챗봇 서비스 API 가이드"
+permalink: /documents/deployment/services/chatbot/
+---
+
 ## AI Chatbot (ALPACO) API 명세서
 
 ### 1. 개요

@@ -1,3 +1,12 @@
+---
+layout: default
+title: "🗣️ 커뮤니티 API"
+parent: "🔌 마이크로서비스 API"
+grand_parent: "🧑‍💻 개발 가이드"
+nav_order: 4
+description: "커뮤니티 API 가이드"
+permalink: /documents/deployment/services/community/
+---
 # 📖 ALPACO 커뮤니티 API: 기능 및 기술 가이드
 
 ## 1. 개요

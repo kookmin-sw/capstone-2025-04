@@ -1,3 +1,13 @@
+---
+layout: default
+title: "🧩 문제 생성 서비스"
+parent: "🔌 마이크로서비스 API"
+grand_parent: "🧑‍💻 개발 가이드"
+nav_order: 1
+description: "문제 생성 서비스 API 가이드"
+permalink: /documents/deployment/services/gen-problem/
+---
+
 # Problem Generator V3 - 기술 매뉴얼
 
 **버전:** 1.0 (capstone-2025-04 코드베이스 기준)
@@ -358,7 +368,7 @@ terraform destroy
 ### 7.3 모의(Mocking) 처리
 
 *   **DynamoDB:** `process.env.MOCK_DYNAMODB`가 `'true'`로 설정된 경우 `local-test.mjs`는 모의 DynamoDB 구현(`mock-dynamodb.mjs`)을 사용할 수 있습니다. 이 모의 구현은 인메모리 시뮬레이션입니다.
-*   **Code Executor Lambda:** `codeExecutor.mjs` 유틸리티는 `CODE_EXECUTOR_LAMBDA_ARN`(`constants.mjs`에서 가져오며 `.env`로 재정의 가능)으로 지정된 실제 AWS Lambda를 호출합니다. AWS 없이 완전히 로컬에서 테스트하려면 이를 모의 처리하거나 로컬 Python 실행 하위 프로세스를 (이전 버전에서처럼) 다시 구현해야 합니다. **현재 Python 코드 실행을 위한 로컬 테스트는 여전히 배포된 Code Executor Lambda에 의존합니다.**
+*   **Code Executor Lambda:** `codeExecutor.mjs` 유틸리티는 `CODE_EXECUTOR_LAMBDA_ARN`(`constants.mjs`에서 가져오며 `.env`로 재정의 가능)으로 지정된 실제 AWS Lambda를 호출합니다. AWS 없이 완전히 로컬에서 테스트하려면 이를 모의 처리하거나 로컬 Python 실행 하위 프로세스를 (이전 버전에서처럼) 다시 구현해야 합니다. **현재 Python 코드 실행을 위한 로컬 테스트는 여전히 배포된 AWS Code Executor Lambda에 의존합니다.**
 
 ---
 

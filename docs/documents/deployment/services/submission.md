@@ -1,3 +1,12 @@
+---
+layout: default
+title: "💾 제출 API"
+parent: "🔌 마이크로서비스 API"
+grand_parent: "🧑‍💻 개발 가이드"
+nav_order: 6
+description: "제출 API 가이드"
+permalink: /documents/deployment/services/submission/
+---
 # Submissions API & 프론트엔드 연동 (capstone-2025-04)
 
 ## 1. 개요

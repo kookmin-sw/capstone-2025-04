@@ -1,3 +1,12 @@
+---
+layout: default
+title: "🛠️ Terraform 인프라"
+parent: "🧑‍💻 개발 가이드"
+nav_order: 3
+description: "Terraform 인프라 가이드"
+permalink: /documents/deployment/InfrastructureAsCode/
+---
+
 # ALPACO 프로젝트: Terraform 인프라 사용 가이드 (한국어)
 
 이 문서는 Terraform을 사용하여 ALPACO 프로젝트의 AWS 인프라를 이해하고, 배포하며, 관리하는 방법에 대한 포괄적인 가이드입니다.

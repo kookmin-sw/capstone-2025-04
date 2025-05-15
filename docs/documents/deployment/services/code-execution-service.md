@@ -1,3 +1,12 @@
+---
+layout: default
+title: "⚖️ 코드 실행 서비스"
+parent: "🔌 마이크로서비스 API"
+grand_parent: "🧑‍💻 개발 가이드"
+nav_order: 3
+description: "코드 실행 및 채점 서비스 API 가이드"
+permalink: /documents/deployment/services/code-execution-service/
+---
 # 코드 실행 서비스 (Code Execution Service)
 
 ## 1. 개요

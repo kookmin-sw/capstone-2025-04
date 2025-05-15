@@ -1,3 +1,12 @@
+---
+layout: default
+title: "⚙️ 운영자 매뉴얼"
+parent: "🙋‍♀️ 서비스 가이드"
+nav_order: 2
+description: "ALPACO 플랫폼 운영자 매뉴얼"
+permalink: /documents/serving/howtoadmin/
+---
+
 ## ⚙️ ALPACO 플랫폼 - 운영 매뉴얼 ⚙️
 
 ---

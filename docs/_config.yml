@@ -5,6 +5,35 @@ description: 캡스톤 디자인 4조 프로젝트 페이지
 search_enabled: false
 logo: "/assets/alpaco_full_logo.svg"
 
+# Enable navigation structure
+nav_external_links_new_tab: true
 
+# Collections for sidebar navigation
+collections:
+  documents:
+    permalink: "/:collection/:path/"
+    output: true
+
+# Set Just the Docs defaults
+defaults:
+  - scope:
+      path: ""
+      type: documents
+    values:
+      layout: default
+
+# Configure the JTD navigation structure
+aux_links:
+  "ALPACO on GitHub":
+    - "//github.com/kookmin-sw/capstone-2025-04"
+
+# Set a navigation order
+nav_sort: case_sensitive
 
 footer_content: "Copyright &copy; 2025 Kookmin Univ. All rights reserved."
+
+# Enable ordered navigation
+just_the_docs:
+  collections:
+    documents:
+      name: 문서
