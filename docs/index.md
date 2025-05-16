@@ -32,7 +32,9 @@ permalink: /
 ## 💡 프로젝트 소개
 
 <p align="center">
-  <img src="assets/key.png" alt="Why ALPACO?" width="100%"/>
+  <a href="https://alpaco.us" target="_blank">
+    <img src="assets/key.png" alt="Why ALPACO?" width="100%"/>
+  </a>
 </p>
 
 ### 이제 문제는 '고르는' 것이 아니라 '생성하는' 것입니다

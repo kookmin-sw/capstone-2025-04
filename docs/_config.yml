@@ -26,6 +26,8 @@ defaults:
 aux_links:
   "ALPACO on GitHub":
     - "//github.com/kookmin-sw/capstone-2025-04"
+  "ALPACO Website":
+    - "//alpaco.us"
 
 # Set a navigation order
 nav_sort: case_sensitive
