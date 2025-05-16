@@ -87,8 +87,8 @@ ALPACO 플랫폼의 안정적인 운영 및 관리를 책임지는 분들을 위
 
 이 문서 사이트 자체의 구성과 사용된 로고에 대한 정보입니다.
 
-* **[📜 사이트 설정 파일 (`_config.yml`)](../_config.yml)**: 이 문서 사이트(Just the Docs 테마)의 제목, 설명, 로고 경로 등 기본 설정을 담고 있습니다.
-* **[🖼️ 로고 에셋 폴더 (`assets/`)](../assets/)**: 문서 및 애플리케이션에 사용되는 로고 SVG 파일(`alpaco_full_logo.svg`, `alpaco_square_logo_blue.svg`)과 기타 이미지(`logo.png` 등)가 저장되어 있습니다.
+* **[📜 사이트 설정 파일 (`_config.yml`)](https://github.com/kookmin-sw/capstone-2025-04/blob/master/docs/_config.yml)**: 이 문서 사이트(Just the Docs 테마)의 제목, 설명, 로고 경로 등 기본 설정을 담고 있습니다.
+* **[🖼️ 로고 에셋 폴더 (`assets/`)](https://github.com/kookmin-sw/capstone-2025-04/tree/master/docs/assets)**: 문서 및 애플리케이션에 사용되는 로고 SVG 파일(`alpaco_full_logo.svg`, `alpaco_square_logo_blue.svg`)과 기타 이미지(`logo.png` 등)가 저장되어 있습니다.
 
 ---
 
