@@ -13,7 +13,11 @@ permalink: /
 <br/><br/>
 
 <p align="center">
-  <img src="assets/logo.png" alt="ALPACO Logo" width="220"/>
+  <a href="https://alpaco.us" target="_blank">
+    <img src="assets/logo.png" alt="ALPACO Logo" width="220"/>
+  </a>
+  <br/>
+  <sub>이미지를 클릭하면 alpaco.us로 이동합니다</sub>
 </p>
 
 <br/><br/>
