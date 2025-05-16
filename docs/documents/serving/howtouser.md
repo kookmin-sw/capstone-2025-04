@@ -51,12 +51,14 @@ ALPACO (AI Learning PAth COmpanion)에 오신 것을 환영합니다! ALPACO는 
 
 ### 1.2. 구글 계정으로 로그인
 
-![로그인 화면](howtouser_assets/1.2.1.png)
-
 1. ALPACO 홈페이지 우측 상단의 **"로그인"** 버튼을 클릭합니다.
 
-![Google 계정 선택](howtouser_assets/1.2.2.png)
+    * ![로그인 화면](howtouser_assets/1.2.1.png)
+
 2. 로그인 페이지로 이동하면 **"Sign In with Google"** 버튼을 클릭합니다.
+
+    * ![Google 계정 선택](howtouser_assets/1.2.2.png)
+
 3. Google 계정 선택 및 로그인 절차를 진행합니다.
     * 최초 로그인 시, ALPACO가 Google 계정의 기본 정보(이메일, 프로필)에 접근하는 것을 허용해야 할 수 있습니다.
 
@@ -64,13 +66,13 @@ ALPACO (AI Learning PAth COmpanion)에 오신 것을 환영합니다! ALPACO는 
 
 Google 계정으로 처음 로그인하면, ALPACO 플랫폼에서 사용할 닉네임을 설정하는 페이지로 이동될 수 있습니다.
 
-![닉네임 설정 화면](howtouser_assets/1.3.1.png)
+    * ![닉네임 설정 화면](howtouser_assets/1.3.1.png)
 
 1. **"사용자 설정"** 페이지가 나타나면, "닉네임" 입력란에 원하는 닉네임을 입력합니다.
     * 닉네임은 다른 사용자에게 표시되며, 최대 20자까지 입력 가능합니다.
 2. **"저장하기"** 버튼을 클릭합니다.
 
-![닉네임 설정 완료](howtouser_assets/1.3.2.png)
+    * ![닉네임 설정 완료](howtouser_assets/1.3.2.png)
 3. 닉네임이 성공적으로 설정되면, 이후 플랫폼 활동 시 해당 닉네임이 사용됩니다.
 
 ---
