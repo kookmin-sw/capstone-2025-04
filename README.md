@@ -3,7 +3,11 @@
 <br/><br/>
 
 <p align="center">
-  <img src="assets/logo.png" alt="ALPACO Logo" width="220"/>
+  <a href="https://alpaco.us" target="_blank">
+    <img src="assets/logo.png" alt="ALPACO Logo" width="220"/>
+  </a>
+  <br/>
+  <sub>이미지를 클릭하면 alpaco.us로 이동합니다</sub>
 </p>
 
 <br/><br/>
@@ -35,11 +39,7 @@
 ## 💡 프로젝트 소개
 
 <p align="center">
-  <a href="https://alpaco.us" target="_blank">
     <img src="assets/key.png" alt="Why ALPACO?" width="100%"/>
-  </a>
-  <br/>
-  <sub>이미지를 클릭하면 alpaco.us로 이동합니다</sub>
 </p>
 
 ### 이제 문제는 '고르는' 것이 아니라 '생성하는' 것입니다
