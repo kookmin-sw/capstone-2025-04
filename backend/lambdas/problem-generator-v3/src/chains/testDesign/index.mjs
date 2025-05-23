@@ -82,11 +82,12 @@ function recoverTruncatedJson(rawText) {
  * @param {string} params.intent_json - JSON string of the intent object.
  * @param {string} params.difficulty - The difficulty level for the problem.
  * @param {string} params.language - The target programming language.
+ * @param {string} [params.feedback_section=""] - Optional feedback from previous validation failures.
  * @returns {Promise<Object>} The designed test specifications.
  */
 export async function runTestDesign(
   llm,
-  { intent, intent_json, difficulty, language },
+  { intent, intent_json, difficulty, language, feedback_section = "" },
 ) {
   // Create the chain
   const chain = createTestDesignChain(llm);
@@ -103,6 +104,7 @@ export async function runTestDesign(
     difficulty,
     language,
     input_schema_description,
+    feedback_section: feedback_section ? `\n\n**Previous Validation Feedback:**\n${feedback_section}\nPlease address this feedback in the new test design.` : "",
     format_instructions: parser.getFormatInstructions(), // <-- Add this back
   };
 

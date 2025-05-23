@@ -24,6 +24,15 @@ import type {
 import ReactMarkdown from "react-markdown"; // Import ReactMarkdown
 import remarkGfm from "remark-gfm"; // Import GFM plugin for tables, etc.
 
+// Progress Step Interface
+interface ProgressStep {
+  id: number;
+  title: string;
+  status: 'pending' | 'running' | 'completed' | 'error';
+  message?: string;
+  logs: string[];
+}
+
 // Problem type presets interface
 interface ProblemTypePreset {
   label: string;
@@ -72,6 +81,30 @@ const GreedyIcon = () => (
     <path d="M12 16l-6-6h12l-6 6z"></path>
   </svg>
 );
+
+// Progress Step Icons
+const CheckIcon = () => (
+  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
+  </svg>
+);
+
+const ErrorIcon = () => (
+  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd"/>
+  </svg>
+);
+
+const PendingIcon = () => (
+  <div className="w-4 h-4 rounded-full border-2 border-gray-300"></div>
+);
+
+const ChevronDownIcon = () => (
+  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+    <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd"/>
+  </svg>
+);
+
 // --- End Icons ---
 
 const difficultyMap: Record<string, ProblemDifficulty> = {
@@ -96,6 +129,25 @@ const GenerateProblemClient = () => {
   const [hasInitiallyLoaded, setHasInitiallyLoaded] = useState(false);
   const [isInputFocused, setIsInputFocused] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Progress Steps State
+  const [progressSteps, setProgressSteps] = useState<ProgressStep[]>([
+    { id: 1, title: "프롬프트 분석 및 의도 추출", status: 'pending', logs: [] },
+    { id: 2, title: "테스트 케이스 설계", status: 'pending', logs: [] },
+    { id: 3, title: "솔루션 코드 생성", status: 'pending', logs: [] },
+    { id: 4, title: "솔루션 실행 및 검증", status: 'pending', logs: [] },
+    { id: 5, title: "테스트 케이스 최종화", status: 'pending', logs: [] },
+    { id: 6, title: "제약 조건 도출", status: 'pending', logs: [] },
+    { id: 7, title: "시작 코드 생성", status: 'pending', logs: [] },
+    { id: 8, title: "문제 검증", status: 'pending', logs: [] },
+    { id: 9, title: "문제 설명 생성", status: 'pending', logs: [] },
+    { id: 10, title: "문제 제목 생성", status: 'pending', logs: [] },
+    { id: 11, title: "번역", status: 'pending', logs: [] },
+    { id: 12, title: "완료", status: 'pending', logs: [] },
+  ]);
+  const [expandedSteps, setExpandedSteps] = useState<Set<number>>(new Set());
+  // Add global log accumulator for showing all logs in current step
+  const [allGenerationLogs, setAllGenerationLogs] = useState<string[]>([]);
 
   const statusAreaRef = useRef<HTMLDivElement>(null);
   // Removed polling-related state and refs
@@ -203,6 +255,16 @@ const GenerateProblemClient = () => {
   // --- Remove Polling Logic ---
   // useEffect(() => { ... }, [problemId]); // This block is removed
 
+  const resetProgressSteps = useCallback(() => {
+    setProgressSteps(prev => prev.map(step => ({
+      ...step,
+      status: 'pending' as const,
+      message: undefined,
+      logs: []
+    })));
+    setAllGenerationLogs([]); // Reset global logs
+  }, []);
+
   // --- Main Generation Logic (Updated for SSE) ---
   const handleGenerate = useCallback(
     async (e?: React.FormEvent, promptOverride?: string) => {
@@ -216,6 +278,7 @@ const GenerateProblemClient = () => {
       setStatusMessages([
         `요청 시작: '${currentPrompt}' (${difficultyMap[difficulty]})`,
       ]);
+      resetProgressSteps(); // Reset progress steps
       textareaRef.current?.blur();
 
       // Get current user session to get user ID
@@ -237,6 +300,23 @@ const GenerateProblemClient = () => {
             onStatus: (status: ProblemStreamStatus) => {
               setStatusMessages((prev) => [...prev, status.message]);
               console.log("Status update:", status);
+              
+              // Add to global logs
+              setAllGenerationLogs(prev => [...prev, `[Step ${status.step}] ${status.message}`]);
+              
+              // Update progress step based on status - use status.step directly
+              const stepNumber = status.step;
+              if (stepNumber !== null && stepNumber !== undefined) {
+                // Mark previous steps as completed
+                setProgressSteps(prev => prev.map(step => {
+                  if (step.id < stepNumber && step.status !== 'completed') {
+                    return { ...step, status: 'completed' };
+                  } else if (step.id === stepNumber) {
+                    return { ...step, status: 'running', message: status.message, logs: [...step.logs, status.message] };
+                  }
+                  return step;
+                }));
+              }
             },
             onResult: (result: ProblemStreamResult) => {
               console.log("Received final result:", result);
@@ -244,6 +324,8 @@ const GenerateProblemClient = () => {
                 setGeneratedProblem(result.payload); // Set the final detailed problem
                 // Optionally add a final success message to status
                 setStatusMessages((prev) => [...prev, "✅ 생성 완료!"]);
+                // Mark all steps as completed
+                setProgressSteps(prev => prev.map(step => ({ ...step, status: 'completed' })));
               } else {
                 console.error(
                   "Received empty or invalid result payload:",
@@ -261,6 +343,13 @@ const GenerateProblemClient = () => {
               setError(error.payload);
               setStatusMessages((prev) => [...prev, `❌ 오류: ${error.payload}`]);
               setIsLoading(false); // Stop loading on error
+              // Mark current step as error
+              setProgressSteps(prev => prev.map(step => {
+                if (step.status === 'running') {
+                  return { ...step, status: 'error', logs: [...step.logs, `❌ 오류: ${error.payload}`] };
+                }
+                return step;
+              }));
             },
             onComplete: () => {
               setIsLoading(false); // Stop loading when stream completes
@@ -304,7 +393,7 @@ const GenerateProblemClient = () => {
         setIsLoading(false);
       }
     },
-    [prompt, isLoading, difficulty] // Dependencies remain the same
+    [prompt, isLoading, difficulty, resetProgressSteps] // Added missing dependencies
   );
 
   // Effect to handle initial prompt from URL (Keep as is)
@@ -439,8 +528,237 @@ const GenerateProblemClient = () => {
             <h3 className="text-lg font-semibold mb-4 text-gray-900">
               생성 상태 및 결과:
             </h3>
-            {/* Status Messages (No change needed) */}
-            {statusMessages.length > 0 && (
+            
+            {/* Progress Steps Display */}
+            {isLoading && (
+              <div className="space-y-6 mb-6">
+                {/* Completed Steps - Small Checkmarks */}
+                {(() => {
+                  const currentStepIndex = progressSteps.findIndex(step => step.status === 'running');
+                  const currentStep = currentStepIndex !== -1 ? progressSteps[currentStepIndex] : null;
+                  const completedSteps = progressSteps.filter(step => step.status === 'completed');
+                  const isExpanded = currentStep ? expandedSteps.has(currentStep.id) : false;
+                  
+                  return (
+                    <>
+                      {/* Completed Steps Indicators */}
+                      {completedSteps.length > 0 && (
+                        <div className="bg-gradient-to-r from-green-50 to-emerald-50 p-4 rounded-xl border border-green-200 shadow-sm">
+                          <div className="flex flex-wrap gap-3 items-center">
+                            <div className="flex items-center space-x-2">
+                              <div className="bg-green-500 text-white rounded-full p-1">
+                                <CheckIcon />
+                              </div>
+                              <span className="text-sm font-semibold text-green-800">완료된 단계</span>
+                              <span className="bg-green-100 text-green-700 px-2 py-1 rounded-full text-xs font-medium">
+                                {completedSteps.length}/12
+                              </span>
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap gap-2 mt-3">
+                            {completedSteps.map((step) => (
+                              <div key={step.id} className="flex items-center space-x-2 bg-white bg-opacity-70 text-green-700 px-3 py-2 rounded-lg text-sm font-medium shadow-sm border border-green-100">
+                                <div className="bg-green-100 text-green-600 rounded-full p-0.5">
+                                  <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
+                                  </svg>
+                                </div>
+                                <span>{step.title}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* Current Active Step - Enhanced Main Box */}
+                      {currentStep && (
+                        <div className="relative overflow-hidden">
+                          <div className="absolute inset-0 bg-gradient-to-r from-blue-400 to-indigo-500 rounded-xl"></div>
+                          <div className="relative bg-white m-0.5 rounded-xl shadow-lg">
+                            <div 
+                              className={`flex items-center justify-between p-6 cursor-pointer hover:bg-gradient-to-r hover:from-blue-50 hover:to-indigo-50 transition-all duration-300 ${
+                                allGenerationLogs.length > 0 ? 'cursor-pointer' : 'cursor-default'
+                              }`}
+                              onClick={() => {
+                                if (allGenerationLogs.length > 0) {
+                                  setExpandedSteps(prev => {
+                                    const newSet = new Set(prev);
+                                    if (newSet.has(currentStep.id)) {
+                                      newSet.delete(currentStep.id);
+                                    } else {
+                                      newSet.add(currentStep.id);
+                                    }
+                                    return newSet;
+                                  });
+                                }
+                              }}
+                            >
+                              <div className="flex items-center space-x-4">
+                                <div className="flex-shrink-0 relative">
+                                  <div className="bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-full p-3 shadow-lg">
+                                    <div className="animate-spin">
+                                      <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                                        <path d="M12,1A11,11,0,1,0,23,12,11,11,0,0,0,12,1Zm0,19a8,8,0,1,1,8-8A8,8,0,0,1,12,20Z" opacity=".25"/>
+                                        <path d="M12,4a8,8,0,0,1,7.89,6.7A1.53,1.53,0,0,0,21.38,12h0a1.5,1.5,0,0,0,1.48-1.75,11,11,0,0,0-21.72,0A1.5,1.5,0,0,0,2.62,12h0a1.53,1.53,0,0,0,1.49-1.3A8,8,0,0,1,12,4Z"/>
+                                      </svg>
+                                    </div>
+                                  </div>
+                                  <div className="absolute -top-1 -right-1 bg-yellow-400 text-yellow-900 rounded-full p-1 animate-pulse">
+                                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                                      <path fillRule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clipRule="evenodd"/>
+                                    </svg>
+                                  </div>
+                                </div>
+                                <div className="flex-grow">
+                                  <h4 className="font-bold text-xl text-gray-800 mb-1">
+                                    {currentStep.title}
+                                  </h4>
+                                  {currentStep.message && (
+                                    <p className="text-gray-600 bg-gray-50 px-3 py-2 rounded-lg text-sm font-medium border-l-4 border-blue-400">
+                                      {currentStep.message}
+                                    </p>
+                                  )}
+                                  <div className="flex items-center space-x-2 mt-3">
+                                    <div className="bg-blue-100 text-blue-700 px-2 py-1 rounded-full text-xs font-medium">
+                                      Step {currentStep.id}/12
+                                    </div>
+                                    <div className="bg-gray-100 text-gray-600 px-2 py-1 rounded-full text-xs">
+                                      진행 중...
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                              {allGenerationLogs.length > 0 && (
+                                <div className="flex-shrink-0 text-blue-600 bg-blue-50 rounded-full p-2 shadow-sm">
+                                  <div className={`transform transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`}>
+                                    <ChevronDownIcon />
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                            
+                            {/* Expandable Logs for All Progress */}
+                            {isExpanded && allGenerationLogs.length > 0 && (
+                              <div className="border-t border-gray-200 bg-gradient-to-r from-gray-50 to-blue-50">
+                                <div className="p-6">
+                                  <div className="flex items-center space-x-2 mb-4">
+                                    <div className="bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-lg p-2">
+                                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fillRule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd"/>
+                                      </svg>
+                                    </div>
+                                    <h5 className="font-bold text-gray-800">전체 진행 로그</h5>
+                                    <span className="bg-blue-100 text-blue-700 px-2 py-1 rounded-full text-xs font-medium">
+                                      {allGenerationLogs.length} 개 항목
+                                    </span>
+                                  </div>
+                                  <div className="space-y-3 max-h-80 overflow-y-auto">
+                                    {allGenerationLogs.map((log, index) => (
+                                      <div key={index} className="bg-white p-4 rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-shadow duration-200">
+                                        <div className="flex items-start space-x-3">
+                                          <div className="bg-gray-100 text-gray-600 rounded-full p-1 mt-0.5">
+                                            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                                              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd"/>
+                                            </svg>
+                                          </div>
+                                          <div className="flex-grow">
+                                            <p className="text-sm font-mono text-gray-700 leading-relaxed">
+                                              {log}
+                                            </p>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* Error Step Display - Enhanced */}
+                      {(() => {
+                        const errorStep = progressSteps.find(step => step.status === 'error');
+                        if (errorStep) {
+                          return (
+                            <div className="relative overflow-hidden">
+                              <div className="absolute inset-0 bg-gradient-to-r from-red-400 to-pink-500 rounded-xl"></div>
+                              <div className="relative bg-white m-0.5 rounded-xl shadow-lg">
+                                <div className="flex items-center justify-between p-6">
+                                  <div className="flex items-center space-x-4">
+                                    <div className="flex-shrink-0">
+                                      <div className="bg-gradient-to-r from-red-500 to-pink-600 text-white rounded-full p-3 shadow-lg">
+                                        <ErrorIcon />
+                                      </div>
+                                    </div>
+                                    <div className="flex-grow">
+                                      <h4 className="font-bold text-xl text-red-800 mb-1">
+                                        {errorStep.title}
+                                      </h4>
+                                      {errorStep.message && (
+                                        <p className="text-red-700 bg-red-50 px-3 py-2 rounded-lg text-sm font-medium border-l-4 border-red-400">
+                                          {errorStep.message}
+                                        </p>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                                {errorStep.logs.length > 0 && (
+                                  <div className="border-t border-red-200 bg-red-25 p-6">
+                                    <div className="space-y-3">
+                                      <h5 className="font-bold text-red-800 mb-3">오류 로그:</h5>
+                                      {errorStep.logs.map((log, index) => (
+                                        <div key={index} className="bg-white p-3 rounded-lg border border-red-200 shadow-sm">
+                                          <p className="text-sm font-mono text-red-700">{log}</p>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
+                      
+                      {/* Fallback - Enhanced Next Pending Step */}
+                      {!currentStep && !progressSteps.find(step => step.status === 'error') && (
+                        (() => {
+                          const nextPendingStep = progressSteps.find(step => step.status === 'pending');
+                          if (nextPendingStep) {
+                            return (
+                              <div className="bg-gray-50 rounded-xl border-2 border-dashed border-gray-300 p-6">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center space-x-4">
+                                    <div className="flex-shrink-0">
+                                      <div className="bg-gray-200 text-gray-500 rounded-full p-3">
+                                        <PendingIcon />
+                                      </div>
+                                    </div>
+                                    <div className="flex-grow">
+                                      <h4 className="font-semibold text-gray-600 mb-1">
+                                        {nextPendingStep.title}
+                                      </h4>
+                                      <p className="text-gray-500 text-sm">곧 시작됩니다...</p>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          }
+                          return null;
+                        })()
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
+            )}
+            
+            {/* Status Messages (Fallback for non-loading states) */}
+            {(!isLoading && statusMessages.length > 0) && (
               <div
                 ref={statusAreaRef}
                 className="text-sm text-gray-600 bg-gray-50 p-3 rounded-md border border-gray-200 max-h-[20vh] overflow-y-auto mb-4"
@@ -453,6 +771,7 @@ const GenerateProblemClient = () => {
                 ))}
               </div>
             )}
+            
             {/* Error Display (No change needed) */}
             {error && (
               <div className="mb-4 p-3 bg-red-100 text-red-700 border border-red-300 rounded-md text-sm">

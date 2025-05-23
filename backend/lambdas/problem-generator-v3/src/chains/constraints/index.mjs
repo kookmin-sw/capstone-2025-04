@@ -25,6 +25,7 @@ export function createConstraintsChain(llm) {
  * @param {string} params.difficulty - The difficulty level for the problem.
  * @param {string} [params.input_schema_description=""] - Description of input structure
  * @param {string} [params.output_format_description=""] - Description of output format from intent analysis
+ * @param {string} [params.feedback_section=""] - Optional feedback from previous validation failures.
  * @returns {Promise<Object>} The derived constraints.
  */
 export async function runConstraintsDerivation(llm, { 
@@ -33,7 +34,8 @@ export async function runConstraintsDerivation(llm, {
   language, 
   difficulty,
   input_schema_description = "",
-  output_format_description = "Not specified, determine from solution and tests."
+  output_format_description = "Not specified, determine from solution and tests.",
+  feedback_section = ""
 }) {
   const chain = createConstraintsChain(llm);
   const parser = StructuredOutputParser.fromZodSchema(ConstraintsOutputSchema);
@@ -45,6 +47,7 @@ export async function runConstraintsDerivation(llm, {
     difficulty,
     input_schema_description,
     output_format_description,
+    feedback_section: feedback_section ? `\n\n**Previous Validation Feedback:**\n${feedback_section}\nPlease address this feedback in the constraints derivation.` : "",
     allowed_judge_types_string: ALLOWED_JUDGE_TYPES.join(', '),
     format_instructions: parser.getFormatInstructions(),
   };

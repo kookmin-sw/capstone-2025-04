@@ -207,7 +207,7 @@ async function promptAndRunTest() {
 // 테스트를 위한 샘플 이벤트
 const sampleEvent = {
   body: {
-    prompt: "문자열 처리 문제를 생성해 주세요.",
+    prompt: "DFS 문제를 생성해 주세요.",
     difficulty: "Medium",
     creatorId: "test-user",
     author: "Local Tester"

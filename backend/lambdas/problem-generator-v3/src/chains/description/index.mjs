@@ -39,6 +39,7 @@ export function createStructuredDescriptionChain(llm) {
  * @param {string} [params.input_schema_description=""] - Description of input structure
  * @param {string} [params.epsilon_value_from_constraints="not applicable"] - Epsilon value from constraints if applicable.
  * @param {string} [params.tie_breaking_rule_from_intent=""] - Tie-breaking rule from intent analysis, if defined.
+ * @param {Object} [params.creative_context=null] - Creative context from intent analysis for thematic integration.
  * @returns {Promise<string>} The generated problem description.
  */
 export async function runDescriptionGeneration(llm, { 
@@ -49,7 +50,8 @@ export async function runDescriptionGeneration(llm, {
   language,
   input_schema_description = "",
   epsilon_value_from_constraints = "not applicable", // 기본값 설정
-  tie_breaking_rule_from_intent = "" // Add tie-breaking rule parameter
+  tie_breaking_rule_from_intent = "", // Add tie-breaking rule parameter
+  creative_context = null // Add creative context parameter
 }) {
   const chain = createDescriptionChain(llm);
   
@@ -78,7 +80,8 @@ export async function runDescriptionGeneration(llm, {
     language,
     input_schema_description: inputSchema,
     epsilon_value_from_constraints, // 프롬프트에 epsilon 값 전달
-    tie_breaking_rule_from_intent // Pass tie-breaking rule to prompt
+    tie_breaking_rule_from_intent, // Pass tie-breaking rule to prompt
+    creative_context: creative_context ? JSON.stringify(creative_context) : "No creative context provided" // Pass creative context
   };
   
   const output = await chain.invoke(input);
@@ -98,6 +101,7 @@ export async function runDescriptionGeneration(llm, {
  * @param {string} [params.input_schema_description=""] - Description of input structure
  * @param {string} [params.epsilon_value_from_constraints="not applicable"] - Epsilon value from constraints if applicable.
  * @param {string} [params.tie_breaking_rule_from_intent=""] - Tie-breaking rule from intent analysis, if defined.
+ * @param {Object} [params.creative_context=null] - Creative context from intent analysis for thematic integration.
  * @returns {Promise<string>} The generated problem description.
  */
 export async function runStructuredDescriptionGeneration(llm, { 
@@ -108,7 +112,8 @@ export async function runStructuredDescriptionGeneration(llm, {
   language,
   input_schema_description = "",
   epsilon_value_from_constraints = "not applicable", // 기본값 설정
-  tie_breaking_rule_from_intent = "" // Add tie-breaking rule parameter
+  tie_breaking_rule_from_intent = "", // Add tie-breaking rule parameter
+  creative_context = null // Add creative context parameter
 }) {
   const chain = createStructuredDescriptionChain(llm);
   
@@ -137,7 +142,8 @@ export async function runStructuredDescriptionGeneration(llm, {
     language,
     input_schema_description: inputSchema,
     epsilon_value_from_constraints, // 프롬프트에 epsilon 값 전달
-    tie_breaking_rule_from_intent // Pass tie-breaking rule to prompt
+    tie_breaking_rule_from_intent, // Pass tie-breaking rule to prompt
+    creative_context: creative_context ? JSON.stringify(creative_context) : "No creative context provided" // Pass creative context
   };
   
   // No need for manual cleaning with structured output

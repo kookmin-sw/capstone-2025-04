@@ -14,6 +14,10 @@ Return a JSON with the following structure:
 - "goal": A one-line summary of the core logic that the problem is trying to solve.
 - "key_constraints": Array of strings describing key input/output constraints.
 - "concepts": Array of strings listing algorithms or data structures keywords (e.g., Greedy, Sorting, Prefix Sum).
+- "creative_context": (Optional) An object containing creative and thematic elements from the user's request:
+  - "theme_elements": Array of specific thematic elements mentioned (e.g., ["strawberries"], ["space ships", "aliens"], ["medieval knights"])
+  - "narrative_style": String describing the desired narrative style (e.g., "story-based", "game scenario", "real-world application")  
+  - "should_integrate_theme": Boolean indicating whether these theme elements should be creatively integrated into the problem narrative (true if user mentions specific themes, false for purely technical requests)
 - "input_schema_description": A clear textual description of the expected input object/structure and the types of its components. Be specific about property names, data types, ranges, and meanings.
 - "output_format_description": A clear textual description of the expected output format. **Crucially, this output format MUST be verifiable using one of the following simple judging methods: {allowed_judge_types_string}. If multiple valid outputs could exist for a single input (e.g., multiple longest palindromes of the same length, different items forming a valid set), YOU MUST specify a deterministic tie-breaking rule. This rule is ESSENTIAL if the \`judge_type\` is intended to be 'equal'. Examples of tie-breaking rules:
   - "If multiple such substrings exist, output the one that appears earliest in the original string."
@@ -41,12 +45,36 @@ For example:
   "goal": "Find the shortest path in a graph, allowing cycles",
   "key_constraints": ["Graph edges have positive weights", "Output the path as a list of node names"],
   "concepts": ["Graph", "Shortest Path", "Dijkstra", "BFS"],
+  "creative_context": {{
+    "theme_elements": ["medieval castles", "knights"],
+    "narrative_style": "fantasy adventure story",
+    "should_integrate_theme": true
+  }},
   "input_schema_description": "Input is an object with 'nodes' (list of strings representing node names), 'edges' (list of lists, where each inner list is [source_node_str, target_node_str, weight_int]), 'start_node' (string), and 'end_node' (string).",
   "output_format_description": "Output is a list of strings representing the node names in the shortest path. Order matters. If multiple shortest paths of equal length exist, output the path that is lexicographically smallest.",
   "tie_breaking_rule": "If multiple shortest paths exist with the same length, output the lexicographically smallest path.",
   "input_schema_details": {{
     "allows_duplicates_in_collections": false,
     "can_revisit_nodes_in_paths": true
+  }}
+}}
+
+Example for a creative request like "딸기가 등장하는 피보나치 문제":
+{{
+  "goal": "Calculate the Nth term of a Fibonacci sequence",
+  "key_constraints": ["Input is a non-negative integer N", "Output is the Nth Fibonacci number"],
+  "concepts": ["Fibonacci", "Dynamic Programming", "Iteration"],
+  "creative_context": {{
+    "theme_elements": ["strawberries"],
+    "narrative_style": "story-based with counting theme",
+    "should_integrate_theme": true
+  }},
+  "input_schema_description": "A single integer N representing the position in the sequence (N >= 0).",
+  "output_format_description": "A single integer representing the Nth Fibonacci number.",
+  "tie_breaking_rule": "Not applicable, as the Nth Fibonacci term is unique for a given N.",
+  "input_schema_details": {{
+    "allows_duplicates_in_collections": false,
+    "can_revisit_nodes_in_paths": false
   }}
 }}
 

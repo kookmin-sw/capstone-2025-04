@@ -20,6 +20,7 @@ Output Format Description from Intent Analysis:
 
 Test Specifications:
 {test_specs}
+{feedback_section}
 
 Derive the following constraints, considering the {difficulty} level:
 1.  **Time Limit:** Estimate a reasonable time limit (e.g., 1 or 2 seconds) based on typical competitive programming platform standards and the code's complexity.

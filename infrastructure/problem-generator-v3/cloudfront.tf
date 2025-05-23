@@ -16,10 +16,12 @@ resource "aws_cloudfront_distribution" "problem_generator_v3" {
     origin_id   = "problem-generator-v3-lambda-url" # Updated to v3
 
     custom_origin_config {
-      http_port              = 80 # Not actually used with https_only
-      https_port             = 443
-      origin_protocol_policy = "https-only" # Lambda Function URLs are HTTPS only
-      origin_ssl_protocols   = ["TLSv1.2"]  # Use secure TLS protocols
+      http_port                = 80 # Not actually used with https_only
+      https_port               = 443
+      origin_protocol_policy   = "https-only" # Lambda Function URLs are HTTPS only
+      origin_ssl_protocols     = ["TLSv1.2"]  # Use secure TLS protocols
+      origin_read_timeout      = 60           # Maximum timeout for reading response from origin (60 seconds max)
+      origin_keepalive_timeout = 60           # Maximum timeout for keep-alive connections (60 seconds max)
     }
 
     origin_access_control_id = aws_cloudfront_origin_access_control.problem_generator_v3_oac.id

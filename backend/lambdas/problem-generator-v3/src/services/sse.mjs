@@ -90,3 +90,30 @@ export function sendError(stream, error) {
 export function sendResult(stream, result) {
   sendSse(stream, "result", { payload: result });
 }
+
+/**
+ * Sends a heartbeat/keep-alive message to maintain SSE connection.
+ *
+ * @param {awslambda.HttpResponseStream} stream - The response stream.
+ */
+export function sendHeartbeat(stream) {
+  sendSse(stream, "heartbeat", { timestamp: new Date().toISOString() });
+}
+
+/**
+ * Creates a heartbeat interval to maintain SSE connection during long operations.
+ * Call clearInterval on the returned value to stop the heartbeat.
+ *
+ * @param {awslambda.HttpResponseStream} stream - The response stream.
+ * @param {number} intervalMs - Heartbeat interval in milliseconds (default: 30000ms = 30s).
+ * @returns {NodeJS.Timeout} Interval ID that can be cleared.
+ */
+export function startHeartbeat(stream, intervalMs = 30000) {
+  return setInterval(() => {
+    try {
+      sendHeartbeat(stream);
+    } catch (error) {
+      console.warn("Failed to send heartbeat:", error);
+    }
+  }, intervalMs);
+}
