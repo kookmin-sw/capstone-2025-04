@@ -22,6 +22,12 @@ permalink: /
 
 <br/><br/>
 
+<p align="center">
+  <img src="assets/alpaco_print.png" alt="ALPACO Poster" width="400"/>
+</p>
+
+<br/><br/>
+
 ---
 
 ## 🔗 목차
