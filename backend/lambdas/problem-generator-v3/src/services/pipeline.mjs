@@ -20,7 +20,8 @@ import {
   initializeSseStream, 
   sendStatus, 
   sendError, 
-  sendResult 
+  sendResult,
+  startHeartbeat
 } from "./sse.mjs";
 import {
   runIntentAnalysis,
@@ -48,6 +49,9 @@ import { finalizeTestCasesWithEdgeCases, selectExampleTestCases } from "./testCa
 export async function pipeline(event, responseStream) {
   // Initialize SSE stream
   const stream = initializeSseStream(responseStream);
+  
+  // Start heartbeat to maintain SSE connection during long operations
+  const heartbeatInterval = startHeartbeat(stream, 25000); // Send heartbeat every 25 seconds
   
   // Initialize LLM at runtime - use getters to ensure we get the latest values
   let llm;
@@ -1167,6 +1171,11 @@ Please fix the issues and ensure the solution handles all edge cases in the test
     
     sendError(stream, error.message);
   } finally {
+    // Clear heartbeat interval
+    if (heartbeatInterval) {
+      clearInterval(heartbeatInterval);
+    }
+    
     // Ensure the stream is closed
     stream.end();
   }
@@ -1401,10 +1410,18 @@ function validateTestSpecsQuality(testSpecs, difficulty) {
     }
     
     const rationale = testCase.rationale?.toLowerCase() || "";
-    if (rationale.includes("edge") || rationale.includes("empty") || rationale.includes("boundary")) {
+    
+    // Check for edge cases
+    if (rationale.includes("edge") || rationale.includes("empty") || rationale.includes("boundary") ||
+        rationale.includes("single") || rationale.includes("minimal") || rationale.includes("extreme")) {
       hasEdgeCase = true;
     }
-    if (rationale.includes("typical") || rationale.includes("normal") || rationale.includes("standard")) {
+    
+    // Check for typical/normal cases with expanded keywords
+    if (rationale.includes("typical") || rationale.includes("normal") || rationale.includes("standard") ||
+        rationale.includes("simple") || rationale.includes("basic") || rationale.includes("common") ||
+        rationale.includes("case with") || rationale.includes("string with") || rationale.includes("clear") ||
+        rationale.includes("obvious") || rationale.includes("multiple") || rationale.includes("general")) {
       hasTypicalCase = true;
     }
   }

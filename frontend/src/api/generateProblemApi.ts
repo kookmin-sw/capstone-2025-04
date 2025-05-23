@@ -260,6 +260,10 @@ export const streamProblemGeneration = async (
               case "error":
                 onError(parsedData as ProblemStreamError);
                 break;
+              case "heartbeat":
+                // Heartbeat to maintain connection - just log it
+                console.log("Received heartbeat:", parsedData);
+                break;
               default:
                 console.warn("Received unknown SSE event type:", eventType);
             }

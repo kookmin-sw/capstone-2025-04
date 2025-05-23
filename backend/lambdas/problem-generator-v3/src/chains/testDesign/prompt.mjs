@@ -36,10 +36,13 @@ Guidelines:
 7. CRITICAL: All input values MUST follow the input schema defined above. Ensure your test cases match the expected structure exactly.
 8. When creating large test cases with many elements, ALWAYS write out each element explicitly in valid JSON syntax (no shortcuts, no ellipses, no code).
 9. **CRITICAL: All generated input values MUST STRICTLY adhere to any constraints defined in the \`input_schema_description\` and any \`key_constraints\` found in the \`INTENT_JSON\`. DO NOT generate inputs that violate these constraints (e.g., string length, number ranges). If the intent mentions a maximum string length of 1000, do not create a test case with a 1500-character string.**
+10. **AVOID REPETITION: Each test case must be UNIQUE. Do not create duplicate or nearly identical test cases. Each input should test a DIFFERENT scenario.**
+11. **JSON SAFETY: Ensure all string inputs use proper JSON escaping. Use double quotes for all property names and string values. Avoid unescaped special characters.**
+12. **CONCISE OUTPUT: Generate exactly 8-12 test cases. Do not exceed this limit. Stop generation once you have sufficient diverse test cases.**
 
 Target difficulty level: {difficulty}
 
-Return JSON array:
+Return JSON array (EXACTLY 8-12 items, NO MORE):
 [
   {{
     "input": any,          // Input value (must be valid JSON, not code expressions)
@@ -64,7 +67,12 @@ Few-shot examples (for a graph problem):
 3. WRONG: {{ "input": {{"n": 100, "edges": [[i, i+1] for i in range(99)]}}, "rationale": "Long path" }} // DON'T DO THIS - not valid JSON
 4. RIGHT: {{ "input": {{"n": 5, "edges": [[0,1],[1,2],[2,3],[3,4]]}}, "rationale": "Graph forming a single path" }}
 
-**CRITICAL:** Ensure the entire output is a single, complete, valid JSON array starting with \`[\` and ending correctly with \`]\`. Do not truncate the output.
+**CRITICAL:** 
+- Ensure the entire output is a single, complete, valid JSON array starting with \`[\` and ending correctly with \`]\`.
+- Generate EXACTLY 8-12 unique test cases, then STOP.
+- Do not truncate the output.
+- Do not repeat test cases.
+- Ensure proper JSON formatting with double quotes for all strings.
 
 {format_instructions}
 
