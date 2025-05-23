@@ -13,6 +13,7 @@ INTENT_JSON:
 {intent_json}
 
 Input Schema: {input_schema_description}
+{feedback_section}
 
 Guidelines:
 1. Create 8-12 diverse test cases covering: empty inputs, single elements, typical cases, sorted (ascending/descending), 

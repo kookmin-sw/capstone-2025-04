@@ -27,6 +27,7 @@ Constraints (including judge_type and epsilon if applicable):
 {constraints_json}
 
 Difficulty Level: {difficulty}
+{validation_feedback}
 
 Review Checklist:
 1. **Consistency:** Does the \`validatedSolutionCode\` correctly implement the \`goal\` described in the \`intent_json\`? Does it seem appropriate for the \`difficulty\` level? Are edge cases (including those involving duplicates, if specified in Input Schema) handled properly?
@@ -52,6 +53,7 @@ Review Checklist:
    - If using "float_eps" judge_type, is the epsilon value reasonable for the problem domain?
 
 Provide a brief but comprehensive assessment based on the checklist above.
+Focus particularly on any issues mentioned in the previous validation feedback if provided.
 
 {format_instructions}
 

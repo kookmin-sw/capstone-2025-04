@@ -9,6 +9,7 @@ Generate a user-facing problem description for a coding challenge based on the p
 
 Problem Intent: {analyzed_intent}
 Input Schema: {input_schema_description}
+Creative Context: {creative_context}
 Constraints Details (JSON):
 {constraints}
 Test Specification Examples (use for Examples section, format appropriately):
@@ -18,6 +19,11 @@ Tie-Breaking Rule (if applicable): {tie_breaking_rule_from_intent}
 
 Instructions:
 - Write a clear and engaging **Problem Narrative** based on the intent. **DO NOT include a main title heading (like '### Problem Title') at the beginning of the narrative.**
+- **CREATIVE INTEGRATION**: If Creative Context is provided and should_integrate_theme is true, creatively weave the theme elements into the problem narrative. Make the story engaging while keeping the core algorithmic challenge clear. For example:
+  - If theme_elements includes "strawberries": Create a scenario involving counting, collecting, or organizing strawberries
+  - If theme_elements includes "space": Create a space exploration or planetary scenario
+  - If theme_elements includes "game": Frame it as a game mechanic or scoring system
+  - Ensure the narrative style matches the specified narrative_style (e.g., "story-based", "real-world scenario")
 - Clearly define the **Input Format** section based on the Input Schema provided. **If inputs can contain duplicate values (e.g., in lists/arrays) or repeated structures (e.g., paths in graphs), explicitly state this.**
 - Clearly define the **Output Format** section based PRECISELY on the examples provided and the "judge_type" from the Constraints Details. Describe the output format EXACTLY as demonstrated in the Examples section. Pay close attention to:
   - Data types (numbers, strings, objects, arrays)
@@ -38,4 +44,4 @@ Instructions:
 
 **CRITICAL:** Output **ONLY** the final problem description content as a single block of plain text, starting directly with the narrative or relevant sections. Use markdown for formatting (like \`### Section Title\` for subsections like Input/Output/Constraints/Examples, \`\`\`code\`\`\`, or bullet points \`-\`). The entire output should be the description text ready for display, **WITHOUT a main title heading**.
 Problem Description:`
-); 
+);

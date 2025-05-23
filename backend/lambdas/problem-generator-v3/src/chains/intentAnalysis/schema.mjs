@@ -14,6 +14,22 @@ export const IntentOutputSchema = z
     concepts: z
       .array(z.string())
       .describe("keywords for algorithms/data structures needed: Greedy, Sorting, Prefix Sum, etc."),
+    creative_context: z
+      .object({
+        theme_elements: z
+          .array(z.string())
+          .optional()
+          .describe("Creative elements mentioned by user (e.g., 'strawberries', 'game characters', 'space theme')"),
+        narrative_style: z
+          .string()
+          .optional()
+          .describe("Desired narrative style or context (e.g., 'fantasy story', 'real-world scenario', 'game mechanics')"),
+        should_integrate_theme: z
+          .boolean()
+          .describe("Whether the theme elements should be integrated into the problem narrative")
+      })
+      .optional()
+      .describe("Creative and thematic context extracted from user's request"),
     input_schema_description: z
       .string()
       .describe("Clear description of the expected input object/structure and the types of its components (e.g., 'Input is an object with keys: nodes (int), edges (list of lists [u, v, w]), source (int)')."),

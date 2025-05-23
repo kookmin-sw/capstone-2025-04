@@ -161,6 +161,12 @@ export async function pipeline(event, responseStream) {
           throw new Error("Intent analysis produced invalid output (missing goal)");
         }
         
+        // Validate intent quality
+        const intentValidation = validateIntentQuality(intent);
+        if (!intentValidation.isValid) {
+          throw new Error(`Intent quality issues: ${intentValidation.issues.join(', ')}`);
+        }
+        
         await updateProblemStatus(problemId, {
           generationStatus: `step1_complete_attempt_${attempt}`,
           intent: intentJson,
@@ -207,11 +213,23 @@ export async function pipeline(event, responseStream) {
       sendStatus(stream, 2, `Designing test case inputs based on intent...${attemptMsg}`);
       
       try {
+        // Prepare feedback from previous failed attempts
+        let feedback = "";
+        if (attempt > 0) {
+          feedback = `Previous test design attempts failed. Please improve the test case design by:
+- Ensuring better coverage of edge cases
+- Including more diverse input scenarios
+- Following the input schema more precisely
+- Adding test cases that better match the difficulty level
+- Ensuring all test inputs are valid JSON literals`;
+        }
+        
         const result = await runTestDesign(llm, {
           intent,
           intent_json: intentJson,
           difficulty,
-          language: DEFAULT_LANGUAGE
+          language: DEFAULT_LANGUAGE,
+          feedback_section: feedback
         });
         
         testSpecs = result.testSpecs;
@@ -219,6 +237,12 @@ export async function pipeline(event, responseStream) {
         
         if (!testSpecs || testSpecs.length === 0) {
           throw new Error("Test design produced empty or invalid test specifications");
+        }
+        
+        // Validate test specs quality
+        const testValidation = validateTestSpecsQuality(testSpecs, difficulty);
+        if (!testValidation.isValid) {
+          throw new Error(`Test specs quality issues: ${testValidation.issues.join(', ')}`);
         }
         
         await updateProblemStatus(problemId, {
@@ -267,8 +291,15 @@ export async function pipeline(event, responseStream) {
       sendStatus(stream, 3, `Generating solution code based on intent and test designs...${attemptMsg}`);
       
       try {
-        // Prepare any feedback from a previous failed attempt
-        const feedback = attempt > 0 && solutionCode ? `Previous solution had issues. Try again with a different approach.` : "";
+        // Prepare feedback from previous failed attempts
+        let feedback = "";
+        if (attempt > 0) {
+          feedback = `Previous solution generation attempts failed. Please try a different approach or algorithm. Consider:
+- Different data structures or algorithms
+- Better handling of edge cases
+- More efficient implementation
+- Clearer variable naming and logic structure`;
+        }
         
         // Get tie-breaking rule from intent if it exists
         const tieBreakingRule = intent.tie_breaking_rule || "";
@@ -284,6 +315,12 @@ export async function pipeline(event, responseStream) {
         
         if (!solutionCode || solutionCode.trim() === '') {
           throw new Error("Generated solution code is empty or invalid");
+        }
+        
+        // Validate solution code quality
+        const solutionValidation = validateSolutionCodeQuality(solutionCode, DEFAULT_LANGUAGE);
+        if (!solutionValidation.isValid) {
+          throw new Error(`Solution code quality issues: ${solutionValidation.issues.join(', ')}`);
         }
         
         await updateProblemStatus(problemId, {
@@ -622,12 +659,24 @@ Please fix the issues and ensure the solution handles all edge cases in the test
       sendStatus(stream, 6, `Deriving problem constraints (including judge_type)...${attemptMsg}`);
       
       try {
+        // Prepare feedback from previous failed attempts
+        let feedback = "";
+        if (attempt > 0) {
+          feedback = `Previous constraints derivation attempts failed. Please improve by:
+- Ensuring the judge_type is appropriate for the problem output format
+- Setting realistic time and memory limits for the difficulty level
+- Deriving input constraints that match the test cases
+- Providing proper epsilon value if using float_eps judge type
+- Ensuring all constraints are consistent with the solution and tests`;
+        }
+        
         const result = await runConstraintsDerivation(llm, {
           solution_code: validatedSolutionCode,
           test_specs: finalTestCasesJson, // Use finalized test cases instead of original specs
           difficulty,
           input_schema_description: intent.input_schema_description, // Add input schema description
-          output_format_description: intent.output_format_description // Pass the description
+          output_format_description: intent.output_format_description, // Pass the description
+          feedback_section: feedback
         });
         
         constraints = result.constraints;
@@ -732,6 +781,7 @@ Please fix the issues and ensure the solution handles all edge cases in the test
     // --- Step 7: LLM-Based Validation (with Retry) ---
     let validationResult = null;
     let validationSuccess = false;
+    let validationFeedback = null;
     
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       const isRetry = attempt > 0;
@@ -746,11 +796,60 @@ Please fix the issues and ensure the solution handles all edge cases in the test
           test_cases_json: finalTestCasesJson,
           constraints_json: constraintsJson, // Pass full constraints for judge_type check
           difficulty,
-          input_schema_description: intent.input_schema_description // Add input schema description
+          input_schema_description: intent.input_schema_description, // Add input schema description
+          validation_feedback: validationFeedback // Include previous validation feedback
         });
         
         if (!validationResult || !validationResult.status) {
           throw new Error("Validation returned invalid or incomplete result");
+        }
+
+        // Check if validation failed
+        if (validationResult.status === "Fail") {
+          validationFeedback = validationResult.details;
+          const failureMessage = `Validation failed: ${validationResult.details}`;
+          
+          await updateProblemStatus(problemId, {
+            generationStatus: `step7_failed_attempt_${attempt}`,
+            validationDetails: JSON.stringify(validationResult),
+            validationError: failureMessage
+          });
+          
+          if (attempt === MAX_RETRIES) {
+            // Exhausted all retries for validation
+            const errorMessage = `Problem validation failed after ${MAX_RETRIES + 1} attempts. Final validation error: ${validationResult.details}`;
+            sendError(stream, errorMessage);
+            throw new Error(errorMessage);
+          }
+          
+          sendStatus(stream, 7, `⚠️ Validation failed: ${validationResult.details.substring(0, 100)}... Regenerating components (${attempt + 1}/${MAX_RETRIES})...`);
+          
+          // Regenerate based on validation feedback
+          const regenerationResult = await regenerateBasedOnValidationFeedback(
+            stream, llm, problemId, validationFeedback, 
+            intent, testSpecs, testSpecsJson, validatedSolutionCode,
+            DEFAULT_LANGUAGE, attempt
+          );
+          
+          // Update current variables with regenerated components
+          if (regenerationResult.newSolutionCode) {
+            validatedSolutionCode = regenerationResult.newSolutionCode;
+          }
+          if (regenerationResult.newTestSpecs) {
+            testSpecs = regenerationResult.newTestSpecs;
+            testSpecsJson = regenerationResult.newTestSpecsJson;
+          }
+          if (regenerationResult.newFinalTestCases) {
+            finalTestCases = regenerationResult.newFinalTestCases;
+            finalTestCasesJson = regenerationResult.newFinalTestCasesJson;
+          }
+          if (regenerationResult.newConstraints) {
+            constraints = regenerationResult.newConstraints;
+            constraintsJson = regenerationResult.newConstraintsJson;
+          }
+          
+          // Continue to next validation attempt
+          continue;
         }
         
         await updateProblemStatus(problemId, {
@@ -758,8 +857,9 @@ Please fix the issues and ensure the solution handles all edge cases in the test
           validationDetails: JSON.stringify(validationResult),
         });
         
-        sendStatus(stream, 7, `✅ Validation complete: ${validationResult.status}${attemptMsg}`);
+        sendStatus(stream, 7, `✅ Validation passed: ${validationResult.status}${attemptMsg}`);
         validationSuccess = true;
+        validationFeedback = null; // Clear feedback on success
         break; // Exit retry loop on success
         
       } catch (error) {
@@ -771,29 +871,21 @@ Please fix the issues and ensure the solution handles all edge cases in the test
         });
         
         if (attempt === MAX_RETRIES) {
-          // Exhausted all retries but we can fallback for validation
-          console.warn("Validation failed after all attempts. Using fallback validation result.");
-          sendStatus(stream, 7, `⚠️ Validation failed after ${MAX_RETRIES + 1} attempts. Continuing with fallback validation.`);
-          
-          // Fallback validation result
-          validationResult = {
-            status: "Pass",
-            details: "Validation skipped due to errors but proceeding as solution was execution-verified."
-          };
-          
-          await updateProblemStatus(problemId, {
-            generationStatus: "step7_fallback",
-            validationDetails: JSON.stringify(validationResult),
-            validationError: error.message
-          });
-          break; // Exit retry loop with fallback
+          // Exhausted all retries - validation is critical, don't fallback
+          const errorMessage = `Validation system failed after ${MAX_RETRIES + 1} attempts. Last error: ${error.message}`;
+          sendError(stream, errorMessage);
+          throw new Error(errorMessage);
         }
         
-        sendStatus(stream, 7, `⚠️ Validation failed: ${error.message.substring(0, 100)}... Retrying (${attempt + 1}/${MAX_RETRIES})...`);
+        sendStatus(stream, 7, `⚠️ Validation system error: ${error.message.substring(0, 100)}... Retrying (${attempt + 1}/${MAX_RETRIES})...`);
         
         // Small delay before retrying
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
+    }
+
+    if (!validationSuccess) {
+      throw new Error("Validation failed after all retry attempts");
     }
     
     // --- Step 8: Description Generation (With Retry) ---
@@ -826,7 +918,8 @@ Please fix the issues and ensure the solution handles all edge cases in the test
           language: DEFAULT_LANGUAGE,
           input_schema_description: intent.input_schema_description, // Add input schema description
           epsilon_value_from_constraints: epsilonValue, // Pass epsilon value
-          tie_breaking_rule_from_intent: tieBreakingRule // Pass tie-breaking rule
+          tie_breaking_rule_from_intent: tieBreakingRule, // Pass tie-breaking rule
+          creative_context: intent.creative_context // Pass creative context from intent analysis
         });
         
         if (!description || description.trim() === '') {
@@ -1063,29 +1156,311 @@ Please fix the issues and ensure the solution handles all edge cases in the test
     sendStatus(stream, 11, "✅ Generation complete!");
     
   } catch (error) {
-    console.error("!!! Pipeline Error:", error);
-    const errorMessage = `Error during generation: ${error.message || "Unknown error"}`;
+    console.error("Pipeline error:", error);
     
-    // Attempt to update DB if problemId exists
     if (problemId) {
-      try {
+      await updateProblemStatus(problemId, {
+        generationStatus: "error",
+        errorMessage: error.message,
+      });
+    }
+    
+    sendError(stream, error.message);
+  } finally {
+    // Ensure the stream is closed
+    stream.end();
+  }
+}
+
+/**
+ * Regenerates components based on validation feedback
+ * 
+ * @param {Object} stream - SSE stream
+ * @param {ChatGoogleGenerativeAI} llm - Language model
+ * @param {string} problemId - Problem ID
+ * @param {string} validationFeedback - Validation feedback
+ * @param {Object} intent - Current intent object
+ * @param {Array} testSpecs - Current test specs
+ * @param {string} testSpecsJson - Test specs as JSON string
+ * @param {string} currentSolutionCode - Current solution code
+ * @param {string} language - Programming language
+ * @param {number} attempt - Current attempt number
+ * @returns {Promise<Object>} Regeneration results
+ */
+async function regenerateBasedOnValidationFeedback(
+  stream, llm, problemId, validationFeedback, 
+  intent, testSpecs, testSpecsJson, currentSolutionCode,
+  language, attempt
+) {
+  const result = {};
+  
+  try {
+    // Analyze validation feedback to determine what needs to be regenerated
+    const feedbackAnalysis = analyzeFeedbackAndDetermineActions(validationFeedback);
+    
+    // Regenerate solution if needed
+    if (feedbackAnalysis.regenerateSolution) {
+      sendStatus(stream, 7, `Regenerating solution based on validation feedback...`);
+      
+      const detailedFeedback = `
+Validation failed with the following issues:
+${validationFeedback}
+
+Current solution that failed validation:
+\`\`\`
+${currentSolutionCode}
+\`\`\`
+
+Please address the validation issues and ensure the solution properly implements the requirements.`;
+
+      const newSolutionCode = await runSolutionGeneration(llm, {
+        analyzed_intent: intent.goal,
+        test_specs: testSpecsJson,
+        language: language,
+        feedback_section: detailedFeedback,
+        input_schema_description: intent.input_schema_description,
+        tie_breaking_rule: intent.tie_breaking_rule || ""
+      });
+
+      // Re-execute the new solution
+      const newExecutionResults = await executeSolutionWithTestCases(newSolutionCode, testSpecs, language);
+      
+      if (newExecutionResults.success) {
+        result.newSolutionCode = newSolutionCode;
+        
+        // Regenerate test cases with the new solution
+        const newFinalTestCases = await finalizeTestCasesWithEdgeCases(
+          newSolutionCode, newExecutionResults, llm, language
+        );
+        result.newFinalTestCases = newFinalTestCases;
+        result.newFinalTestCasesJson = JSON.stringify(newFinalTestCases);
+        
         await updateProblemStatus(problemId, {
-          generationStatus: "failed",
-          errorMessage: errorMessage.substring(0, 1000), // Limit error message size
+          generationStatus: `step7_solution_regenerated_attempt_${attempt}`,
+          solutionCode: newSolutionCode,
+          finalTestCases: JSON.stringify(newFinalTestCases)
         });
-      } catch (dbError) {
-        console.error("Failed to update DynamoDB with error status:", dbError);
+        
+        sendStatus(stream, 7, `✅ Solution regenerated and validated through execution.`);
+      } else {
+        throw new Error(`Regenerated solution failed execution: ${newExecutionResults.feedback}`);
       }
     }
     
-    // Attempt to send error via SSE
-    try {
-      sendError(stream, errorMessage);
-    } catch (sseError) {
-      console.error("Failed to send final error via SSE:", sseError);
+    // Regenerate test design if needed
+    if (feedbackAnalysis.regenerateTests) {
+      sendStatus(stream, 7, `Regenerating test design based on validation feedback...`);
+      
+      const testFeedback = `
+Validation indicated issues with test coverage or design:
+${validationFeedback}
+
+Please design better test cases that address these validation concerns.`;
+
+      const newTestResult = await runTestDesign(llm, {
+        intent,
+        intent_json: JSON.stringify(intent),
+        difficulty: intent.difficulty || "Medium",
+        language: language,
+        feedback_section: testFeedback
+      });
+      
+      result.newTestSpecs = newTestResult.testSpecs;
+      result.newTestSpecsJson = newTestResult.testSpecsJson;
+      
+      await updateProblemStatus(problemId, {
+        generationStatus: `step7_tests_regenerated_attempt_${attempt}`,
+        testSpecs: newTestResult.testSpecsJson
+      });
+      
+      sendStatus(stream, 7, `✅ Test design regenerated based on validation feedback.`);
     }
-  } finally {
-    console.log("Ending response stream.");
-    stream.end(); // Ensure stream is closed
+    
+    // Regenerate constraints if needed
+    if (feedbackAnalysis.regenerateConstraints) {
+      sendStatus(stream, 7, `Regenerating constraints based on validation feedback...`);
+      
+      const constraintsFeedback = `
+Validation indicated issues with constraints:
+${validationFeedback}
+
+Please derive more appropriate constraints that address these concerns.`;
+
+      const newConstraints = await runConstraintsDerivation(llm, {
+        solution_code: result.newSolutionCode || currentSolutionCode,
+        test_cases_json: result.newFinalTestCasesJson || testSpecsJson,
+        difficulty: intent.difficulty || "Medium",
+        input_schema_description: intent.input_schema_description,
+        output_format_description: intent.output_format_description,
+        feedback_section: constraintsFeedback
+      });
+      
+      result.newConstraints = newConstraints.constraints;
+      result.newConstraintsJson = newConstraints.constraintsJson;
+      
+      await updateProblemStatus(problemId, {
+        generationStatus: `step7_constraints_regenerated_attempt_${attempt}`,
+        constraints: newConstraints.constraintsJson
+      });
+      
+      sendStatus(stream, 7, `✅ Constraints regenerated based on validation feedback.`);
+    }
+    
+    return result;
+    
+  } catch (error) {
+    console.error(`Error during component regeneration:`, error);
+    sendStatus(stream, 7, `⚠️ Error during regeneration: ${error.message.substring(0, 100)}...`);
+    throw error;
   }
+}
+
+/**
+ * Analyzes validation feedback to determine what components need regeneration
+ * 
+ * @param {string} feedback - Validation feedback
+ * @returns {Object} Analysis result with regeneration flags
+ */
+function analyzeFeedbackAndDetermineActions(feedback) {
+  const lowerFeedback = feedback.toLowerCase();
+  
+  return {
+    regenerateSolution: lowerFeedback.includes('solution') || 
+                       lowerFeedback.includes('code') || 
+                       lowerFeedback.includes('implementation') ||
+                       lowerFeedback.includes('algorithm'),
+    regenerateTests: lowerFeedback.includes('test') || 
+                     lowerFeedback.includes('coverage') || 
+                     lowerFeedback.includes('edge case') ||
+                     lowerFeedback.includes('example'),
+    regenerateConstraints: lowerFeedback.includes('constraint') || 
+                          lowerFeedback.includes('time complexity') || 
+                          lowerFeedback.includes('space complexity') ||
+                          lowerFeedback.includes('judge') ||
+                          lowerFeedback.includes('epsilon')
+  };
+}
+
+/**
+ * Validates the quality of generated intent
+ * 
+ * @param {Object} intent - Generated intent object
+ * @returns {Object} Validation result with isValid flag and issues array
+ */
+function validateIntentQuality(intent) {
+  const issues = [];
+  
+  if (!intent.goal || intent.goal.trim().length < 10) {
+    issues.push("Goal is too short or missing");
+  }
+  
+  if (!intent.input_schema_description || intent.input_schema_description.trim().length < 5) {
+    issues.push("Input schema description is too short or missing");
+  }
+  
+  if (!intent.output_format_description || intent.output_format_description.trim().length < 5) {
+    issues.push("Output format description is too short or missing");
+  }
+  
+  return {
+    isValid: issues.length === 0,
+    issues
+  };
+}
+
+/**
+ * Validates the quality of generated test specifications
+ * 
+ * @param {Array} testSpecs - Generated test specifications
+ * @param {string} difficulty - Problem difficulty
+ * @returns {Object} Validation result with isValid flag and issues array
+ */
+function validateTestSpecsQuality(testSpecs, difficulty) {
+  const issues = [];
+  
+  if (!Array.isArray(testSpecs) || testSpecs.length === 0) {
+    issues.push("Test specs is not an array or is empty");
+    return { isValid: false, issues };
+  }
+  
+  const minTestCases = difficulty === "Easy" ? 5 : difficulty === "Medium" ? 7 : 9;
+  if (testSpecs.length < minTestCases) {
+    issues.push(`Insufficient test cases for ${difficulty} difficulty (${testSpecs.length} < ${minTestCases})`);
+  }
+  
+  let hasEdgeCase = false;
+  let hasTypicalCase = false;
+  
+  for (const [index, testCase] of testSpecs.entries()) {
+    if (!testCase.input && testCase.input !== 0 && testCase.input !== "" && testCase.input !== false) {
+      issues.push(`Test case ${index + 1} missing input`);
+    }
+    
+    if (!testCase.rationale || testCase.rationale.trim().length < 5) {
+      issues.push(`Test case ${index + 1} missing or insufficient rationale`);
+    }
+    
+    const rationale = testCase.rationale?.toLowerCase() || "";
+    if (rationale.includes("edge") || rationale.includes("empty") || rationale.includes("boundary")) {
+      hasEdgeCase = true;
+    }
+    if (rationale.includes("typical") || rationale.includes("normal") || rationale.includes("standard")) {
+      hasTypicalCase = true;
+    }
+  }
+  
+  if (!hasEdgeCase) {
+    issues.push("No edge cases detected in test specifications");
+  }
+  
+  if (!hasTypicalCase) {
+    issues.push("No typical cases detected in test specifications");
+  }
+  
+  return {
+    isValid: issues.length === 0,
+    issues
+  };
+}
+
+/**
+ * Validates the quality of generated solution code
+ * 
+ * @param {string} solutionCode - Generated solution code
+ * @param {string} language - Programming language
+ * @returns {Object} Validation result with isValid flag and issues array
+ */
+function validateSolutionCodeQuality(solutionCode, language) {
+  const issues = [];
+  
+  if (!solutionCode || solutionCode.trim().length === 0) {
+    issues.push("Solution code is empty");
+    return { isValid: false, issues };
+  }
+  
+  // Check for function definition
+  if (language.toLowerCase().includes('python')) {
+    if (!solutionCode.includes('def solution(')) {
+      issues.push("Solution code missing 'def solution(' function definition");
+    }
+    
+    if (!solutionCode.includes('return')) {
+      issues.push("Solution code missing return statement");
+    }
+  }
+  
+  // Check for basic structure
+  if (solutionCode.length < 50) {
+    issues.push("Solution code seems too short to be a complete solution");
+  }
+  
+  // Check for common issues
+  if (solutionCode.includes('TODO') || solutionCode.includes('FIXME')) {
+    issues.push("Solution code contains TODO or FIXME comments");
+  }
+  
+  return {
+    isValid: issues.length === 0,
+    issues
+  };
 } 

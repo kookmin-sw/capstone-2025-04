@@ -26,6 +26,7 @@ export function createValidationChain(llm) {
  * @param {string} params.difficulty - The difficulty level of the problem.
  * @param {string} params.language - The target programming language.
  * @param {string} [params.input_schema_description=""] - Description of input structure
+ * @param {string} [params.validation_feedback=""] - Previous validation feedback for improvement
  * @returns {Promise<Object>} The validation result with status and details.
  */
 export async function runValidation(llm, { 
@@ -35,7 +36,8 @@ export async function runValidation(llm, {
   constraints_json,
   difficulty, 
   language,
-  input_schema_description = "" 
+  input_schema_description = "",
+  validation_feedback = ""
 }) {
   const chain = createValidationChain(llm);
   const parser = StructuredOutputParser.fromZodSchema(ValidationOutputSchema);
@@ -48,6 +50,7 @@ export async function runValidation(llm, {
     difficulty,
     language,
     input_schema_description,
+    validation_feedback: validation_feedback ? `\n\n**Previous Validation Feedback:**\n${validation_feedback}\nPlease address the issues mentioned in the previous feedback.` : "",
     format_instructions: parser.getFormatInstructions(),
   };
   
