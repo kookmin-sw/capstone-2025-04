@@ -4,6 +4,7 @@ import React, { useState, useEffect, Suspense, useCallback } from "react"; // Ad
 import Head from "next/head"; // Head import 추가
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
+import LoadingSpinner from "@/components/LoadingSpinner";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation"; // Import useSearchParams
 import { getPosts, PostSummary } from "@/api/communityApi"; // Import API function and type
@@ -106,7 +107,7 @@ const CommunityList: React.FC = () => {
 
       {isLoading && posts.length === 0 ? ( // Show spinner only on initial empty load
         <div className="text-center py-10">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+          <LoadingSpinner />
           <p className="text-gray-500">게시글 목록을 불러오는 중...</p>
         </div>
       ) : error && posts.length === 0 ? ( // Show error only if no posts are loaded
@@ -239,9 +240,7 @@ const CommunityPage: React.FC = () => {
         <main className="flex-grow">
           <Suspense
             fallback={
-              <div className="flex justify-center items-center min-h-[calc(100vh-200px)]">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-              </div>
+              <LoadingSpinner fullScreen message="페이지를 불러오는 중..." />
             }
           >
             <CommunityContent />

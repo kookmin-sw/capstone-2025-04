@@ -26,6 +26,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneLight } from "react-syntax-highlighter/dist/esm/styles/prism";
+import LoadingSpinner from "@/components/LoadingSpinner";
 
 import { 
   getProblemById, 
@@ -497,12 +498,7 @@ const CodingTestContent: React.FC = () => {
 
   if (isLoadingProblem) { 
     return (
-      <div className="flex justify-center items-center flex-grow">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-gray-500">문제 정보를 불러오는 중...</p>
-        </div>
-      </div>
+      <LoadingSpinner fullScreen message="문제 정보를 불러오는 중..." />
     );
   }
   if (errorProblem) { 
@@ -975,8 +971,7 @@ ${runCodeOutput.error.trim()}
         if (isRunningCode) {
           return (
             <div className="mt-4 flex flex-col items-center justify-center h-full">
-              <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary"></div>
-              <p className="mt-3 text-gray-600">코드를 실행 중입니다...</p>
+              <LoadingSpinner message="코드를 실행 중입니다..." />
             </div>
           );
         }
@@ -1094,8 +1089,7 @@ ${runCodeOutput.error.trim()}
         if (isSubmitting) {
           return (
             <div className="mt-4 flex flex-col items-center justify-center h-full">
-              <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary"></div>
-              <p className="mt-3 text-gray-600">채점 중입니다...</p>
+              <LoadingSpinner message="채점 중입니다..." />
             </div>
           );
         }
@@ -1205,12 +1199,7 @@ const CodingTestSolvePage: React.FC = () => {
         <main className="flex-grow overflow-hidden"> 
           <Suspense
             fallback={ 
-              <div className="flex justify-center items-center flex-grow h-full">
-                <div className="text-center">
-                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-                  <p className="text-gray-500">로딩 중...</p>
-                </div>
-              </div>
+              <LoadingSpinner fullScreen message="로딩 중..." />
             }
           >
             <CodingTestContent />

@@ -5,16 +5,7 @@ import React, { useEffect, Suspense, useState } from "react";
 import Head from "next/head";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuthenticator } from "@aws-amplify/ui-react";
-
-
-const LoadingSpinner = () => (
-  <div className="flex justify-center items-center min-h-screen">
-    <div className="text-center">
-      <p className="text-lg font-semibold">인증 처리 중...</p>
-      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mt-4"></div>
-    </div>
-  </div>
-);
+import LoadingSpinner from "@/components/LoadingSpinner";
 
 const CallbackContentInternal = () => {
   const { route, user } = useAuthenticator((context) => [
@@ -61,7 +52,7 @@ const CallbackContentInternal = () => {
     !configured ||
     (route !== "authenticated" && !searchParams.get("error"))
   ) {
-    return <LoadingSpinner />;
+    return <LoadingSpinner message="로그인 처리 중..." />;
   }
 
   return null;
@@ -77,7 +68,7 @@ const CallbackPage = () => {
           content="사용자 인증을 처리하는 페이지입니다."
         />
       </Head>
-      <Suspense fallback={<LoadingSpinner />}>
+      <Suspense fallback={<LoadingSpinner message="로그인 처리 중..." />}>
         <CallbackContentInternal />
       </Suspense>
     </>

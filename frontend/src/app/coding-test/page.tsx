@@ -4,6 +4,7 @@ import Head from "next/head";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import Link from "next/link";
+import LoadingSpinner from "@/components/LoadingSpinner";
 import {
   getProblems,
   ProblemSummary,
@@ -235,7 +236,7 @@ const CodingTestPage: React.FC = () => {
                     
                     <div className="relative z-10">
                       <div className="mb-6">
-                        <h3 className="text-2xl font-bold text-gray-900 mb-3">
+                        <h3 className="text-2xl font-bold text-gray-900 mb-3 text-left">
                           문제은행에서 선택하기
                         </h3>
                         <div className="flex items-center gap-2">
@@ -247,14 +248,14 @@ const CodingTestPage: React.FC = () => {
                       
                       {/* Description - only visible on hover */}
                       <div className="opacity-0 transform translate-y-4 transition-all duration-300 group-hover:opacity-100 group-hover:translate-y-0 mb-6">
-                        <p className="text-gray-600 text-sm leading-relaxed break-keep">
+                        <p className="text-gray-600 text-sm leading-relaxed break-keep text-left">
                           검증된 알고리즘 문제들을 난이도별, 유형별로<br />
                           분류하여 제공합니다. 체계적인 학습과<br />
                           실력 향상에 최적화되어 있습니다.
                         </p>
                       </div>
                       
-                      <div className="flex items-center text-sm text-primary font-medium">
+                      <div className="flex items-center text-sm text-blue-600 font-medium">
                         문제 선택하기
                         <svg className="w-4 h-4 ml-2 transition-transform duration-300 group-hover:translate-x-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -283,7 +284,7 @@ const CodingTestPage: React.FC = () => {
                     
                     <div className="relative z-10">
                       <div className="mb-6">
-                        <h3 className="text-2xl font-bold text-gray-900 mb-3">
+                        <h3 className="text-2xl font-bold text-gray-900 mb-3 text-left">
                           AI로 문제 생성하기
                         </h3>
                         <div className="flex items-center gap-2">
@@ -295,7 +296,7 @@ const CodingTestPage: React.FC = () => {
                       
                       {/* Description - only visible on hover */}
                       <div className="opacity-0 transform translate-y-4 transition-all duration-300 group-hover:opacity-100 group-hover:translate-y-0 mb-6">
-                        <p className="text-gray-600 text-sm leading-relaxed break-keep">
+                        <p className="text-gray-600 text-sm leading-relaxed break-keep text-left">
                           AI가 당신의 실력 수준과 선호도에 맞춰<br />
                           맞춤형 알고리즘 문제를 실시간으로 생성합니다.<br />
                           무한한 학습 기회를 제공합니다.
@@ -334,12 +335,7 @@ const CodingTestPage: React.FC = () => {
 
               <div className="bg-white shadow-sm rounded-lg overflow-hidden">
                 {loading && problems.length === 0 ? (
-                  <div className="py-10 px-6 text-center">
-                    <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-                    <p className="mt-2 text-gray-500">
-                      문제 목록을 불러오는 중...
-                    </p>
-                  </div>
+                  <LoadingSpinner message="문제 목록을 불러오는 중..." />
                 ) : error ? (
                   <div className="py-10 px-6 text-center">
                     <p className="text-red-500">{error}</p>

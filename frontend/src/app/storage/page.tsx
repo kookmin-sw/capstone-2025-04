@@ -5,6 +5,7 @@ import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import Link from "next/link";
 import { fetchAuthSession } from "aws-amplify/auth";
+import LoadingSpinner from "@/components/LoadingSpinner";
 import {
   getProblems,
   ProblemSummary,
@@ -107,7 +108,7 @@ const StoragePage: React.FC = () => {
         setLoading(false);
       }
     },
-    [currentCreatorId, sortDirection], // sortColumn is not a dependency if only createdAt is backend-sorted
+    [currentCreatorId, sortDirection, error, loading],
   );
 
   // Effect for initial load and when creatorId or sortDirection (for createdAt) changes
@@ -252,7 +253,7 @@ const StoragePage: React.FC = () => {
 
               {loading && problems.length === 0 ? (
                 <div className="py-10 px-6 text-center">
-                  <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                  <LoadingSpinner />
                   <p className="mt-2 text-gray-500">문제를 불러오는 중...</p>
                 </div>
               ) : error ? (

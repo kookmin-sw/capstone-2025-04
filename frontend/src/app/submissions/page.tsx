@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
+import LoadingSpinner from "@/components/LoadingSpinner";
 import {
   getSubmissions,
   SubmissionSummary,
@@ -337,7 +338,7 @@ const SubmissionsContent: React.FC = () => {
 
       {isLoading && submissions.length === 0 ? (
         <div className="text-center py-10">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+          <LoadingSpinner />
           <p className="text-gray-500">제출 목록을 불러오는 중...</p>
         </div>
       ) : error ? (
@@ -457,9 +458,7 @@ const SubmissionsPage: React.FC = () => {
         <main className="flex-grow">
           <Suspense
             fallback={
-              <div className="flex justify-center items-center min-h-[calc(100vh-200px)]">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-              </div>
+              <LoadingSpinner fullScreen message="제출 현황을 불러오는 중..." />
             }
           >
             <SubmissionsContent />
