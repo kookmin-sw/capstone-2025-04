@@ -904,7 +904,51 @@ const GenerateProblemClient = () => {
                     {/* Render Description using ReactMarkdown */}
                     <div className="mb-6 prose prose-base max-w-none text-gray-700">
                       <h4 className="font-bold mb-3 text-lg">문제 내용:</h4>
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      <ReactMarkdown 
+                        remarkPlugins={[remarkGfm]}
+                        components={{
+                          // Heading components with appropriate sizing
+                          h1({ children }) { return <h1 className="text-xl font-bold mb-3 mt-4">{children}</h1>; },
+                          h2({ children }) { return <h2 className="text-lg font-semibold mb-2 mt-3">{children}</h2>; },
+                          h3({ children }) { return <h3 className="text-base font-semibold mb-2 mt-3">{children}</h3>; },
+                          h4({ children }) { return <h4 className="text-sm font-semibold mb-1 mt-2">{children}</h4>; },
+                          h5({ children }) { return <h5 className="text-sm font-medium mb-1 mt-2">{children}</h5>; },
+                          h6({ children }) { return <h6 className="text-xs font-medium mb-1 mt-2">{children}</h6>; },
+                          // Code blocks and inline code
+                          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                          code({ inline, children, ...props }: any) {
+                            if (!inline) {
+                              return (
+                                <pre className="bg-gray-100 p-3 rounded-md border border-gray-200 text-sm font-mono whitespace-pre-wrap overflow-x-auto">
+                                  <code {...props}>{children}</code>
+                                </pre>
+                              );
+                            }
+                            return (
+                              <code className="bg-gray-100 rounded px-1 py-0.5 text-sm font-mono" {...props}>
+                                {children}
+                              </code>
+                            );
+                          },
+                          // Table styling
+                          table({ children }) { return <table className="min-w-full border-collapse my-2">{children}</table>; },
+                          th({ children }) { return <th className="border px-2 py-1 bg-gray-100 text-left font-semibold">{children}</th>; },
+                          td({ children }) { return <td className="border px-2 py-1">{children}</td>; },
+                          // List styling
+                          ul({ children, ...props }) { return <ul className="list-disc pl-6 my-2" {...props}>{children}</ul>; },
+                          ol({ children, ...props }) { return <ol className="list-decimal pl-6 my-2" {...props}>{children}</ol>; },
+                          li({ children, ...props }) { return <li className="mb-1" {...props}>{children}</li>; },
+                          // Paragraph styling
+                          p({ children }) { return <p className="mb-2">{children}</p>; },
+                          // Block quote styling
+                          blockquote({ children }) { return <blockquote className="border-l-4 border-gray-300 pl-4 my-2 italic text-gray-600">{children}</blockquote>; },
+                          // Horizontal rule styling
+                          hr() { return <hr className="my-4 border-gray-300" />; },
+                          // Emphasis and strong styling
+                          em({ children }) { return <em className="italic">{children}</em>; },
+                          strong({ children }) { return <strong className="font-semibold">{children}</strong>; },
+                        }}
+                      >
                         {generatedProblem.targetLanguage &&
                         generatedProblem.description_translated
                           ? generatedProblem.description_translated

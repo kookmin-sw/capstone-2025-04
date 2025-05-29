@@ -12,38 +12,38 @@ import Link from "next/link";
 // 가상의 테스트 데이터 (API 구현 전까지 사용)
 const testOptions = [
   {
-    id: 1,
-    title: "두 수의 합",
+    id: "958069c1-0e63-43fa-8be3-4884e782f96f",
+    title: "타겟 합 인덱스",
     description: "배열과 해시 테이블을 사용하여 target 합계를 찾는 문제",
     difficulty: "Easy", // Use English difficulty to match mock server
   },
   {
-    id: 2,
-    title: "배열에서 가장 큰 수 찾기",
+    id: "2e667737-6cd0-439a-ab5f-e75edf8e6aab",
+    title: "최대값 찾기",
     description: "주어진 배열에서 가장 큰 요소를 찾는 기본 문제",
     difficulty: "Easy",
   },
   {
-    id: 3,
-    title: "피보나치 수열 (DP)",
+    id: "b791d06c-993f-4a7a-8842-3f27118f473b",
+    title: "N번째 피보나치 수",
     description: "다이나믹 프로그래밍을 이용한 피보나치 수열 계산",
     difficulty: "Medium",
   },
   {
-    id: 4,
+    id: "151d2260-d1ed-496e-8c6d-035163859170",
     title: "문자열 뒤집기",
     description: "주어진 문자열을 뒤집는 기본 문자열 처리 문제",
     difficulty: "Easy",
   },
   {
-    id: 5,
-    title: "이진 탐색",
+    id: "75f4f410-efbc-4344-b6ca-7d40a8beb6de",
+    title: "정렬 배열 첫 인덱스 찾기 (이진 탐색)",
     description: "정렬된 배열에서 특정 값을 효율적으로 찾는 문제",
     difficulty: "Medium",
   },
   {
-    id: 6,
-    title: "최단 경로 (Dijkstra)",
+    id: "403a1ac8-500b-4b88-989a-dce4a14073e8",
+    title: "단일 출발 최단 경로",
     description: "가중치 그래프에서 시작 노드로부터의 최단 경로 찾기",
     difficulty: "Hard",
   },

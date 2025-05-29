@@ -332,9 +332,22 @@ const CodingTestContent: React.FC = () => {
     }
 
     try {
-      const exampleTestCases = JSON.parse(problemDetails.finalTestCases || "[]") as TestCaseDisplay[];
+      const parsed = JSON.parse(problemDetails.finalTestCases || "[]");
+      
+      // Handle double-nested JSON structure: finalTestCases may contain a JSON string
+      // with a "finalTestCases" property that contains the actual array
+      let exampleTestCases: TestCaseDisplay[] = [];
+      
+      if (Array.isArray(parsed)) {
+        // Direct array case
+        exampleTestCases = parsed as TestCaseDisplay[];
+      } else if (parsed && typeof parsed === 'object' && parsed.finalTestCases) {
+        // Nested object case: extract the finalTestCases property
+        exampleTestCases = Array.isArray(parsed.finalTestCases) ? parsed.finalTestCases as TestCaseDisplay[] : [];
+      }
+      
       // Limit to 3 example test cases for "Run Code"
-      const inputsToRun = exampleTestCases.slice(0, Math.min(3, exampleTestCases.length)).map(tc => tc.input); 
+      const inputsToRun = exampleTestCases.slice(0, Math.min(3, exampleTestCases.length)).map(tc => tc.input);
 
       if (inputsToRun.length === 0) {
         toast.info("실행할 예제 테스트 케이스가 없습니다.");
@@ -811,7 +824,20 @@ const ResultsPanel: React.FC<ResultsPanelProps> = ({
  }) => {
   const exampleTestCasesToDisplay = useMemo(() => {
     try {
-      const allTestCases = JSON.parse(problemDetails.finalTestCases || "[]") as TestCaseDisplay[];
+      const parsed = JSON.parse(problemDetails.finalTestCases || "[]");
+      
+      // Handle double-nested JSON structure: finalTestCases may contain a JSON string
+      // with a "finalTestCases" property that contains the actual array
+      let allTestCases: TestCaseDisplay[] = [];
+      
+      if (Array.isArray(parsed)) {
+        // Direct array case
+        allTestCases = parsed as TestCaseDisplay[];
+      } else if (parsed && typeof parsed === 'object' && parsed.finalTestCases) {
+        // Nested object case: extract the finalTestCases property
+        allTestCases = Array.isArray(parsed.finalTestCases) ? parsed.finalTestCases as TestCaseDisplay[] : [];
+      }
+      
       // Display only up to 3 example test cases
       return allTestCases.slice(0, 3); 
     } catch (error) {
