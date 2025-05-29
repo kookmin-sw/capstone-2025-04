@@ -83,7 +83,7 @@ const CommunityList: React.FC = () => {
 
   // List rendering logic
   return (
-    <div className="max-w-5xl mx-auto p-8">
+    <div className="max-w-6xl mx-auto p-6 sm:p-8">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4">
         <h1 className="text-3xl font-bold text-gray-900 mb-4 sm:mb-0">
           커뮤니티

@@ -168,7 +168,7 @@ ${codeBlock}
 
   if (isLoadingSubmission) {
     return (
-      <div className="max-w-5xl mx-auto p-8 text-center">
+      <div className="max-w-6xl mx-auto p-6 sm:p-8 text-center">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
         <p className="text-gray-500">제출 정보 로딩 중...</p>
       </div>
@@ -176,7 +176,7 @@ ${codeBlock}
   }
 
   return (
-    <div className="max-w-5xl mx-auto p-8">
+    <div className="max-w-6xl mx-auto p-6 sm:p-8">
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-3xl font-bold text-gray-900">게시글 작성</h1>
         <Link
