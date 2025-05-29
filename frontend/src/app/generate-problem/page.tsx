@@ -8,7 +8,7 @@ import GenerateProblemClient from "./GenerateProblemClient"; // We'll create thi
 const LoadingSpinner = () => (
   <div className="flex justify-center items-center h-64">
     <div className="text-center">
-      <p className="text-lg font-semibold">페이지 로딩중...</p>
+      <p className="text-lg font-semibold text-gray-700">AI가 당신만의 문제를 준비하고 있어요...</p>
       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mt-4"></div>
     </div>
   </div>
@@ -25,15 +25,24 @@ const GenerateProblemPage: React.FC = () => {
         <Header />
 
         <main className="flex-grow">
-          <div className="max-w-6xl mx-auto p-6 sm:p-8">
-            <div className="flex items-center mb-8">
-              <h1 className="text-3xl font-bold text-gray-900">
-                어떤 알고리즘 문제를 원하시나요?
-              </h1>
+          <div className="min-h-full flex flex-col justify-center py-8">
+            <div className="max-w-6xl mx-auto p-6 sm:p-8 w-full">
+              {/* Enhanced Header Section */}
+              <div className="text-center mb-10">
+                <div className="relative">
+                  <h1 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4 leading-tight">
+                    어떤 알고리즘 문제를 만들어볼까요?
+                  </h1>
+                </div>
+                <p className="text-lg text-gray-600 max-w-2xl mx-auto leading-relaxed">
+                  AI가 당신만을 위한 맞춤형 알고리즘 문제를 실시간으로 생성합니다.<br />
+                  원하는 유형과 난이도를 선택하고 즉시 도전해보세요!
+                </p>
+              </div>
+              <Suspense fallback={<LoadingSpinner />}>
+                <GenerateProblemClient />
+              </Suspense>
             </div>
-            <Suspense fallback={<LoadingSpinner />}>
-              <GenerateProblemClient />
-            </Suspense>
           </div>
         </main>
 
