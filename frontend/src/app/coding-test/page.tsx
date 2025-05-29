@@ -212,19 +212,104 @@ const CodingTestPage: React.FC = () => {
               <h2 className="text-2xl font-semibold text-gray-900 mb-4">
                 원하는 테스트 유형을 선택하세요
               </h2>
-              <p className="text-gray-600 mb-8 max-w-2xl mx-auto">...</p>
-              <div className="flex flex-col sm:flex-row justify-center gap-4">
-                <Link
-                  href="/coding-test/selection"
-                  className="inline-block px-6 py-3 bg-primary text-white font-medium rounded-md hover:bg-primary-hover transition"
-                >
-                  테스트 선택하기
+              <p className="text-gray-600 mb-8 max-w-2xl mx-auto">
+                문제은행에서 기존 문제를 선택하거나 AI를 활용해 새로운 문제를 생성할 수 있습니다
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-6xl mx-auto">
+                {/* 문제은행에서 선택하기 카드 */}
+                <Link href="/coding-test/selection" className="group">
+                  <div className="relative overflow-hidden rounded-xl border border-gray-200 bg-white p-8 transition-all duration-300 hover:shadow-xl hover:scale-105 hover:border-primary/20">
+                    <div className="absolute inset-0 bg-gradient-to-br from-blue-50 to-indigo-50 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
+                    
+                    {/* Large Background Icon */}
+                    <div className="absolute -top-4 -right-4 w-32 h-32 text-blue-100 transition-colors duration-300 group-hover:text-blue-200">
+                      <svg className="w-full h-full" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M5 3C3.9 3 3 3.9 3 5V19C3 20.1 3.9 21 5 21H11C11.6 21 12 20.6 12 20S11.6 19 11 19H5V5H19V11C19 11.6 19.4 12 20 12S21 11.6 21 11V5C21 3.9 20.1 3 19 3H5Z" />
+                        <circle cx="18" cy="16" r="6" opacity="0.8" />
+                        <path d="M16 14L17.5 15.5L21 12" stroke="white" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                        <path d="M7 7H17" stroke="currentColor" strokeWidth="1" opacity="0.4" />
+                        <path d="M7 9H15" stroke="currentColor" strokeWidth="1" opacity="0.4" />
+                        <path d="M7 11H13" stroke="currentColor" strokeWidth="1" opacity="0.4" />
+                      </svg>
+                    </div>
+                    
+                    <div className="relative z-10">
+                      <div className="mb-6">
+                        <h3 className="text-2xl font-bold text-gray-900 mb-3">
+                          문제은행에서 선택하기
+                        </h3>
+                        <div className="flex items-center gap-2">
+                          <div className="w-20 h-1 bg-gradient-to-r from-blue-500 to-blue-400 rounded-full transition-all duration-300 group-hover:w-32"></div>
+                          <div className="w-2 h-2 bg-blue-400 rounded-full opacity-60 transition-all duration-300 group-hover:opacity-100"></div>
+                          <div className="w-1 h-1 bg-blue-300 rounded-full opacity-40 transition-all duration-300 group-hover:opacity-80"></div>
+                        </div>
+                      </div>
+                      
+                      {/* Description - only visible on hover */}
+                      <div className="opacity-0 transform translate-y-4 transition-all duration-300 group-hover:opacity-100 group-hover:translate-y-0 mb-6">
+                        <p className="text-gray-600 text-sm leading-relaxed break-keep">
+                          검증된 알고리즘 문제들을 난이도별, 유형별로<br />
+                          분류하여 제공합니다. 체계적인 학습과<br />
+                          실력 향상에 최적화되어 있습니다.
+                        </p>
+                      </div>
+                      
+                      <div className="flex items-center text-sm text-primary font-medium">
+                        문제 선택하기
+                        <svg className="w-4 h-4 ml-2 transition-transform duration-300 group-hover:translate-x-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                        </svg>
+                      </div>
+                    </div>
+                  </div>
                 </Link>
-                <Link
-                  href="/generate-problem"
-                  className="inline-block px-6 py-3 bg-gray-600 text-white font-medium rounded-md hover:bg-gray-700 transition"
-                >
-                  AI로 문제 생성하기 🤖
+
+                {/* AI로 문제 생성하기 카드 */}
+                <Link href="/generate-problem" className="group">
+                  <div className="relative overflow-hidden rounded-xl border border-gray-200 bg-white p-8 transition-all duration-300 hover:shadow-xl hover:scale-105 hover:border-purple-200">
+                    <div className="absolute inset-0 bg-gradient-to-br from-purple-50 to-pink-50 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
+                    
+                    {/* Large Background Icon */}
+                    <div className="absolute -top-4 -right-4 w-32 h-32 text-purple-100 transition-colors duration-300 group-hover:text-purple-200">
+                      <svg className="w-full h-full" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M12 2L8.5 8.5L2 12L8.5 15.5L12 22L15.5 15.5L22 12L15.5 8.5L12 2Z" opacity="0.9" />
+                        <circle cx="6" cy="6" r="1.5" opacity="0.7" />
+                        <circle cx="18" cy="6" r="1" opacity="0.6" />
+                        <circle cx="6" cy="18" r="0.8" opacity="0.5" />
+                        <circle cx="18" cy="18" r="1.2" opacity="0.8" />
+                        <path d="M12 8L10 10L12 12L14 10L12 8Z" opacity="0.3" />
+                      </svg>
+                    </div>
+                    
+                    <div className="relative z-10">
+                      <div className="mb-6">
+                        <h3 className="text-2xl font-bold text-gray-900 mb-3">
+                          AI로 문제 생성하기
+                        </h3>
+                        <div className="flex items-center gap-2">
+                          <div className="w-20 h-1 bg-gradient-to-r from-purple-500 to-purple-400 rounded-full transition-all duration-300 group-hover:w-32"></div>
+                          <div className="w-2 h-2 bg-purple-400 rounded-full opacity-60 transition-all duration-300 group-hover:opacity-100"></div>
+                          <div className="w-1 h-1 bg-purple-300 rounded-full opacity-40 transition-all duration-300 group-hover:opacity-80"></div>
+                        </div>
+                      </div>
+                      
+                      {/* Description - only visible on hover */}
+                      <div className="opacity-0 transform translate-y-4 transition-all duration-300 group-hover:opacity-100 group-hover:translate-y-0 mb-6">
+                        <p className="text-gray-600 text-sm leading-relaxed break-keep">
+                          AI가 당신의 실력 수준과 선호도에 맞춰<br />
+                          맞춤형 알고리즘 문제를 실시간으로 생성합니다.<br />
+                          무한한 학습 기회를 제공합니다.
+                        </p>
+                      </div>
+                      
+                      <div className="flex items-center text-sm text-purple-600 font-medium">
+                        문제 생성하기
+                        <svg className="w-4 h-4 ml-2 transition-transform duration-300 group-hover:translate-x-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                        </svg>
+                      </div>
+                    </div>
+                  </div>
                 </Link>
               </div>
             </div>
