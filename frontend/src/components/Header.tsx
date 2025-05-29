@@ -5,7 +5,7 @@ import React, { useState, useEffect, useRef } from "react"; // Added useRef
 import { useAuthenticator } from "@aws-amplify/ui-react"; // Import the hook
 import { fetchAuthSession } from "aws-amplify/auth"; // Import fetchAuthSession
 import { fetchUserAttributes } from "aws-amplify/auth"; // Import fetchUserAttributes back
-import { useRouter } from "next/navigation"; // 리디렉션을 위한 useRouter 추가
+import { useRouter, usePathname } from "next/navigation"; // 리디렉션을 위한 useRouter 추가
 
 import AlpacoLogo from "./AlpacoLogo";
 import AlpacoWordLogo from "./AlpacoWordLogo";
@@ -15,6 +15,7 @@ const NICKNAME_STORAGE_KEY = "alpaco_user_nickname";
 
 const Header: React.FC = () => {
   const router = useRouter(); // 라우터 인스턴스 생성
+  const pathname = usePathname(); // 현재 경로 가져오기
   // Optimize: Select only the states needed by the Header
   const { user, signOut, authStatus } = useAuthenticator((context) => [
     context.user,
@@ -177,6 +178,52 @@ const Header: React.FC = () => {
     return "사용자";
   };
 
+  // 네비게이션 링크가 활성 상태인지 확인하는 함수
+  const isActiveLink = (href: string): boolean => {
+    if (href === '/') {
+      return pathname === '/';
+    }
+    return pathname.startsWith(href);
+  };
+
+  // 네비게이션 링크 스타일을 반환하는 함수
+  const getLinkClassName = (href: string): string => {
+    const baseClasses = "font-medium relative transition-colors duration-200";
+    const isActive = isActiveLink(href);
+    
+    if (isActive) {
+      // 활성 상태: 파란색 텍스트 + 굵은 언더바 + hover 시 배경색 변화
+      return `${baseClasses} text-primary after:content-[''] after:absolute after:bottom-[-0.5rem] after:left-0 after:w-full after:h-1 after:bg-primary after:rounded-sm hover:bg-blue-50 hover:rounded-md px-2 py-1 -mx-2 -my-1`;
+    } else {
+      // 비활성 상태: 회색 텍스트 + hover 시 얇은 언더바
+      return `${baseClasses} text-gray-600 hover:text-primary hover:after:content-[''] hover:after:absolute hover:after:bottom-[-0.5rem] hover:after:left-0 hover:after:w-full hover:after:h-0.5 hover:after:bg-gray-400 hover:after:rounded-sm`;
+    }
+  };
+
+  // 모바일 네비게이션 링크 스타일을 반환하는 함수
+  const getMobileLinkClassName = (href: string): string => {
+    const baseClasses = "text-left font-medium block py-2 transition-colors duration-200";
+    const isActive = isActiveLink(href);
+    
+    if (isActive) {
+      return `${baseClasses} text-primary bg-blue-100 px-2 rounded font-semibold`;
+    } else {
+      return `${baseClasses} text-gray-600 hover:text-primary hover:bg-gray-50 px-2 rounded`;
+    }
+  };
+
+  // 설정 아이콘 스타일을 반환하는 함수
+  const getSettingsIconClassName = (): string => {
+    const baseClasses = "text-gray-600 transition-colors duration-200";
+    const isActive = isActiveLink('/user/settings');
+    
+    if (isActive) {
+      return `${baseClasses} text-primary bg-blue-50 p-1 rounded`;
+    } else {
+      return `${baseClasses} hover:text-primary hover:bg-gray-50 p-1 rounded`;
+    }
+  };
+
   return (
     <header className="bg-white py-4 sticky top-0 z-10 shadow-md">
       <div className="w-full px-4 mx-auto max-w-7xl flex justify-between items-center">
@@ -192,27 +239,27 @@ const Header: React.FC = () => {
         <nav className="hidden md:flex gap-6 items-center">
           <Link
             href="/community"
-            className="font-medium text-gray-600 relative hover:text-primary transition-colors duration-200 hover:after:content-[''] hover:after:absolute hover:after:bottom-[-0.5rem] hover:after:left-0 hover:after:w-full hover:after:h-0.5 hover:after:bg-primary hover:after:rounded-sm"
+            className={getLinkClassName('/community')}
           >
             커뮤니티
           </Link>
           <Link
             href="/coding-test"
-            className="font-medium text-gray-600 relative hover:text-primary transition-colors duration-200 hover:after:content-[''] hover:after:absolute hover:after:bottom-[-0.5rem] hover:after:left-0 hover:after:w-full hover:after:h-0.5 hover:after:bg-primary hover:after:rounded-sm"
+            className={getLinkClassName('/coding-test')}
           >
             코딩 테스트
           </Link>
           {isAuthenticated && (
             <Link
               href="/storage"
-              className="font-medium text-gray-600 relative hover:text-primary transition-colors duration-200 hover:after:content-[''] hover:after:absolute hover:after:bottom-[-0.5rem] hover:after:left-0 hover:after:w-full hover:after:h-0.5 hover:after:bg-primary hover:after:rounded-sm"
+              className={getLinkClassName('/storage')}
             >
               내 저장소
             </Link>
           )}
           <Link
             href="/submissions"
-            className="font-medium text-gray-600 relative hover:text-primary transition-colors duration-200 hover:after:content-[''] hover:after:absolute hover:after:bottom-[-0.5rem] hover:after:left-0 hover:after:w-full hover:after:h-0.5 hover:after:bg-primary hover:after:rounded-sm"
+            className={getLinkClassName('/submissions')}
           >
             제출 현황
           </Link>
@@ -226,7 +273,7 @@ const Header: React.FC = () => {
                 </span>
                 <Link
                   href="/user/settings"
-                  className="text-gray-600 hover:text-primary transition-colors duration-200"
+                  className={getSettingsIconClassName()}
                   title="설정"
                 >
                   <svg
@@ -299,27 +346,27 @@ const Header: React.FC = () => {
             {/* Mobile Navigation Links */}
             <button 
               onClick={() => handleLinkClick('/community')}
-              className="text-left font-medium text-gray-600 block py-2 hover:text-primary transition-colors duration-200"
+              className={getMobileLinkClassName('/community')}
             >
               커뮤니티
             </button>
             <button 
               onClick={() => handleLinkClick('/coding-test')}
-              className="text-left font-medium text-gray-600 block py-2 hover:text-primary transition-colors duration-200"
+              className={getMobileLinkClassName('/coding-test')}
             >
               코딩 테스트
             </button>
             {isAuthenticated && (
               <button 
                 onClick={() => handleLinkClick('/storage')}
-                className="text-left font-medium text-gray-600 block py-2 hover:text-primary transition-colors duration-200"
+                className={getMobileLinkClassName('/storage')}
               >
                 내 저장소
               </button>
             )}
             <button 
               onClick={() => handleLinkClick('/submissions')}
-              className="text-left font-medium text-gray-600 block py-2 hover:text-primary transition-colors duration-200"
+              className={getMobileLinkClassName('/submissions')}
             >
               제출 현황
             </button>
@@ -329,13 +376,13 @@ const Header: React.FC = () => {
               <>
                 <button
                   onClick={() => handleLinkClick('/user/settings')}
-                  className="text-left font-medium text-gray-700 block py-2 hover:text-primary transition-colors duration-200"
+                  className={getMobileLinkClassName('/user/settings')}
                 >
                   {getUserIdentifier()}님
                 </button>
                 <button 
                   onClick={() => handleLinkClick('/user/settings')}
-                  className="text-left font-medium text-gray-600 block py-2 hover:text-primary transition-colors duration-200"
+                  className={getMobileLinkClassName('/user/settings')}
                 >
                   설정
                 </button>
@@ -344,7 +391,7 @@ const Header: React.FC = () => {
                     closeMenu();
                     signOut();
                   }}
-                  className="text-left font-medium text-gray-600 block py-2 hover:text-primary transition-colors duration-200"
+                  className={getMobileLinkClassName('/user/settings')}
                 >
                   로그아웃
                 </button>
@@ -352,7 +399,7 @@ const Header: React.FC = () => {
             ) : (
               <button 
                 onClick={() => handleLinkClick('/auth/login')}
-                className="text-left font-medium text-gray-600 block py-2 hover:text-primary transition-colors duration-200"
+                className={getMobileLinkClassName('/auth/login')}
               >
                 로그인
               </button>
