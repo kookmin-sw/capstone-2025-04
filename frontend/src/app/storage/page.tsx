@@ -226,7 +226,7 @@ const StoragePage: React.FC = () => {
                     placeholder="문제 검색..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary w-full"
+                    className="pl-4 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary w-full"
                   />
                   {/* Search Icon */}
                 </div>
