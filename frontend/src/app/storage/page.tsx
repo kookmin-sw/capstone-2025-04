@@ -108,7 +108,7 @@ const StoragePage: React.FC = () => {
         setLoading(false);
       }
     },
-    [currentCreatorId, sortDirection, error, loading],
+    [currentCreatorId, sortDirection],
   );
 
   // Effect for initial load and when creatorId or sortDirection (for createdAt) changes
