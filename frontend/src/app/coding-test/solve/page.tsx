@@ -26,6 +26,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneLight } from "react-syntax-highlighter/dist/esm/styles/prism";
+import LoadingSpinner from "@/components/LoadingSpinner";
 
 import { 
   getProblemById, 
@@ -332,9 +333,22 @@ const CodingTestContent: React.FC = () => {
     }
 
     try {
-      const exampleTestCases = JSON.parse(problemDetails.finalTestCases || "[]") as TestCaseDisplay[];
+      const parsed = JSON.parse(problemDetails.finalTestCases || "[]");
+      
+      // Handle double-nested JSON structure: finalTestCases may contain a JSON string
+      // with a "finalTestCases" property that contains the actual array
+      let exampleTestCases: TestCaseDisplay[] = [];
+      
+      if (Array.isArray(parsed)) {
+        // Direct array case
+        exampleTestCases = parsed as TestCaseDisplay[];
+      } else if (parsed && typeof parsed === 'object' && parsed.finalTestCases) {
+        // Nested object case: extract the finalTestCases property
+        exampleTestCases = Array.isArray(parsed.finalTestCases) ? parsed.finalTestCases as TestCaseDisplay[] : [];
+      }
+      
       // Limit to 3 example test cases for "Run Code"
-      const inputsToRun = exampleTestCases.slice(0, Math.min(3, exampleTestCases.length)).map(tc => tc.input); 
+      const inputsToRun = exampleTestCases.slice(0, Math.min(3, exampleTestCases.length)).map(tc => tc.input);
 
       if (inputsToRun.length === 0) {
         toast.info("실행할 예제 테스트 케이스가 없습니다.");
@@ -484,12 +498,7 @@ const CodingTestContent: React.FC = () => {
 
   if (isLoadingProblem) { 
     return (
-      <div className="flex justify-center items-center flex-grow">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-gray-500">문제 정보를 불러오는 중...</p>
-        </div>
-      </div>
+      <LoadingSpinner fullScreen message="문제 정보를 불러오는 중..." />
     );
   }
   if (errorProblem) { 
@@ -669,6 +678,13 @@ const ProblemPanel: React.FC<{ problemDetails: ProblemDetail }> = ({ problemDeta
               }
               return ( <code className="bg-gray-100 rounded px-1 py-0.5 text-sm" {...props}> {children} </code> );
             },
+            // Heading components with appropriate sizing
+            h1({ children }) { return <h1 className="text-xl font-bold mb-3 mt-4">{children}</h1>; },
+            h2({ children }) { return <h2 className="text-lg font-semibold mb-2 mt-3">{children}</h2>; },
+            h3({ children }) { return <h3 className="text-base font-semibold mb-2 mt-3">{children}</h3>; },
+            h4({ children }) { return <h4 className="text-sm font-semibold mb-1 mt-2">{children}</h4>; },
+            h5({ children }) { return <h5 className="text-sm font-medium mb-1 mt-2">{children}</h5>; },
+            h6({ children }) { return <h6 className="text-xs font-medium mb-1 mt-2">{children}</h6>; },
             table({ children }) { return <table className="min-w-full border-collapse my-2">{children}</table>; },
             th({ children }) { return <th className="border px-2 py-1 bg-gray-100 text-left font-semibold">{children}</th>; },
             td({ children }) { return <td className="border px-2 py-1">{children}</td>; },
@@ -676,6 +692,13 @@ const ProblemPanel: React.FC<{ problemDetails: ProblemDetail }> = ({ problemDeta
             ol({ children, ...props }) { return <ol className="list-decimal pl-6 my-2" {...props}>{children}</ol>; },
             li({ children, ...props }) { return <li className="mb-1" {...props}>{children}</li>; },
             p({ children }) { return <p className="mb-2">{children}</p>; },
+            // Block quote styling
+            blockquote({ children }) { return <blockquote className="border-l-4 border-gray-300 pl-4 my-2 italic text-gray-600">{children}</blockquote>; },
+            // Horizontal rule styling
+            hr() { return <hr className="my-4 border-gray-300" />; },
+            // Emphasis and strong styling
+            em({ children }) { return <em className="italic">{children}</em>; },
+            strong({ children }) { return <strong className="font-semibold">{children}</strong>; },
           }}
         >
           {problemDetails.targetLanguage && problemDetails.description_translated
@@ -797,7 +820,20 @@ const ResultsPanel: React.FC<ResultsPanelProps> = ({
  }) => {
   const exampleTestCasesToDisplay = useMemo(() => {
     try {
-      const allTestCases = JSON.parse(problemDetails.finalTestCases || "[]") as TestCaseDisplay[];
+      const parsed = JSON.parse(problemDetails.finalTestCases || "[]");
+      
+      // Handle double-nested JSON structure: finalTestCases may contain a JSON string
+      // with a "finalTestCases" property that contains the actual array
+      let allTestCases: TestCaseDisplay[] = [];
+      
+      if (Array.isArray(parsed)) {
+        // Direct array case
+        allTestCases = parsed as TestCaseDisplay[];
+      } else if (parsed && typeof parsed === 'object' && parsed.finalTestCases) {
+        // Nested object case: extract the finalTestCases property
+        allTestCases = Array.isArray(parsed.finalTestCases) ? parsed.finalTestCases as TestCaseDisplay[] : [];
+      }
+      
       // Display only up to 3 example test cases
       return allTestCases.slice(0, 3); 
     } catch (error) {
@@ -904,22 +940,22 @@ ${runCodeOutput.error.trim()}
                     예제 테스트 케이스 {index + 1}
                   </h4>
                   <div className="space-y-2">
-                    <div className="text-xs">
-                      <strong className="font-medium text-gray-600 block mb-0.5">Input:</strong>
-                      <pre className="bg-white p-2 rounded border border-gray-200 text-gray-700 font-mono whitespace-pre-wrap text-[11px]">
+                    <div className="text-sm">
+                      <strong className="font-medium text-gray-600 block mb-1">Input:</strong>
+                      <pre className="bg-white p-2 rounded border border-gray-200 text-gray-700 font-mono whitespace-pre-wrap text-xs">
                         {formatOutputForDisplay(example.input)}
                       </pre>
                     </div>
-                    <div className="text-xs">
-                      <strong className="font-medium text-gray-600 block mb-0.5">Expected Output:</strong>
-                      <pre className="bg-white p-2 rounded border border-gray-200 text-gray-800 font-mono whitespace-pre-wrap text-[11px]">
+                    <div className="text-sm">
+                      <strong className="font-medium text-gray-600 block mb-1">Expected Output:</strong>
+                      <pre className="bg-white p-2 rounded border border-gray-200 text-gray-800 font-mono whitespace-pre-wrap text-xs">
                         {formatOutputForDisplay(example.expected_output)}
                       </pre>
                     </div>
                     {example.rationale && (
-                       <div className="text-xs">
-                        <strong className="font-medium text-gray-600 block mb-0.5">Rationale:</strong>
-                        <p className="text-gray-700 text-[11px]">{example.rationale}</p>
+                       <div className="text-sm">
+                        <strong className="font-medium text-gray-600 block mb-1">Rationale:</strong>
+                        <p className="text-gray-700 text-xs">{example.rationale}</p>
                       </div>
                     )}
                   </div>
@@ -935,8 +971,7 @@ ${runCodeOutput.error.trim()}
         if (isRunningCode) {
           return (
             <div className="mt-4 flex flex-col items-center justify-center h-full">
-              <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary"></div>
-              <p className="mt-3 text-gray-600">코드를 실행 중입니다...</p>
+              <LoadingSpinner message="코드를 실행 중입니다..." />
             </div>
           );
         }
@@ -984,52 +1019,52 @@ ${runCodeOutput.error.trim()}
                         {getStatusKorean(statusType)}
                       </span>
                   </div>
-                  <p className="text-xs text-gray-500 mb-2">실행 시간: {outputDetails.executionTimeMs}ms</p>
+                  <p className="text-sm text-gray-500 mb-2">실행 시간: {outputDetails.executionTimeMs}ms</p>
 
                   <div className="flex justify-between items-end"> {/* Container for details and export button */}
-                    <details className="text-xs cursor-pointer group">
-                        <summary className="text-gray-600 hover:text-primary group-open:mb-1 text-[11px]">세부 정보</summary>
-                        <div className="mt-1 space-y-1.5 bg-white p-2 rounded border border-gray-200">
+                    <details className="text-sm cursor-pointer group">
+                        <summary className="text-gray-600 hover:text-primary group-open:mb-1">세부 정보</summary>
+                        <div className="mt-2 space-y-2 bg-white p-3 rounded border border-gray-200">
                           <div>
-                              <strong className="font-medium text-gray-500 block text-[10px]">Input:</strong>
-                              <pre className="bg-gray-50 p-1 rounded text-gray-700 font-mono text-[10px] whitespace-pre-wrap">
+                              <strong className="font-medium text-gray-500 block text-sm mb-1">Input:</strong>
+                              <pre className="bg-gray-50 p-2 rounded text-gray-700 font-mono text-xs whitespace-pre-wrap">
                                   {formatOutputForDisplay(result.input)}
                               </pre>
                           </div>
                           {exampleTestCase && logicalCorrectnessChecked && (
                           <div>
-                              <strong className="font-medium text-gray-500 block text-[10px]">Expected Output:</strong>
-                              <pre className="bg-gray-50 p-1 rounded text-gray-700 font-mono text-[10px] whitespace-pre-wrap">
+                              <strong className="font-medium text-gray-500 block text-sm mb-1">Expected Output:</strong>
+                              <pre className="bg-gray-50 p-2 rounded text-gray-700 font-mono text-xs whitespace-pre-wrap">
                                   {formatOutputForDisplay(exampleTestCase.expected_output)}
                               </pre>
                           </div>
                           )}
                           {outputDetails.isSuccessful && (
                           <div>
-                              <strong className="font-medium text-gray-500 block text-[10px]">Return Value:</strong>
-                              <pre className={`p-1 rounded font-mono text-[10px] whitespace-pre-wrap ${statusType === "ACCEPTED" ? "bg-green-50 text-green-700" : (statusType === "WRONG_ANSWER" ? "bg-red-50 text-red-700" : "bg-gray-50 text-gray-700")}`}>
+                              <strong className="font-medium text-gray-500 block text-sm mb-1">Return Value:</strong>
+                              <pre className={`p-2 rounded font-mono text-xs whitespace-pre-wrap ${statusType === "ACCEPTED" ? "bg-green-50 text-green-700" : (statusType === "WRONG_ANSWER" ? "bg-red-50 text-red-700" : "bg-gray-50 text-gray-700")}`}>
                                   {formatOutputForDisplay(outputDetails.returnValue)}
                               </pre>
                           </div>
                           )}
                           {outputDetails.stdout && (
                               <div>
-                                  <strong className="font-medium text-gray-500 block text-[10px]">Stdout:</strong>
-                                  <pre className="bg-gray-50 p-1 rounded text-gray-700 font-mono text-[10px] whitespace-pre-wrap">
+                                  <strong className="font-medium text-gray-500 block text-sm mb-1">Stdout:</strong>
+                                  <pre className="bg-gray-50 p-2 rounded text-gray-700 font-mono text-xs whitespace-pre-wrap">
                                   {outputDetails.stdout}
                                   </pre>
                               </div>
                           )}
                           {outputDetails.stderr && (
                               <div>
-                                  <strong className="font-medium text-red-500 block text-[10px]">Stderr:</strong>
-                                  <pre className="bg-red-50 p-1 rounded text-red-700 font-mono text-[10px] whitespace-pre-wrap">
+                                  <strong className="font-medium text-red-500 block text-sm mb-1">Stderr:</strong>
+                                  <pre className="bg-red-50 p-2 rounded text-red-700 font-mono text-xs whitespace-pre-wrap">
                                   {outputDetails.stderr}
                                   </pre>
                               </div>
                           )}
                           {outputDetails.runCodeLambdaError && outputDetails.errorMessage && (
-                              <p className="text-xs text-orange-700 mt-1">실행기 오류 상세: {outputDetails.errorMessage}</p>
+                              <p className="text-sm text-orange-700 mt-2">실행기 오류 상세: {outputDetails.errorMessage}</p>
                           )}
                         </div>
                     </details>
@@ -1054,8 +1089,7 @@ ${runCodeOutput.error.trim()}
         if (isSubmitting) {
           return (
             <div className="mt-4 flex flex-col items-center justify-center h-full">
-              <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary"></div>
-              <p className="mt-3 text-gray-600">채점 중입니다...</p>
+              <LoadingSpinner message="채점 중입니다..." />
             </div>
           );
         }
@@ -1084,7 +1118,7 @@ ${runCodeOutput.error.trim()}
                     <p className={`text-lg font-bold ${score === 100 ? 'text-green-600' : (score > 0 ? 'text-yellow-600' : 'text-red-600')}`}>
                         {score}/100점
                     </p>
-                    <p className="text-xs text-gray-500">{passedCases} / {totalCases} 테스트 케이스 통과</p>
+                    <p className="text-sm text-gray-500">{passedCases} / {totalCases} 테스트 케이스 통과</p>
                 </div>
             </div>
 
@@ -1106,11 +1140,11 @@ ${runCodeOutput.error.trim()}
                       {getStatusKorean(tcResult.status)}
                     </span>
                   </div>
-                  <p className="text-xs text-gray-500">실행 시간: {(tcResult.executionTime * 1000).toFixed(0)}ms</p>
+                  <p className="text-sm text-gray-500">실행 시간: {(tcResult.executionTime * 1000).toFixed(0)}ms</p>
                   {tcResult.status !== "ACCEPTED" && tcResult.stderr && (
-                    <details className="text-xs cursor-pointer group mt-1">
-                        <summary className="text-gray-600 hover:text-primary group-open:mb-1 text-[11px]">오류 상세 보기</summary>
-                        <pre className="mt-1 bg-white p-1.5 rounded border border-gray-200 text-red-600 font-mono text-[10px] whitespace-pre-wrap">
+                    <details className="text-sm cursor-pointer group mt-1">
+                        <summary className="text-gray-600 hover:text-primary group-open:mb-1">오류 상세 보기</summary>
+                        <pre className="mt-2 bg-white p-2 rounded border border-gray-200 text-red-600 font-mono text-xs whitespace-pre-wrap">
                             {tcResult.stderr}
                         </pre>
                     </details>
@@ -1165,12 +1199,7 @@ const CodingTestSolvePage: React.FC = () => {
         <main className="flex-grow overflow-hidden"> 
           <Suspense
             fallback={ 
-              <div className="flex justify-center items-center flex-grow h-full">
-                <div className="text-center">
-                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-                  <p className="text-gray-500">로딩 중...</p>
-                </div>
-              </div>
+              <LoadingSpinner fullScreen message="로딩 중..." />
             }
           >
             <CodingTestContent />

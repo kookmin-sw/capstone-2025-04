@@ -196,7 +196,7 @@ const EditPageContent: React.FC = () => {
   if (error || !isAuthorized) {
      const displayError = !isAuthenticated && !error ? "게시글을 수정하려면 로그인이 필요합니다." : error || "수정 권한이 없습니다.";
     return (
-      <div className="max-w-5xl mx-auto p-8">
+      <div className="max-w-6xl mx-auto p-6 sm:p-8">
         <div className="text-center py-10 px-4 bg-red-50 border border-red-200 rounded-md">
           <p className="text-red-600 font-medium">접근 불가</p>
           <p className="text-red-500 text-sm mt-1">{displayError}</p>
@@ -213,7 +213,7 @@ const EditPageContent: React.FC = () => {
 
   // FINALLY Render form only if authorized, no error, and not loading
   return (
-     <div className="max-w-5xl mx-auto p-8">
+     <div className="max-w-6xl mx-auto p-6 sm:p-8">
        {/* Header/Cancel Button */}
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-3xl font-bold text-gray-900">게시글 수정</h1>

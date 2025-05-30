@@ -5,6 +5,7 @@ import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import Link from "next/link";
 import { fetchAuthSession } from "aws-amplify/auth";
+import LoadingSpinner from "@/components/LoadingSpinner";
 import {
   getProblems,
   ProblemSummary,
@@ -107,7 +108,7 @@ const StoragePage: React.FC = () => {
         setLoading(false);
       }
     },
-    [currentCreatorId, sortDirection], // sortColumn is not a dependency if only createdAt is backend-sorted
+    [currentCreatorId, sortDirection],
   );
 
   // Effect for initial load and when creatorId or sortDirection (for createdAt) changes
@@ -214,7 +215,7 @@ const StoragePage: React.FC = () => {
       <div className="min-h-screen flex flex-col bg-gray-50">
         <Header />
         <main className="flex-grow">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+          <div className="max-w-6xl mx-auto p-6 sm:p-8">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8">
               <h1 className="text-3xl font-bold text-gray-900 flex items-center mb-4 md:mb-0">
                 {/* Icon */} 내 저장소
@@ -226,7 +227,7 @@ const StoragePage: React.FC = () => {
                     placeholder="문제 검색..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary w-full"
+                    className="pl-4 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary w-full"
                   />
                   {/* Search Icon */}
                 </div>
@@ -252,7 +253,7 @@ const StoragePage: React.FC = () => {
 
               {loading && problems.length === 0 ? (
                 <div className="py-10 px-6 text-center">
-                  <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                  <LoadingSpinner />
                   <p className="mt-2 text-gray-500">문제를 불러오는 중...</p>
                 </div>
               ) : error ? (

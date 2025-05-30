@@ -147,7 +147,7 @@ const CodingTestResultContent: React.FC = () => {
   // Loading state
   if (isLoadingProblem || isLoadingSubmission) {
     return (
-      <div className="max-w-5xl mx-auto p-8 text-center">
+      <div className="max-w-6xl mx-auto p-6 sm:p-8 text-center">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
         <p className="text-gray-500">결과를 불러오는 중...</p>
       </div>
@@ -158,7 +158,7 @@ const CodingTestResultContent: React.FC = () => {
   if (error && (!submission || !problem)) {
     // Show general error if core data is missing
     return (
-      <div className="max-w-5xl mx-auto p-8">
+      <div className="max-w-6xl mx-auto p-6 sm:p-8">
         <div className="text-center py-10 px-4 bg-red-50 border border-red-200 rounded-md">
           <p className="text-red-600 font-medium">오류 발생</p>
           <p className="text-red-500 text-sm mt-1">{error}</p>
@@ -175,7 +175,7 @@ const CodingTestResultContent: React.FC = () => {
 
   if (!submission) {
     return (
-      <div className="max-w-5xl mx-auto p-8">
+      <div className="max-w-6xl mx-auto p-6 sm:p-8">
         <div className="text-center py-10 px-4 bg-yellow-50 border border-yellow-200 rounded-md">
           <p className="text-yellow-600 font-medium">제출 정보 없음</p>
           <p className="text-yellow-500 text-sm mt-1">
@@ -200,7 +200,7 @@ const CodingTestResultContent: React.FC = () => {
   const memoryUsageDisplay = "N/A"; // API에 메모리 사용량 정보가 현재 없음
 
   return (
-    <div className="max-w-5xl mx-auto p-8">
+    <div className="max-w-6xl mx-auto p-6 sm:p-8">
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-3xl font-bold text-gray-900">채점 결과</h1>
         <Link
@@ -330,7 +330,7 @@ const CodingTestResultPage: React.FC = () => {
         <main className="flex-grow">
           <Suspense
             fallback={
-              <div className="max-w-5xl mx-auto p-8 text-center">
+              <div className="max-w-6xl mx-auto p-6 sm:p-8 text-center">
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
                 <p className="text-gray-500">페이지 로딩 중...</p>
               </div>

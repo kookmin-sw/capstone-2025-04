@@ -84,7 +84,7 @@
 
 ## 🎬 소개 영상
 
-**(예정)**
+[![ALPACO 시연 영상](https://img.youtube.com/vi/-dncSnRNmnU/0.jpg)](https://www.youtube.com/watch?v=-dncSnRNmnU)
 
 ---
 

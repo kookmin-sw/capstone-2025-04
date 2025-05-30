@@ -299,8 +299,26 @@ def lambda_handler(event, context):
             # Get Test Cases, Judge Type, Time Limit, Epsilon
             final_test_cases_str = problem_data.get('finalTestCases')
             if not final_test_cases_str: raise Exception("No test cases found for this problem.")
-            test_cases = json.loads(final_test_cases_str)
-            if not isinstance(test_cases, list) or not test_cases: raise Exception("Test cases invalid or empty.")
+            
+            # Parse finalTestCases JSON string
+            parsed_test_cases = json.loads(final_test_cases_str)
+            
+            # Handle double-nested JSON structure: finalTestCases may contain a JSON string
+            # with a "finalTestCases" property that contains the actual array
+            test_cases = []
+            if isinstance(parsed_test_cases, list):
+                # Direct array case
+                test_cases = parsed_test_cases
+            elif isinstance(parsed_test_cases, dict) and 'finalTestCases' in parsed_test_cases:
+                # Nested object case: extract the finalTestCases property
+                if isinstance(parsed_test_cases['finalTestCases'], list):
+                    test_cases = parsed_test_cases['finalTestCases']
+                else:
+                    raise Exception("Nested finalTestCases property is not a list.")
+            else:
+                raise Exception("finalTestCases format is not recognized (expected array or object with finalTestCases property).")
+            
+            if not test_cases: raise Exception("Test cases array is empty.")
 
             judge_type = problem_data.get('judgeType', problem_data.get('judge_type', 'equal')) # Check both names, default 'equal'
             if judge_type not in ALLOWED_JUDGE_TYPES:

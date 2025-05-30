@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
+import LoadingSpinner from "@/components/LoadingSpinner";
 import {
   getSubmissions,
   SubmissionSummary,
@@ -189,7 +190,7 @@ const SubmissionsContent: React.FC = () => {
   };
 
   return (
-    <div className="max-w-7xl mx-auto p-4 sm:p-8">
+    <div className="max-w-6xl mx-auto p-6 sm:p-8">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6">
         <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-4 md:mb-0">
           제출 현황
@@ -203,11 +204,12 @@ const SubmissionsContent: React.FC = () => {
       </div>
 
       <div className="mb-6 p-4 bg-white shadow-sm rounded-lg border">
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 items-end">
-          <div className="md:col-span-1">
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+          {/* 문제 제목 필터 */}
+          <div className="lg:col-span-2">
             <label
               htmlFor="problemTitleFilter"
-              className="block text-sm font-medium text-gray-700 mb-1"
+              className="block text-sm font-medium text-gray-700 mb-2"
             >
               문제 제목 (한글)
             </label>
@@ -218,7 +220,7 @@ const SubmissionsContent: React.FC = () => {
                 value={filterProblemTitle}
                 onChange={(e) => setFilterProblemTitle(e.target.value)}
                 className="w-full p-2 border border-gray-300 rounded-md text-sm focus:ring-primary focus:border-primary"
-                placeholder="예: 두 수의 합"
+                placeholder="문제이름"
               />
               {filterProblemTitle && (
                 <div className="absolute right-2 top-2">
@@ -236,12 +238,14 @@ const SubmissionsContent: React.FC = () => {
               )}
             </div>
           </div>
+
+          {/* 작성자 필터 */}
           <div>
             <label
               htmlFor="authorFilter"
-              className="block text-sm font-medium text-gray-700 mb-1"
+              className="block text-sm font-medium text-gray-700 mb-2"
             >
-              작성자 (닉네임) {filterUserId && <span className="text-xs text-gray-500">- 사용자 ID가 설정된 경우 우선 적용됨</span>}
+              작성자 (닉네임)
             </label>
             <div className="relative">
               <input
@@ -250,7 +254,7 @@ const SubmissionsContent: React.FC = () => {
                 value={filterAuthor}
                 onChange={(e) => setFilterAuthor(e.target.value)}
                 className="w-full p-2 border border-gray-300 rounded-md text-sm focus:ring-primary focus:border-primary"
-                placeholder="예: alpaco_user"
+                placeholder="asdf"
               />
               {filterAuthor && (
                 <div className="absolute right-2 top-2">
@@ -266,21 +270,19 @@ const SubmissionsContent: React.FC = () => {
                   </button>
                 </div>
               )}
-              {(filterUserId || filterAuthor) && (
-                <div className="mt-1 text-xs text-primary">
-                  {filterUserId && filterAuthor 
-                    ? `"${filterAuthor}" 사용자의 고유 ID로 필터링 중 (닉네임보다 ID가 우선함)`
-                    : filterAuthor 
-                      ? `특정 사용자 "${filterAuthor}"의 제출만 표시 중` 
-                      : `특정 사용자 ID로 필터링 중`}
-                </div>
-              )}
             </div>
+            {filterUserId && (
+              <div className="mt-1 text-xs text-gray-500">
+                사용자 ID가 설정된 경우 우선 적용됨
+              </div>
+            )}
           </div>
+
+          {/* 정렬 필터 */}
           <div>
             <label
               htmlFor="sortOrderFilter"
-              className="block text-sm font-medium text-gray-700 mb-1"
+              className="block text-sm font-medium text-gray-700 mb-2"
             >
               정렬
             </label>
@@ -296,38 +298,47 @@ const SubmissionsContent: React.FC = () => {
           </div>
         </div>
         
+        {/* 활성 필터 표시 */}
         {(filterUserId || filterAuthor || filterProblemTitle) && (
-          <div className="mt-4 p-2 bg-blue-50 border border-blue-200 rounded-md text-sm text-blue-700 flex justify-between items-center">
-            <span>
-              {[
-                filterProblemTitle && `문제: "${filterProblemTitle}"`,
-                filterUserId && filterAuthor && `작성자: "${filterAuthor}" (사용자 ID로 필터링 중)`,
-                filterAuthor && !filterUserId && `작성자: "${filterAuthor}"`,
-                filterUserId && !filterAuthor && "특정 사용자 ID로 필터링됨"
-              ].filter(Boolean).join(' / ')}
-            </span>
-            <button 
-              onClick={() => {
-                setFilterProblemTitle('');
-                setFilterAuthor('');
-                setFilterUserId('');
-              }}
-              className="text-xs bg-white px-2 py-1 rounded border border-blue-200 hover:bg-blue-100"
-            >
-              필터 초기화
-            </button>
-          </div>
-        )}
-        {filterProblemTitle && (
-          <div className="mt-1 text-xs text-primary">
-            &ldquo;{filterProblemTitle}&rdquo; 문제에 대한 제출만 표시 중
+          <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+              <div className="text-sm text-blue-700">
+                <span className="font-medium">특정 사용자 &quot;asdf&quot;의 제출만 표시 중</span>
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {filterProblemTitle && (
+                    <span className="inline-flex items-center px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
+                      문제: &quot;{filterProblemTitle}&quot;
+                    </span>
+                  )}
+                  {(filterUserId || filterAuthor) && (
+                    <span className="inline-flex items-center px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
+                      {filterUserId && filterAuthor 
+                        ? `작성자: "${filterAuthor}" (ID 우선)`
+                        : filterAuthor 
+                          ? `작성자: "${filterAuthor}"`
+                          : "사용자 ID로 필터링"}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <button 
+                onClick={() => {
+                  setFilterProblemTitle('');
+                  setFilterAuthor('');
+                  setFilterUserId('');
+                }}
+                className="text-xs bg-white px-3 py-1.5 rounded border border-blue-200 hover:bg-blue-100 transition-colors whitespace-nowrap"
+              >
+                필터 초기화
+              </button>
+            </div>
           </div>
         )}
       </div>
 
       {isLoading && submissions.length === 0 ? (
         <div className="text-center py-10">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+          <LoadingSpinner />
           <p className="text-gray-500">제출 목록을 불러오는 중...</p>
         </div>
       ) : error ? (
@@ -447,9 +458,7 @@ const SubmissionsPage: React.FC = () => {
         <main className="flex-grow">
           <Suspense
             fallback={
-              <div className="flex justify-center items-center min-h-[calc(100vh-200px)]">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-              </div>
+              <LoadingSpinner fullScreen message="제출 현황을 불러오는 중..." />
             }
           >
             <SubmissionsContent />

@@ -299,7 +299,7 @@ const CommunityDetail: React.FC<CommunityDetailProps> = ({ id }) => {
 
   if (errorPost) {
     return (
-      <div className="max-w-5xl mx-auto p-8">
+      <div className="max-w-6xl mx-auto p-6 sm:p-8">
         <div className="text-center py-10 px-4 bg-red-50 border border-red-200 rounded-md">
           <p className="text-red-600 font-medium">오류 발생</p>
           <p className="text-red-500 text-sm mt-1">{errorPost}</p>
@@ -316,7 +316,7 @@ const CommunityDetail: React.FC<CommunityDetailProps> = ({ id }) => {
 
   if (!post) {
     return (
-      <div className="max-w-5xl mx-auto p-8 text-center text-gray-500">
+      <div className="max-w-6xl mx-auto p-6 sm:p-8 text-center text-gray-500">
         게시글을 찾을 수 없습니다.
       </div>
     );
@@ -368,7 +368,7 @@ const CommunityDetail: React.FC<CommunityDetailProps> = ({ id }) => {
   };
 
   return (
-    <div className="max-w-5xl mx-auto p-8">
+    <div className="max-w-6xl mx-auto p-6 sm:p-8">
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-3xl font-bold text-gray-900">게시글</h1>
         <Link

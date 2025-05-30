@@ -1,10 +1,11 @@
 "use client";
 import React, { useState, useEffect } from "react";
-import { toast } from "sonner";
-import { useAuthenticator } from "@aws-amplify/ui-react";
-import { updateUserAttributes, fetchUserAttributes } from "aws-amplify/auth";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
+import LoadingSpinner from "@/components/LoadingSpinner";
+import { useAuthenticator } from "@aws-amplify/ui-react";
+import { fetchUserAttributes, updateUserAttributes } from "aws-amplify/auth";
+import { toast } from "sonner";
 
 // 로컬 스토리지 키 (Header와 동일하게 사용)
 const NICKNAME_STORAGE_KEY = "alpaco_user_nickname";
@@ -114,7 +115,7 @@ const UserSettingsPage: React.FC = () => {
           
           {isLoading ? (
             <div className="flex justify-center py-4">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+              <LoadingSpinner />
             </div>
           ) : (
             <form onSubmit={handleSubmit}>
