@@ -278,4 +278,4 @@ capstone-2025-04/
 
 ---
 
-© 2025 ALPACO Team. Code licensed under Apache 2.0. Content licensed under CC BY-NC 4.0.
+© 2025 ALPACO Team. Licensed for non-commercial, educational, and research use only. Content licensed under CC BY-NC 4.0.

@@ -1,21 +1,22 @@
 ALPACO: AI & 클라우드 기반 코딩 테스트 학습 플랫폼
 
-Copyright 2025 ALPACO Team
+Copyright (c) 2025 ALPACO Team. All rights reserved.
 
 ---
 
 ### SOFTWARE LICENSE (Code)
-This software, including the frontend (Next.js), backend Lambda functions, and infrastructure code (Terraform), is licensed under the Apache License, Version 2.0 (the "License").
 
-You may obtain a copy of the License at
+This project was created as part of an academic capstone program at Kookmin University.
 
-    http://www.apache.org/licenses/LICENSE-2.0
+Permission is granted to any individual or institution to view, study, and use this code and documentation for non-commercial, educational, and research purposes only.
 
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
+Commercial use, including but not limited to incorporation into proprietary products, redistribution for profit, or use in any commercial service or platform, is strictly prohibited without prior written permission from the ALPACO team.
+
+Unauthorized commercial use may constitute a violation of copyright law and may result in legal action.
+
+For inquiries regarding commercial licensing, please contact: [pwh9882@kookmin.ac.kr]
+
+This license applies to all source code, documents, images, and media included in this repository unless otherwise stated.
 
 ---
 
@@ -28,10 +29,12 @@ To view a copy of this license, visit:
     https://creativecommons.org/licenses/by-nc/4.0/
 
 You are free to:
+
 - Share — copy and redistribute the material in any medium or format
 - Adapt — remix, transform, and build upon the material
 
 Under the following terms:
+
 - **Attribution** — You must give appropriate credit, provide a link to the license, and indicate if changes were made.
 - **NonCommercial** — You may not use the material for commercial purposes.
 

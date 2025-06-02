@@ -31,8 +31,15 @@ const Footer: React.FC = () => {
               FAQ/문의
             </Link>
             <span className="text-gray-300 mx-1">|</span>
+            <Link
+              href="/license"
+              className="text-gray-600 mx-2 text-sm transition-colors duration-200 hover:text-primary"
+            >
+              라이센스
+            </Link>
+            <span className="text-gray-300 mx-1">|</span>
             <span className="text-gray-600 text-sm ml-2">
-              © 2025 ALPACO Team. Code licensed under Apache 2.0. Content licensed under CC BY-NC 4.0.
+              © 2025 ALPACO Team
             </span>
           </nav>
         </div>
