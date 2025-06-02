@@ -275,3 +275,7 @@ capstone-2025-04/
 - **[👋 안녕하세요! (문서 탐색 가이드)](./documents/greeting/)**
 - **[🙋‍♀️ 서비스 가이드](./documents/serving/)**
 - **[🧑‍💻 개발 가이드](./documents/deployment/)**
+
+---
+
+© 2025 ALPACO Team. Code licensed under Apache 2.0. Content licensed under CC BY-NC 4.0.

@@ -62,7 +62,7 @@
 
 - 사용자의 코딩 테스트 상황을 실시간으로 인식
 - 힌트 요청 시 문제 맥락에 맞는 설명, 유사 문제, 알고리즘 개념을 자동 추천
-- 사용자에게 이해 중심 피드백 ****제공 (예: “이 문제는 DFS를 써야 해요!”)
+- 사용자에게 이해 중심 피드백 ****제공 (예: "이 문제는 DFS를 써야 해요!")
 
 ### 📁 내 저장소
 
@@ -257,3 +257,7 @@ capstone-2025-04/
 - **[👋 안녕하세요! (문서 탐색 가이드)](https://kookmin-sw.github.io/capstone-2025-04/documents/greeting/)**
 - **[🙋‍♀️ 서비스 가이드](https://kookmin-sw.github.io/capstone-2025-04/documents/serving/)**
 - **[🧑‍💻 개발 가이드](https://kookmin-sw.github.io/capstone-2025-04/documents/deployment/)**
+
+---
+
+© 2025 ALPACO Team. Code licensed under Apache 2.0. Content licensed under CC BY-NC 4.0.

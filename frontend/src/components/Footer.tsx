@@ -32,7 +32,7 @@ const Footer: React.FC = () => {
             </Link>
             <span className="text-gray-300 mx-1">|</span>
             <span className="text-gray-600 text-sm ml-2">
-              &copy; {new Date().getFullYear()} ALPACO
+              © 2025 ALPACO Team. Code licensed under Apache 2.0. Content licensed under CC BY-NC 4.0.
             </span>
           </nav>
         </div>
