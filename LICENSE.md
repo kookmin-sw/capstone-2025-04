@@ -1,10 +1,10 @@
-ALPACO: AI & 클라우드 기반 코딩 테스트 학습 플랫폼
+# ALPACO: AI & 클라우드 기반 코딩 테스트 학습 플랫폼
 
 Copyright (c) 2025 ALPACO Team. All rights reserved.
 
 ---
 
-### SOFTWARE LICENSE (Code)
+## SOFTWARE LICENSE (Code)
 
 This project was created as part of an academic capstone program at Kookmin University.
 
@@ -20,7 +20,7 @@ This license applies to all source code, documents, images, and media included i
 
 ---
 
-### CONTENT LICENSE (Documents, Images, and Media)
+## CONTENT LICENSE (Documents, Images, and Media)
 
 All documentation, diagrams, posters, and media content (e.g. `assets/` directory contents, Markdown documents in `docs/`, etc.) are licensed under the Creative Commons Attribution-NonCommercial 4.0 International License.
 
